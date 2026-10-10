@@ -25,7 +25,7 @@ import {
 } from "../../derive";
 import { checkoutResources } from "../../lib/resources";
 import { Link, Navigate, useSearchParams } from "../../routing";
-import { ActivityFeed } from "../activity/activity-feed";
+import { ActivityButton } from "../activity/activity-button";
 import {
   checkoutCounts,
   checkoutOf,
@@ -148,6 +148,11 @@ export const ProjectOverview = () => {
               directory={workspaceFolderOf(view)}
               hostPath={project.path}
             />
+            <ActivityButton
+              filter={{ projectId: project.id }}
+              subject={project.name}
+              empty="Nothing has happened in this project yet."
+            />
             <ProjectSettingsButton view={view} />
             <AllContainersMenu view={view} />
           </>
@@ -243,12 +248,6 @@ export const ProjectOverview = () => {
           />
         </Section>
       )}
-
-      <ActivityFeed
-        filter={{ projectId: project.id }}
-        title="Recent activity"
-        empty="Nothing has happened in this project yet."
-      />
     </>
   );
 };

@@ -1,4 +1,5 @@
 import {
+  ActivityIcon,
   BellIcon,
   CommandIcon,
   FolderGit2Icon,
@@ -36,6 +37,7 @@ import { Count } from "../../components/status";
 import { useDash } from "../../dashboard-context";
 import { matches } from "../../derive";
 import { useNavigate, useSearchParams } from "../../routing";
+import { ActivitySettings } from "../activity/activity-settings";
 import { nodesNeedingAttention } from "../nodes/nodes";
 import { RemoteInstancesSettings } from "../nodes/remote-instances";
 import { GeneralSettings } from "./general-settings";
@@ -90,6 +92,14 @@ const SECTIONS: SectionDef[] = [
     keywords: "keyboard keys hotkeys keybindings",
     label: "Shortcuts",
     render: () => <ShortcutSettings />,
+  },
+  {
+    group: "app",
+    icon: ActivityIcon,
+    id: "activity",
+    keywords: "history events log feed tasks branches reviews",
+    label: "Activity",
+    render: () => <ActivitySettings />,
   },
   {
     group: "workspace",

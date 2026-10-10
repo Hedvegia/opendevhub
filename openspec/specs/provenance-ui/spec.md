@@ -72,12 +72,17 @@ The session, worktree, branch and environment lists SHALL show what created each
 
 ### Requirement: Activity views
 
-The dashboard SHALL have an activity page across all projects, an activity section on each project page, and the task's activity on the task page. Each SHALL load older events on demand, and each event SHALL link to the entity it is about.
+The dashboard SHALL show the activity across all projects as an Activity section in Settings, not in the sidebar. The project page, the task page and a worktree's page SHALL each have a small Activity button in their header that opens that project's, task's or worktree's activity in a dialog. Each SHALL load older events on demand, and each event SHALL link to the entity it is about.
 
 #### Scenario: Catching up
 
-- **WHEN** the user opens the activity page after being away
+- **WHEN** the user opens Settings → Activity after being away
 - **THEN** it lists what happened since, newest first, for example tasks started, variants failed, branches published, PRs linked and reviews run, each linking to its entity
+
+#### Scenario: One project's activity
+
+- **WHEN** the user clicks the Activity button in a project page's header
+- **THEN** a dialog lists that project's events, newest first, and the page itself shows no activity section
 
 #### Scenario: Load more
 

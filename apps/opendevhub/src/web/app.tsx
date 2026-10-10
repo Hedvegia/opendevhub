@@ -9,7 +9,6 @@ import type { AnyRoute, RouterHistory } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
 
-import { ActivityPage } from "./features/activity/activity-page";
 import {
   CheckoutPage,
   CheckoutRuntime,
@@ -36,6 +35,12 @@ const CheckoutTerminal = lazy(() =>
     default: module.CheckoutTerminal,
   }))
 );
+
+/** Pages that became a settings section, by their old path. */
+const OLD_SECTION_PATHS: Record<string, string> = {
+  activity: "activity",
+  nodes: "remote-instances",
+};
 
 const OLD_RUNTIME_TAB = /\/(?:ports|logs)$/u;
 
@@ -116,17 +121,16 @@ const routeTree = rootRoute.addChildren([
   shellRoute.addChildren([
     page("/", Overview),
     page("sessions", SessionsPage),
-    page("activity", ActivityPage),
     page("usage", UsagePage),
     page("cleanup", CleanupPage),
-    // Settings opens as a dialog over the current page; these keep old links working.
-    ...["settings", "settings/$section", "nodes"].map((path) =>
+    // Settings opens as a dialog over the current page; these keep old links working, as does the old Activity page.
+    ...["settings", "settings/$section", "nodes", "activity"].map((path) =>
       createRoute({
         beforeLoad: ({ location, params }) => {
           const section =
-            path === "nodes"
-              ? "remote-instances"
-              : ((params as { section?: string }).section ?? "general");
+            OLD_SECTION_PATHS[path] ??
+            (params as { section?: string }).section ??
+            "general";
           throw redirect({
             href: `/?settings=${encodeURIComponent(section)}${location.hash ? `#${location.hash}` : ""}`,
             replace: true,

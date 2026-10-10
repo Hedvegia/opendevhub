@@ -34,7 +34,7 @@ import { SessionBadge } from "../../components/status";
 import { useDash } from "../../dashboard-context";
 import { envOfDirectory, sessionHref } from "../../derive";
 import { Link, useSearchParams } from "../../routing";
-import { ActivityFeed } from "../activity/activity-feed";
+import { ActivityButton } from "../activity/activity-button";
 import { ProvenanceBreadcrumb } from "../activity/provenance-breadcrumb";
 import { checkoutOf, checkoutPath } from "../checkouts/checkouts";
 import { checksState, failedNames } from "../checks/checks";
@@ -348,10 +348,6 @@ export const ProjectTask = () => {
       )}
       <SpecChain view={view} task={record} />
       <TaskReviews task={record} />
-      <ActivityFeed
-        filter={{ taskId: record.id }}
-        empty="Nothing recorded for this task yet."
-      />
     </div>
   );
 
@@ -386,7 +382,12 @@ export const ProjectTask = () => {
             </span>
           )}
         </span>
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-1">
+          <ActivityButton
+            filter={{ taskId: record.id }}
+            subject={record.title || "Task"}
+            empty="Nothing recorded for this task yet."
+          />
           {record.state === "ended" && (
             <ArchiveButton view={view} task={record} />
           )}

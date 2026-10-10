@@ -79,6 +79,8 @@ export const ActivityFeed = (props: {
   /** Name each event's project, for a feed across projects. */
   showProject?: boolean;
   empty?: string;
+  /** Leave out the card around the list, for a feed that has its own frame such as a dialog. */
+  bare?: boolean;
   className?: string;
 }) => {
   const feed = useActivity(props.filter);
@@ -142,6 +144,9 @@ export const ActivityFeed = (props: {
         )}
       </>
     );
+  }
+  if (props.bare) {
+    return <div className={props.className}>{content}</div>;
   }
   return (
     <Section title={props.title ?? "Activity"} className={props.className}>

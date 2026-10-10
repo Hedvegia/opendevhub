@@ -45,6 +45,7 @@ import {
 import type { SessionEntry } from "../../derive";
 import { checkoutResources } from "../../lib/resources";
 import { Link, useNavigate, useSearchParams } from "../../routing";
+import { ActivityButton } from "../activity/activity-button";
 import { ProvenanceBreadcrumb } from "../activity/provenance-breadcrumb";
 import { PublishedPr } from "../forgejo/published-pr";
 import { projectFlags, StartStopButton } from "../projects/project-actions";
@@ -269,6 +270,18 @@ export const CheckoutPage = () => {
                 view={view}
                 directory={checkout.directory}
                 hostPath={checkout.hostPath}
+              />
+            )}
+            {checkout.worktree && (
+              <ActivityButton
+                filter={{
+                  entity: {
+                    id: String(checkout.worktree.id),
+                    type: "worktree",
+                  },
+                }}
+                subject={checkout.label}
+                empty="Nothing recorded for this worktree yet."
               />
             )}
             <ContainerMenu

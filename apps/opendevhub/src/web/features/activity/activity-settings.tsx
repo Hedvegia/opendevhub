@@ -1,31 +1,29 @@
+import { useState } from "react";
+
 import { Choice } from "../../components/choice";
-import { Page, PageHeader } from "../../components/page";
 import { useDash } from "../../dashboard-context";
-import { useSearchParams } from "../../routing";
+import { SettingsHeader } from "../settings/settings-layout";
 import { ActivityFeed } from "./activity-feed";
 
 /** What happened across every project, or in one, newest first. */
-export const ActivityPage = () => {
+export const ActivitySettings = () => {
   const { snapshot } = useDash();
-  const [params, setParams] = useSearchParams();
+  const [selected, setSelected] = useState("");
   const projects = snapshot?.projects.map((v) => v.project) ?? [];
-  const selected = params.get("project") ?? "";
   const projectId = projects.some((p) => p.id === selected)
     ? selected
     : undefined;
   return (
-    <Page>
-      <PageHeader
+    <>
+      <SettingsHeader
         title="Activity"
         description="Tasks started, variants failed, branches published, pull requests linked and reviews run, newest first."
-        actions={
+        action={
           projects.length > 1 && (
             <Choice
               label="Project"
               value={projectId ?? ""}
-              onChange={(value) =>
-                setParams(value ? { project: value } : {}, { replace: true })
-              }
+              onChange={setSelected}
               options={[
                 { label: "All projects", value: "" },
                 ...projects.map((p) => ({ label: p.name, value: p.id })),
@@ -40,6 +38,6 @@ export const ActivityPage = () => {
         showProject={!projectId}
         empty="Nothing has happened yet. Start a task and it shows up here."
       />
-    </Page>
+    </>
   );
 };

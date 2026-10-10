@@ -76,7 +76,6 @@ export const CommandPalette = ({
           label: "All sessions",
           run: go("/sessions"),
         },
-        { key: "nav-activity", label: "Activity", run: go("/activity") },
         ...(forgejo?.enabled
           ? [{ key: "nav-pulls", label: "Pull requests", run: go("/forgejo") }]
           : []),
@@ -91,6 +90,7 @@ export const CommandPalette = ({
         ["general", "General"],
         ["notifications", "Notifications"],
         ["shortcuts", "Shortcuts"],
+        ["activity", "Activity"],
         ["projects", "Projects"],
         ["remote-instances", "Remote instances"],
         ["git", "Git"],

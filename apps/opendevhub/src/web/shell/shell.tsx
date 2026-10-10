@@ -1,6 +1,5 @@
 import { Outlet, useLocation } from "@tanstack/react-router";
 import {
-  ActivityIcon,
   BellIcon,
   CircleDollarSignIcon,
   EraserIcon,
@@ -208,9 +207,6 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
               }
             >
               <ListIcon /> Sessions
-            </NavItem>
-            <NavItem to="/activity">
-              <ActivityIcon /> Activity
             </NavItem>
             {forgejo?.enabled && (
               <NavItem to="/forgejo">
