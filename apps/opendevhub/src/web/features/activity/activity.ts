@@ -53,7 +53,7 @@ const branch = (e: ActivityEvent): string =>
   str(e.data?.name) ?? str(e.data?.branch) ?? "a branch";
 
 const sessionOf = (e: ActivityEvent): string =>
-  e.taskTitle ? `“${e.taskTitle}”` : "a session";
+  e.taskTitle ? `“${e.taskTitle}”` : "a conversation";
 
 /**
  * One sentence per verb. Typed by `EventVerb`, so a verb added without a renderer fails to compile; the test suite
@@ -92,19 +92,19 @@ export const EVENT_TEXT: Record<EventVerb, (e: ActivityEvent) => string> = {
     return `${actorLabel(e.actor)} ran an AI review of ${pullLabel(str(e.data?.url))}: ${n} finding${n === 1 ? "" : "s"}`;
   },
   "session.adopted": (e) =>
-    `opendevhub found session ${sessionOf(e)}, started outside opendevhub`,
-  "session.removed": (e) => `The session of ${sessionOf(e)} is gone`,
+    `opendevhub found conversation ${sessionOf(e)}, started outside opendevhub`,
+  "session.removed": (e) => `The conversation of ${sessionOf(e)} is gone`,
   "session.started": (e) =>
     e.data?.variant === undefined || e.data.variant === 1
-      ? `${actorLabel(e.actor)} started a session for ${task(e)}`
-      : `${actorLabel(e.actor)} started the session of variant ${variantN(e)} of ${task(e)}`,
+      ? `${actorLabel(e.actor)} started a conversation for ${task(e)}`
+      : `${actorLabel(e.actor)} started the conversation of variant ${variantN(e)} of ${task(e)}`,
   "task.archived": (e) => `${actorLabel(e.actor)} archived ${task(e)}`,
   "task.ended": (e) =>
     e.taskTitle ? `Task “${e.taskTitle}” ended` : "A task ended",
   "task.started": (e) => {
     const variants = num(e.data?.variants) ?? 1;
     if (e.data?.kind === "manual") {
-      return `${actorLabel(e.actor)} started session ${task(e)}`;
+      return `${actorLabel(e.actor)} started conversation ${task(e)}`;
     }
     if (e.data?.kind === "review") {
       return `${actorLabel(e.actor)} started review ${task(e)}`;
@@ -197,7 +197,14 @@ export const filterKey = (filter: ActivityFilter): string =>
 /** What made a session, worktree, branch or environment, as the chip shows it; a `CheckoutCreator` is one. */
 export type Origin =
   | { by: "variant"; task: string; n: number; title: string; kind?: "task" }
-  | { by: "session"; task: string; title: string; kind: "manual" | "review" }
+  | {
+      by: "session";
+      task: string;
+      title: string;
+      kind: "manual" | "review";
+      /** A manual task whose session was found in opencode rather than started here. */
+      adopted?: true;
+    }
   | { by: "manual" }
   | { by: "pull"; url?: string }
   | { by: "unmanaged" };
@@ -207,10 +214,13 @@ export const sessionOrigin = (ref: SessionTaskRef, title: string): Origin => {
   if (ref.kind === "task") {
     return { by: "variant", n: ref.n, task: ref.id, title };
   }
-  if (ref.adopted) {
-    return { by: "unmanaged" };
-  }
-  return { by: "session", kind: ref.kind, task: ref.id, title };
+  return {
+    by: "session",
+    kind: ref.kind,
+    task: ref.id,
+    title,
+    ...(ref.adopted ? { adopted: true as const } : {}),
+  };
 };
 
 /** The chip's text, and where it links. */
@@ -225,9 +235,10 @@ export const originLabel = (
       };
     }
     case "session": {
-      return {
-        text: origin.kind === "review" ? "AI review" : "Started here",
-      };
+      if (origin.kind === "review") {
+        return { text: "AI review" };
+      }
+      return { text: origin.adopted ? "Started in opencode" : "Started here" };
     }
     case "manual": {
       return { text: "Created here" };

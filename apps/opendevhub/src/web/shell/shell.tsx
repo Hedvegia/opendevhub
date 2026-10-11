@@ -71,7 +71,7 @@ import {
 import { NewTaskDialog } from "../features/tasks/new-task-dialog";
 import {
   formatCost,
-  opensNewTask,
+  newTaskShortcut,
   projectIdFromPath,
 } from "../features/tasks/tasks";
 import { formatUsage } from "../features/usage/usage";
@@ -199,14 +199,14 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
               <LayoutGridIcon /> Overview
             </NavItem>
             <NavItem
-              to="/sessions"
+              to="/tasks"
               badge={
                 counts.attention > 0 && (
                   <Count n={counts.attention} tone="attention" />
                 )
               }
             >
-              <ListIcon /> Sessions
+              <ListIcon /> Tasks
             </NavItem>
             {forgejo?.enabled && (
               <NavItem to="/forgejo">
@@ -428,15 +428,16 @@ export const Shell = () => {
         setPalette((p) => !p);
         return;
       }
+      const projectId = newTaskShortcut(e, location.pathname);
       if (
+        projectId &&
         !palette &&
         !settingsOpen &&
         !newTaskFor &&
-        !addProjectOpen &&
-        opensNewTask(e)
+        !addProjectOpen
       ) {
         e.preventDefault();
-        newTask(projectIdFromPath(location.pathname));
+        newTask(projectId);
       }
     };
     window.addEventListener("keydown", onKey);

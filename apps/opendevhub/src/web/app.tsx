@@ -12,9 +12,12 @@ import type { ReactNode } from "react";
 import {
   CheckoutPage,
   CheckoutRuntime,
-  CheckoutSessions,
+  CheckoutConversations,
 } from "./features/checkouts/checkout-page";
-import { legacyPath } from "./features/checkouts/checkouts";
+import {
+  legacyPath,
+  tasksPathFromSessions,
+} from "./features/checkouts/checkouts";
 import { CleanupPage } from "./features/cleanup/cleanup-page";
 import { ForgejoPage, ForgejoPullPage } from "./features/forgejo/forgejo-page";
 import { JiraPage, JiraTicketPage } from "./features/jira/jira-page";
@@ -22,9 +25,18 @@ import { Overview } from "./features/projects/overview";
 import { ProjectLayout } from "./features/projects/project-layout";
 import { ProjectOverview } from "./features/projects/project-overview";
 import { ProjectReview } from "./features/review/project-review";
-import { SessionPage } from "./features/sessions/session-page";
-import { SessionsPage } from "./features/sessions/sessions-page";
-import { ProjectTask } from "./features/tasks/project-task";
+import {
+  ProjectTask,
+  TaskCompare,
+  TaskSpec,
+} from "./features/tasks/project-task";
+import {
+  TaskChanges,
+  TaskRuntime,
+  VariantCheckout,
+} from "./features/tasks/task-checkout-tabs";
+import { TaskConversation } from "./features/tasks/task-conversation";
+import { TasksPage } from "./features/tasks/tasks-page";
 import { UsagePage } from "./features/usage/usage-page";
 import { parseSearch, stringifySearch } from "./routing";
 import { NotFound } from "./shell/not-found";
@@ -34,6 +46,12 @@ const CheckoutTerminal = lazy(() =>
   import("./features/checkouts/checkout-terminal").then((module) => ({
     default: module.CheckoutTerminal,
   }))
+);
+
+const LazyTerminal = () => (
+  <Suspense fallback={<p>Loading terminal…</p>}>
+    <CheckoutTerminal />
+  </Suspense>
 );
 
 /** Pages that became a settings section, by their old path. */
@@ -66,14 +84,11 @@ const checkoutTabs = (parent: AnyRoute) => {
   const tab = (path: string, component: () => ReactNode) =>
     createRoute({ component, getParentRoute: () => parent, path });
   return [
-    tab("/", CheckoutSessions),
-    tab("s/$sessionId", SessionPage),
+    tab("/", CheckoutConversations),
+    // Sessions have no page any more: CheckoutPage sends these to the session's task.
+    tab("s/$sessionId", () => null),
     tab("review", ProjectReview),
-    tab("terminal", () => (
-      <Suspense fallback={<p>Loading terminal…</p>}>
-        <CheckoutTerminal />
-      </Suspense>
-    )),
+    tab("terminal", LazyTerminal),
     tab("runtime", CheckoutRuntime),
     // Ports and logs moved into the runtime tab.
     ...["ports", "logs"].map((path) =>
@@ -100,7 +115,33 @@ const checkoutRoute = (path: string) => {
   return route.addChildren(checkoutTabs(route));
 };
 
-/** Project tabs from before worktrees came first; kept so old links still land somewhere sensible. */
+/** A task's page and its tabs; every tab but Compare shows the selected variant (`?v=`). */
+const taskRoute = () => {
+  const route = createRoute({
+    component: ProjectTask,
+    getParentRoute: () => projectRoute,
+    path: "t/$task",
+  });
+  const tab = (path: string, component: () => ReactNode) =>
+    createRoute({ component, getParentRoute: () => route, path });
+  return route.addChildren([
+    tab("/", TaskConversation),
+    tab("changes", TaskChanges),
+    tab("terminal", () => (
+      <VariantCheckout>
+        <LazyTerminal />
+      </VariantCheckout>
+    )),
+    tab("runtime", TaskRuntime),
+    tab("spec", TaskSpec),
+    tab("compare", TaskCompare),
+  ]);
+};
+
+/**
+ * Project tabs from before worktrees came first; kept so old links still land somewhere sensible. A review of a
+ * worktree a task made goes on from the worktree's page to the task's Changes tab.
+ */
 const legacyRoute = (path: string, tab: Parameters<typeof legacyPath>[1]) =>
   createRoute({
     beforeLoad: ({ params }) => {
@@ -120,7 +161,16 @@ const legacyRoute = (path: string, tab: Parameters<typeof legacyPath>[1]) =>
 const routeTree = rootRoute.addChildren([
   shellRoute.addChildren([
     page("/", Overview),
-    page("sessions", SessionsPage),
+    page("tasks", TasksPage),
+    // The Sessions page became Tasks; its status filter carries over.
+    createRoute({
+      beforeLoad: ({ location }) => {
+        const { status } = location.search as { status?: string };
+        throw redirect({ href: tasksPathFromSessions(status), replace: true });
+      },
+      getParentRoute: () => shellRoute,
+      path: "sessions",
+    }),
     page("usage", UsagePage),
     page("cleanup", CleanupPage),
     // Settings opens as a dialog over the current page; these keep old links working, as does the old Activity page.
@@ -150,11 +200,7 @@ const routeTree = rootRoute.addChildren([
         getParentRoute: () => projectRoute,
         path: "/",
       }),
-      createRoute({
-        component: ProjectTask,
-        getParentRoute: () => projectRoute,
-        path: "t/$task",
-      }),
+      taskRoute(),
       checkoutRoute("main"),
       checkoutRoute("w/$worktree"),
       legacyRoute("worktrees", "worktrees"),

@@ -11,7 +11,7 @@ import {
   ServerIcon,
   TerminalIcon,
 } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import type { ForwardedPort, ProjectView } from "../../../shared/types";
+import type { ForwardedPort } from "../../../shared/types";
 import { refreshWorktrees } from "../../api";
 import { CopyButton } from "../../components/copy-button";
 import { EnvBadge } from "../../components/env-badge";
@@ -35,30 +35,27 @@ import {
 import { ResourceStat } from "../../components/resource-stat";
 import { Count, StatusDot } from "../../components/status";
 import { useDash } from "../../dashboard-context";
-import {
-  compareSessions,
-  envOfDirectory,
-  matches,
-  needsAttention,
-  sshAgentBadge,
-} from "../../derive";
-import type { SessionEntry } from "../../derive";
+import { envOfDirectory, matches, sshAgentBadge } from "../../derive";
 import { checkoutResources } from "../../lib/resources";
-import { Link, useNavigate, useSearchParams } from "../../routing";
+import { Link, Navigate, useNavigate } from "../../routing";
 import { ActivityButton } from "../activity/activity-button";
 import { ProvenanceBreadcrumb } from "../activity/provenance-breadcrumb";
 import { PublishedPr } from "../forgejo/published-pr";
 import { projectFlags, StartStopButton } from "../projects/project-actions";
 import { useProjectView } from "../projects/project-layout";
-import { SessionList } from "../sessions/session-list";
+import { TaskRow } from "../tasks/task-rows";
+import { CheckoutProvider, useCheckoutContext } from "./checkout-context";
+import type { ProjectTask } from "./checkouts";
 import {
   checkoutCounts,
   checkoutPath,
   checkoutRuntime,
   checkouts,
+  checkoutTasks,
   checkoutTone,
+  sessionRedirect,
+  worktreeRedirect,
 } from "./checkouts";
-import type { Checkout } from "./checkouts";
 import { LogPanel } from "./log-panel";
 import { OpenInMenu } from "./open-in-menu";
 import { WorktreeCreator } from "./worktree-creator";
@@ -69,31 +66,13 @@ import {
   useCheckoutActions,
 } from "./worktrees";
 
-const IDLE_LIMIT = 8;
+/** Conversations a checkout lists before it offers a filter. */
+const FILTER_FROM = 8;
 
-export interface CheckoutContext {
-  view: ProjectView;
-  checkout: Checkout;
-}
-
-const CheckoutCtx = createContext<CheckoutContext | undefined>(undefined);
-
-export const useCheckout = (): CheckoutContext => {
-  const value = useContext(CheckoutCtx);
-  if (!value) {
-    throw new Error("useCheckout must be used inside CheckoutPage");
-  }
-  return value;
-};
-
-/**
- * Where the open session, else the worktree, came from; the project alone for the main checkout or while the trail
- * loads.
- */
+/** Where the worktree came from; the project alone for the main checkout or while the trail loads. */
 const CheckoutBreadcrumb = (props: {
   projectPath: string;
   projectName: string;
-  sessionId?: string;
   worktreeId?: number;
 }) => {
   const plain = (
@@ -110,17 +89,6 @@ const CheckoutBreadcrumb = (props: {
       <ChevronRightIcon className="size-3.5" />
     </nav>
   );
-  if (props.sessionId) {
-    return (
-      <ProvenanceBreadcrumb
-        key={props.sessionId}
-        type="session"
-        id={props.sessionId}
-        className="-mb-4"
-        fallback={plain}
-      />
-    );
-  }
   if (props.worktreeId !== undefined) {
     return (
       <ProvenanceBreadcrumb
@@ -168,7 +136,17 @@ export const CheckoutPage = () => {
   }
 
   const base = checkoutPath(view.project.id, checkout.target);
-  const onSession = pathname.startsWith(`${base}/s/`);
+  // Sessions have no page any more, and a worktree a task made lives on that task's page.
+  const redirectTo = sessionId
+    ? sessionRedirect(view, checkout.target, sessionId)
+    : worktreeRedirect(
+        view,
+        checkout,
+        pathname.slice(base.length).split("/")[1] ?? ""
+      );
+  if (redirectTo) {
+    return <Navigate replace to={redirectTo} />;
+  }
   const n = checkoutCounts(view, checkout.directory);
   const env = envOfDirectory(view, checkout.directory);
   const agent = sshAgentBadge(checkoutRuntime(view, checkout.directory));
@@ -198,7 +176,6 @@ export const CheckoutPage = () => {
       <CheckoutBreadcrumb
         projectPath={projectPath}
         projectName={view.project.name}
-        sessionId={onSession ? sessionId : undefined}
         worktreeId={checkout.worktree?.id}
       />
       <PageHeader
@@ -260,7 +237,7 @@ export const CheckoutPage = () => {
                 disabled={!!pending}
                 onClick={() => newSession(checkout)}
               >
-                <PlusIcon /> New session
+                <PlusIcon /> New conversation
               </Button>
             ) : (
               startControl
@@ -300,13 +277,13 @@ export const CheckoutPage = () => {
       {!checkout.worktree && <UnmountedNotice view={view} />}
 
       <TabBar label="Worktree">
-        <TabLink to={base} end active={onSession}>
-          <MessagesSquareIcon className="size-4" /> Sessions{" "}
+        <TabLink to={base} end>
+          <MessagesSquareIcon className="size-4" /> Conversations{" "}
           <Count n={n.attention} tone="attention" />
           {n.attention === 0 && <Count n={n.running + n.idle} tone="muted" />}
         </TabLink>
         <TabLink to={`${base}/review`}>
-          <GitCompareIcon className="size-4" /> Review
+          <GitCompareIcon className="size-4" /> Changes
         </TabLink>
         <TabLink to={`${base}/terminal`}>
           <TerminalIcon className="size-4" /> Terminal
@@ -320,60 +297,35 @@ export const CheckoutPage = () => {
         </TabLink>
       </TabBar>
 
-      <CheckoutCtx value={{ checkout, view }}>
+      <CheckoutProvider value={{ checkout, view }}>
         <Outlet />
-      </CheckoutCtx>
+      </CheckoutProvider>
     </>
   );
 };
 
-export const CheckoutSessions = () => {
-  const { view, checkout } = useCheckout();
+/** The tasks whose conversations run in this checkout, each linking to its task, and a way to start another. */
+export const CheckoutConversations = () => {
+  const { view, checkout } = useCheckoutContext();
   const { newTask } = useDash();
-  const [params] = useSearchParams();
-  const highlight = params.get("session") ?? undefined;
   const [query, setQuery] = useState("");
-  const [showAllIdle, setShowAllIdle] = useState(false);
   const canOpen = checkoutReady(view, checkout);
   const own = envOfDirectory(view, checkout.directory);
   const { pending, newSession } = useCheckoutActions(view);
-
-  const mine = useMemo(
-    () => view.sessions.filter((s) => s.directory === checkout.directory),
-    [view.sessions, checkout.directory]
-  );
-  const entries = useMemo<SessionEntry[]>(
-    () =>
-      [...mine]
-        .toSorted(compareSessions)
-        .filter((s) => matches(query, s.title))
-        .map((session) => ({ session, view })),
-    [mine, view, query]
+  const all = useMemo(
+    () => checkoutTasks(view, checkout.directory),
+    [view, checkout.directory]
   );
 
-  useEffect(() => {
-    if (!highlight) {
-      return;
-    }
-    document
-      .getElementById(`session-${highlight}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    document
-      .querySelector<HTMLElement>(
-        `#pending-${CSS.escape(highlight)} [data-pending-card]`
-      )
-      ?.focus({ preventScroll: true });
-  }, [highlight]);
-
-  if (mine.length === 0) {
+  if (all.length === 0) {
     return canOpen ? (
-      <Empty title="No sessions here yet">
+      <Empty title="No conversations here yet">
         <p className={muted}>
-          Start a session in this checkout, or a task for the project.
+          Start a conversation in this checkout, or a task for the project.
         </p>
         <div className="flex gap-2">
           <Button disabled={!!pending} onClick={() => newSession(checkout)}>
-            <PlusIcon /> New session
+            <PlusIcon /> New conversation
           </Button>
           <Button variant="outline" onClick={() => newTask(view.project.id)}>
             New task
@@ -384,68 +336,40 @@ export const CheckoutSessions = () => {
       <Empty title="Not running">
         <p className={muted}>
           {own ? "Start this worktree's container" : "Start the container"} to
-          see this checkout&apos;s opencode sessions.
+          see this checkout&apos;s opencode conversations.
         </p>
         {!own && <StartStopButton view={view} />}
       </Empty>
     );
   }
 
-  const attention = entries.filter((e) => needsAttention(e.session.status));
-  const active = entries.filter((e) => e.session.status === "running");
-  const idle = entries.filter((e) => e.session.status === "idle");
-  // Never hide the highlighted session behind "show more".
-  const highlightIdx = idle.findIndex((e) => e.session.id === highlight);
-  const idleShown =
-    showAllIdle || highlightIdx >= IDLE_LIMIT
-      ? idle
-      : idle.slice(0, IDLE_LIMIT);
-
+  const shown = all.filter((t) => matches(query, t.title));
+  const attention = shown.filter((t) => t.attention);
+  const rest = shown.filter((t) => !t.attention);
   return (
     <div className="flex flex-col gap-5">
-      {mine.length > IDLE_LIMIT && (
+      {all.length > FILTER_FROM && (
         <Input
           className="w-72 max-md:w-full"
-          placeholder="Filter sessions…"
+          placeholder="Filter conversations…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
       )}
-      <Group
-        title="Needs you"
-        entries={attention}
-        highlight={highlight}
-        tone="attention"
-      />
-      <Group title="Working" entries={active} highlight={highlight} />
-      <Group
-        title="Idle"
-        entries={idleShown}
-        highlight={highlight}
-        total={idle.length}
-      />
-      {idleShown.length < idle.length && (
-        <Button
-          variant="link"
-          className="self-start px-0"
-          onClick={() => setShowAllIdle(true)}
-        >
-          Show {idle.length - idleShown.length} more idle sessions
-        </Button>
-      )}
-      {entries.length === 0 && <p className={muted}>No sessions match.</p>}
+      <Group title="Needs you" tasks={attention} tone="attention" />
+      <Group title="Conversations" tasks={rest} />
+      {shown.length === 0 && <p className={muted}>No conversations match.</p>}
     </div>
   );
 };
 
 const Group = (props: {
   title: string;
-  entries: SessionEntry[];
-  highlight?: string;
-  total?: number;
+  tasks: ProjectTask[];
   tone?: "attention";
 }) => {
-  if (props.entries.length === 0) {
+  const view = useProjectView();
+  if (props.tasks.length === 0) {
     return null;
   }
   const attention = props.tone === "attention";
@@ -454,7 +378,7 @@ const Group = (props: {
       <GroupTitle className={cn(attention && "text-attention")}>
         {props.title}{" "}
         <span className="text-muted-foreground ml-1 font-medium">
-          {props.total ?? props.entries.length}
+          {props.tasks.length}
         </span>
       </GroupTitle>
       <Card
@@ -463,11 +387,11 @@ const Group = (props: {
           attention && "border-attention/45"
         )}
       >
-        <SessionList
-          entries={props.entries}
-          highlight={props.highlight}
-          hideWorktree
-        />
+        <ul>
+          {props.tasks.map((t) => (
+            <TaskRow key={t.task} projectId={view.project.id} task={t} />
+          ))}
+        </ul>
       </Card>
     </section>
   );
@@ -482,7 +406,7 @@ export const CheckoutRuntime = () => (
 );
 
 const CheckoutPorts = () => {
-  const { view, checkout } = useCheckout();
+  const { view, checkout } = useCheckoutContext();
   const own = envOfDirectory(view, checkout.directory);
   const runtime = checkoutRuntime(view, checkout.directory);
   const ports = runtime.ports ?? [];
@@ -591,7 +515,7 @@ const PortRow = ({ port: p }: { port: ForwardedPort }) => {
 };
 
 const CheckoutLogs = () => {
-  const { view, checkout } = useCheckout();
+  const { view, checkout } = useCheckoutContext();
   const own = envOfDirectory(view, checkout.directory);
   const { logs, loadLogs } = useDash();
   const { id } = view.project;

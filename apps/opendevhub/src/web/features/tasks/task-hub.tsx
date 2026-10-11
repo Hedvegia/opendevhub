@@ -26,11 +26,7 @@ import { When } from "../../components/when";
 import { useDash } from "../../dashboard-context";
 import { envOfDirectory } from "../../derive";
 import { Link } from "../../routing";
-import {
-  checkoutOf,
-  checkoutPath,
-  sessionPagePath,
-} from "../checkouts/checkouts";
+import { checkoutOf, checkoutPath, sessionPath } from "../checkouts/checkouts";
 import { forgejoRoute } from "../forgejo/forgejo";
 import { PullRequestBadge } from "../forgejo/pull-request-badge";
 import { PHASE_LABEL } from "../specs/specs";
@@ -71,7 +67,7 @@ export const VariantTable = (props: { view: ProjectView; task: TaskView }) => {
   const single = task.kind !== "task";
   return (
     <Section
-      title={single ? "Session" : "Variants"}
+      title={single ? "Conversation" : "Variants"}
       hint={single ? undefined : task.variants.length}
     >
       <div className="overflow-x-auto">
@@ -85,7 +81,7 @@ export const VariantTable = (props: { view: ProjectView; task: TaskView }) => {
               <TableHead>Cost</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Checkout</TableHead>
-              <TableHead>Session</TableHead>
+              <TableHead>Conversation</TableHead>
               <TableHead className="pr-4">Pull request</TableHead>
             </TableRow>
           </TableHeader>
@@ -95,7 +91,6 @@ export const VariantTable = (props: { view: ProjectView; task: TaskView }) => {
                 ? view.sessions.find((s) => s.id === v.sessionId)
                 : undefined;
               const status = variantStatus(v, session);
-              const checkout = session && checkoutOf(view, session.directory);
               const pulls = (task.pullRequests ?? []).filter(
                 (p) => p.variant === v.n
               );
@@ -140,13 +135,9 @@ export const VariantTable = (props: { view: ProjectView; task: TaskView }) => {
                     <VariantCheckout view={view} v={v} />
                   </TableCell>
                   <TableCell>
-                    {session && checkout ? (
+                    {session ? (
                       <Link
-                        to={sessionPagePath(
-                          view.project.id,
-                          checkout.target,
-                          session.id
-                        )}
+                        to={sessionPath(view, session)}
                         className="hover:underline"
                       >
                         {session.title || "Open"}

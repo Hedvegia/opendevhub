@@ -1,10 +1,16 @@
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
+import { Outlet, useLocation, useParams } from "@tanstack/react-router";
 import {
   ChevronRightIcon,
+  ColumnsIcon,
   ExternalLinkIcon,
+  FileTextIcon,
+  GitCompareIcon,
   LoaderCircleIcon,
+  MessagesSquareIcon,
+  ServerIcon,
+  TerminalIcon,
   TicketIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -15,9 +21,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
+import { modelShortName } from "../../../shared/tasks";
 import type {
   ChecksView,
   ProjectView,
@@ -27,21 +33,31 @@ import type {
   TaskView,
   VariantView,
 } from "../../../shared/types";
+import { taskHref } from "../../../shared/urls";
+import type { TaskTab } from "../../../shared/urls";
 import { archiveTask, dismissStarting, pickVariant } from "../../api";
 import { EnvBadge } from "../../components/env-badge";
-import { Chip, Empty, muted, Section } from "../../components/page";
+import {
+  Chip,
+  Empty,
+  muted,
+  Section,
+  Segmented,
+  TabBar,
+  TabLink,
+} from "../../components/page";
 import { SessionBadge } from "../../components/status";
 import { useDash } from "../../dashboard-context";
 import { envOfDirectory, sessionHref } from "../../derive";
-import { Link, useSearchParams } from "../../routing";
+import { Link, Navigate, useSearchParams } from "../../routing";
 import { ActivityButton } from "../activity/activity-button";
 import { ProvenanceBreadcrumb } from "../activity/provenance-breadcrumb";
-import { checkoutOf, checkoutPath } from "../checkouts/checkouts";
+import { checkoutOf } from "../checkouts/checkouts";
+import { OpenInMenu } from "../checkouts/open-in-menu";
 import { checksState, failedNames } from "../checks/checks";
 import type { ChecksState } from "../checks/checks";
 import { checksQuery } from "../checks/checks-queries";
 import { PullRequestBadge } from "../forgejo/pull-request-badge";
-import { JiraSourceCard } from "../jira/jira-source-card";
 import { useProjectView } from "../projects/project-layout";
 import { reviewQuery } from "../review/review-queries";
 import { TaskProgress } from "../specs/spec-approve";
@@ -49,6 +65,7 @@ import { SpecSection } from "../specs/spec-panel";
 import { specQuery } from "../specs/spec-queries";
 import { PHASE_LABEL, specSessions, taskProgress } from "../specs/specs";
 import { formatUsage, taskUsage } from "../usage/usage";
+import { TaskPageCtx, useTaskPage } from "./task-context";
 import { SpecChain, TaskReviews, VariantTable } from "./task-hub";
 import {
   diffStats,
@@ -57,10 +74,13 @@ import {
   formatTokens,
   pickPrompts,
   removals,
+  selectedVariant,
   startingVariants,
   startStepLabel,
+  switchableVariants,
   taskOf,
   taskSessions,
+  taskTabs,
   variantName,
 } from "./tasks";
 
@@ -154,7 +174,7 @@ const ArchiveButton = (props: { view: ProjectView; task: TaskView }) => {
       variant="outline"
       size="sm"
       disabled={busy}
-      title="Hide this task; its sessions and worktrees stay as they are"
+      title="Hide this task; its conversations and worktrees stay as they are"
       onClick={() => {
         setBusy(true);
         void archiveTask(props.view.project.id, props.task.id)
@@ -167,20 +187,242 @@ const ArchiveButton = (props: { view: ProjectView; task: TaskView }) => {
   );
 };
 
+/** The task page: its header, the variant switcher and the tabs, with the selected tab below. */
 export const ProjectTask = () => {
   const view = useProjectView();
   const { task = "" } = useParams({ strict: false });
+  const { pathname } = useLocation();
   const { report, snapshot } = useDash();
   const [params, setParams] = useSearchParams();
   const total = taskUsage(snapshot, task);
   const record = taskOf(view, task);
   const sessions = taskSessions(view, task);
-  const starting = record ? startingVariants(record) : [];
-  const jiraSource = record?.jira;
+  const projectPath = `/p/${encodeURIComponent(view.project.id)}`;
+
+  if (!record) {
+    return (
+      <Empty title="No such task">
+        <p className={muted}>It was archived, or never existed here.</p>
+        <Button asChild variant="link">
+          <Link to={projectPath}>Back to {view.project.name}</Link>
+        </Button>
+      </Empty>
+    );
+  }
+  const variant = selectedVariant(record, params.get("v"));
+  const tabs = taskTabs(record);
+  const base = taskHref(view.project.id, record.id);
+  const current = (pathname.slice(base.length).split("/")[1] ||
+    "conversation") as TaskTab;
+  const v = params.get("v");
+  const hrefOf = (tab: TaskTab) =>
+    taskHref(view.project.id, record.id, {
+      tab,
+      ...(v ? { v: Number(v) } : {}),
+    });
+  // The Overview/Compare tabs of earlier versions, and tabs this task doesn't have.
+  if (params.get("tab") === "compare" && tabs.includes("compare")) {
+    return <Navigate replace to={hrefOf("compare")} />;
+  }
+  if (!tabs.includes(current)) {
+    return <Navigate replace to={hrefOf("conversation")} />;
+  }
+
+  const starting = startingVariants(record);
+  const variantCount = record.variants.length;
+  const comparable = record.kind === "task";
+  const switchable = switchableVariants(record, variant);
+  const checkout = variant?.directory
+    ? checkoutOf(view, variant.directory)
+    : undefined;
+  const crumbs = (
+    <nav
+      aria-label="Breadcrumb"
+      className="text-muted-foreground flex items-center gap-1 text-sm"
+    >
+      <Link to={projectPath} className="hover:text-foreground hover:underline">
+        {view.project.name}
+      </Link>
+      <ChevronRightIcon className="size-3.5" /> {KIND_LABEL[record.kind]}
+    </nav>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <ProvenanceBreadcrumb
+        key={variant?.n}
+        type={variant ? "variant" : "task"}
+        id={variant ? `${record.id}/${variant.n}` : record.id}
+        fallback={crumbs}
+      />
+      <div className="flex flex-wrap items-baseline gap-2.5">
+        <h2 className="text-lg font-semibold">{record.title || "Task"}</h2>
+        <Chip>{KIND_LABEL[record.kind]}</Chip>
+        <Chip variant={record.state === "running" ? "secondary" : "outline"}>
+          {record.state}
+        </Chip>
+        {record.ticket && (
+          <Chip variant="outline" asChild>
+            <Link to={`/jira/${encodeURIComponent(record.ticket.key)}`}>
+              <TicketIcon className="size-3" /> {record.ticket.key}
+              {record.ticket.status && ` · ${record.ticket.status}`}
+            </Link>
+          </Chip>
+        )}
+        {(record.pullRequests ?? []).map((p) => (
+          <PullRequestBadge key={p.url} pull={p} />
+        ))}
+        <span className={muted}>
+          {comparable && (
+            <>
+              {variantCount} variant
+              {variantCount === 1 ? "" : "s"}
+            </>
+          )}
+          {starting.some((s) => s.step !== "failed") && " · starting"}
+          {total && (
+            <span className="tabular-nums">
+              {comparable ? " · " : ""}Total {formatUsage(total)}
+            </span>
+          )}
+        </span>
+        <span className="ml-auto flex items-center gap-1">
+          {checkout && !checkout.worktree?.node && (
+            <OpenInMenu
+              view={view}
+              directory={checkout.directory}
+              hostPath={checkout.hostPath}
+            />
+          )}
+          <ActivityButton
+            filter={{ taskId: record.id }}
+            subject={record.title || "Task"}
+            empty="Nothing recorded for this task yet."
+          />
+          {record.state === "ended" && (
+            <ArchiveButton view={view} task={record} />
+          )}
+        </span>
+      </div>
+      {record.reviewOf && (
+        <p className="flex flex-wrap items-center gap-2 text-sm">
+          <span className={muted}>
+            Review of{" "}
+            {record.reviewOf.number === undefined
+              ? "a pull request"
+              : `PR #${record.reviewOf.number}`}
+            {record.reviewOf.title && `: ${record.reviewOf.title}`}
+          </span>
+          <PullRequestBadge pull={record.reviewOf} />
+        </p>
+      )}
+      <TaskReviews task={record} />
+      {starting.length > 0 && (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-3">
+          {starting.map((s) => (
+            <StartingCard
+              key={`starting-${s.n}`}
+              variant={s}
+              onDismiss={() =>
+                void dismissStarting(view.project.id, task).catch(report)
+              }
+            />
+          ))}
+        </div>
+      )}
+      {variant && switchable.length > 1 && current !== "compare" && (
+        <Segmented
+          label="Variant"
+          value={String(variant.n)}
+          options={switchable.map((x) => ({
+            id: String(x.n),
+            label: `V${x.n}${x.model ? ` · ${modelShortName(x.model)}` : ""}`,
+          }))}
+          onChange={(n) =>
+            setParams((prev) => {
+              const out = new URLSearchParams(prev);
+              out.set("v", n);
+              out.delete("thread");
+              return out;
+            })
+          }
+        />
+      )}
+      <TabBar label="Task">
+        {tabs.map((tab) => {
+          const { icon: Icon, label } = TAB_LABEL[tab];
+          return (
+            <TabLink key={tab} to={hrefOf(tab)} end={tab === "conversation"}>
+              <Icon className="size-4" /> {label}
+            </TabLink>
+          );
+        })}
+      </TabBar>
+      {variant ? (
+        <TaskPageCtx value={{ sessions, task: record, variant, view }}>
+          <Outlet />
+        </TaskPageCtx>
+      ) : (
+        <Empty title="No variants">
+          <p className={muted}>This task has nothing to show yet.</p>
+        </Empty>
+      )}
+    </div>
+  );
+};
+
+const TAB_LABEL: Record<
+  TaskTab,
+  { icon: typeof GitCompareIcon; label: string }
+> = {
+  changes: { icon: GitCompareIcon, label: "Changes" },
+  compare: { icon: ColumnsIcon, label: "Compare" },
+  conversation: { icon: MessagesSquareIcon, label: "Conversation" },
+  runtime: { icon: ServerIcon, label: "Runtime" },
+  spec: { icon: FileTextIcon, label: "Spec" },
+  terminal: { icon: TerminalIcon, label: "Terminal" },
+};
+
+/** The spec chain, and the selected variant's OpenSpec change. */
+export const TaskSpec = () => {
+  const { view, task, variant, sessions } = useTaskPage();
+  const all = specSessions(task, sessions);
+  const own = all.filter((s) => s.id === variant.sessionId);
+  const shown = own.length > 0 ? own : all;
+  const reviews = byDirectory(
+    shown.map((s) => s.directory),
+    useQueries({
+      queries: shown.map((s) => reviewQuery(view.project.id, s.directory)),
+    })
+  );
+  return (
+    <div className="flex flex-col gap-4">
+      {shown.length > 0 ? (
+        <SpecSection
+          projectId={view.project.id}
+          task={task}
+          sessions={shown}
+          reviews={reviews}
+        />
+      ) : (
+        <Empty title="No change yet">
+          <p className={muted}>This variant has no OpenSpec change to show.</p>
+        </Empty>
+      )}
+      <SpecChain view={view} task={task} />
+    </div>
+  );
+};
+
+/** Every variant, then their live sessions side by side, with Pick. */
+export const TaskCompare = () => {
+  const { view, task: record, sessions } = useTaskPage();
+  const { report } = useDash();
+  const task = record.id;
   const queryClient = useQueryClient();
   const directories = [...new Set(sessions.map((s) => s.directory))];
-  const specVariants = record ? specSessions(record, sessions) : [];
-  // Shared with each checkout's Review, and refreshed when an agent there finishes a turn.
+  const specVariants = specSessions(record, sessions);
+  // Shared with each checkout's Changes, and refreshed when an agent there finishes a turn.
   const reviews = byDirectory(
     directories,
     useQueries({
@@ -188,7 +430,6 @@ export const ProjectTask = () => {
     })
   );
   const specDirectories = specVariants.map((s) => s.directory);
-  // The same queries as each checkout's Spec panel, for the tasks done in Compare.
   const specs = byDirectory(
     specDirectories,
     useQueries({
@@ -212,7 +453,6 @@ export const ProjectTask = () => {
       mounted.current = false;
     };
   }, []);
-  const projectPath = `/p/${encodeURIComponent(view.project.id)}`;
 
   const pick = async (keep: SessionSummary) => {
     if (picking) {
@@ -290,184 +530,39 @@ export const ProjectTask = () => {
     }
   };
 
-  if (!record) {
-    return (
-      <Empty title="No such task">
-        <p className={muted}>It was archived, or never existed here.</p>
-        <Button asChild variant="link">
-          <Link to={projectPath}>Back to {view.project.name}</Link>
-        </Button>
-      </Empty>
-    );
-  }
-  const variantCount = record.variants.length;
-  const comparable = record.kind === "task";
-  const tab =
-    comparable && params.get("tab") === "compare" ? "compare" : "overview";
-  const crumbs = (
-    <nav
-      aria-label="Breadcrumb"
-      className="text-muted-foreground flex items-center gap-1 text-sm"
-    >
-      <Link to={projectPath} className="hover:text-foreground hover:underline">
-        {view.project.name}
-      </Link>
-      <ChevronRightIcon className="size-3.5" /> {KIND_LABEL[record.kind]}
-    </nav>
-  );
-
-  const overview = (
-    <div className="flex flex-col gap-4">
-      {jiraSource && (
-        <JiraSourceCard
-          source={jiraSource}
-          {...(record.ticket ? { ticket: record.ticket } : {})}
-        />
-      )}
-      {starting.length > 0 && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-3">
-          {starting.map((v) => (
-            <StartingCard
-              key={`starting-${v.n}`}
-              variant={v}
-              onDismiss={() =>
-                void dismissStarting(view.project.id, task).catch(report)
-              }
-            />
-          ))}
-        </div>
-      )}
-      <VariantTable view={view} task={record} />
-      {specVariants.length > 0 && (
-        <SpecSection
-          projectId={view.project.id}
-          task={record}
-          sessions={specVariants}
-          reviews={reviews}
-        />
-      )}
-      <SpecChain view={view} task={record} />
-      <TaskReviews task={record} />
-    </div>
-  );
-
   return (
     <div className="flex flex-col gap-4">
-      <ProvenanceBreadcrumb type="task" id={record.id} fallback={crumbs} />
-      <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-lg font-semibold">{record.title || "Task"}</h2>
-        <Chip>{KIND_LABEL[record.kind]}</Chip>
-        <Chip variant={record.state === "running" ? "secondary" : "outline"}>
-          {record.state}
-        </Chip>
-        {record.ticket && (
-          <Chip variant="outline" asChild>
-            <Link to={`/jira/${encodeURIComponent(record.ticket.key)}`}>
-              <TicketIcon className="size-3" /> {record.ticket.key}
-              {record.ticket.status && ` · ${record.ticket.status}`}
-            </Link>
-          </Chip>
-        )}
-        <span className={muted}>
-          {comparable && (
-            <>
-              {variantCount} variant
-              {variantCount === 1 ? "" : "s"}
-            </>
-          )}
-          {starting.some((v) => v.step !== "failed") && " · starting"}
-          {total && (
-            <span className="tabular-nums">
-              {comparable ? " · " : ""}Total {formatUsage(total)}
-            </span>
-          )}
-        </span>
-        <span className="ml-auto flex items-center gap-1">
-          <ActivityButton
-            filter={{ taskId: record.id }}
-            subject={record.title || "Task"}
-            empty="Nothing recorded for this task yet."
-          />
-          {record.state === "ended" && (
-            <ArchiveButton view={view} task={record} />
-          )}
-        </span>
-      </div>
-      {record.reviewOf && (
-        <p className="flex flex-wrap items-center gap-2 text-sm">
-          <span className={muted}>
-            Review of{" "}
-            {record.reviewOf.number === undefined
-              ? "a pull request"
-              : `PR #${record.reviewOf.number}`}
-            {record.reviewOf.title && `: ${record.reviewOf.title}`}
-          </span>
-          <PullRequestBadge pull={record.reviewOf} />
-        </p>
-      )}
       {notice && (
         <Alert className="border-ok/40 bg-ok/10">
           <AlertDescription className="text-ok">{notice}</AlertDescription>
         </Alert>
       )}
-      {comparable ? (
-        <Tabs
-          value={tab}
-          onValueChange={(next) =>
-            setParams(
-              (prev) => {
-                const out = new URLSearchParams(prev);
-                if (next === "compare") {
-                  out.set("tab", "compare");
-                } else {
-                  out.delete("tab");
-                }
-                return out;
-              },
-              { replace: true }
-            )
-          }
-        >
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="compare">
-              {sessions.length > 1 ? "Compare variants" : "Changes"}
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="overview" className="mt-2">
-            {overview}
-          </TabsContent>
-          <TabsContent value="compare" className="mt-2 flex flex-col gap-4">
-            {sessions.length > 0 ? (
-              <Compare
-                view={view}
-                task={record}
-                sessions={sessions}
-                reviews={reviews}
-                checks={checks}
-                specs={specs}
-                picking={picking}
-                onPick={(s) => void pick(s)}
-              />
-            ) : (
-              <Empty title="No live sessions">
-                <p className={muted}>
-                  The variants&apos; sessions are gone, so there is nothing to
-                  compare.
-                </p>
-              </Empty>
-            )}
-          </TabsContent>
-        </Tabs>
+      <VariantTable view={view} task={record} />
+      {sessions.length > 0 ? (
+        <Compare
+          view={view}
+          task={record}
+          sessions={sessions}
+          reviews={reviews}
+          checks={checks}
+          specs={specs}
+          picking={picking}
+          onPick={(s) => void pick(s)}
+        />
       ) : (
-        overview
+        <Empty title="No live conversations">
+          <p className={muted}>
+            The variants&apos; conversations are gone, so there is nothing to
+            compare.
+          </p>
+        </Empty>
       )}
     </div>
   );
 };
 
 const KIND_LABEL: Record<TaskView["kind"], string> = {
-  manual: "Session",
+  manual: "Conversation",
   review: "AI review",
   task: "Task",
 };
@@ -644,6 +739,7 @@ const Compare = (props: {
                 <th className="bg-card sticky left-0" />
                 {sessions.map((s) => {
                   const checkout = checkoutOf(view, s.directory);
+                  const n = task.variants.find((v) => v.sessionId === s.id)?.n;
                   const working = s.status !== "idle";
                   return (
                     <td key={s.id} className="px-4 py-3">
@@ -663,16 +759,15 @@ const Compare = (props: {
                             Pick this one
                           </Button>
                         )}
-                        {checkout && (
+                        {checkout && n !== undefined && (
                           <Button asChild variant="outline" size="sm">
                             <Link
-                              to={checkoutPath(
-                                view.project.id,
-                                checkout.target,
-                                "review"
-                              )}
+                              to={taskHref(view.project.id, task.id, {
+                                tab: "changes",
+                                v: n,
+                              })}
                             >
-                              Review
+                              Changes
                             </Link>
                           </Button>
                         )}

@@ -2,9 +2,9 @@ import { ExternalLinkIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 
+import { taskHref } from "../../../shared/urls";
 import { useDash } from "../../dashboard-context";
 import { Link } from "../../routing";
-import { taskPath } from "../tasks/tasks";
 import { originLabel } from "./activity";
 import type { Origin } from "./activity";
 import { ENTITY_ICON } from "./entity-icons";
@@ -14,10 +14,12 @@ export const CreatedByChip = (props: { origin: Origin; projectId: string }) => {
   const { forgejo } = useDash();
   const { origin } = props;
   const label = originLabel(origin, forgejo?.enabled ? forgejo.url : undefined);
-  const href =
-    origin.by === "variant" || origin.by === "session"
-      ? taskPath(props.projectId, origin.task)
-      : label.href;
+  let { href } = label;
+  if (origin.by === "variant") {
+    href = taskHref(props.projectId, origin.task, { v: origin.n });
+  } else if (origin.by === "session") {
+    href = taskHref(props.projectId, origin.task);
+  }
   const Icon =
     origin.by === "pull" ? ENTITY_ICON.pull_request : ENTITY_ICON.task;
   const title = `Created by: ${label.text}`;

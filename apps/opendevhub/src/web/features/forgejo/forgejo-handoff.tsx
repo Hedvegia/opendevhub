@@ -92,7 +92,7 @@ export const ForgejoHandoff = ({
       void navigate(
         target
           ? sessionPath(project, target)
-          : `${checkoutPath(projectId, checkout.target)}?session=${encodeURIComponent(id)}`
+          : `/p/${encodeURIComponent(projectId)}?session=${encodeURIComponent(id)}`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -203,12 +203,12 @@ export const ForgejoHandoff = ({
           )}
           {checkout && (
             <div className="grid gap-2">
-              <Label htmlFor="forgejo-session">Session</Label>
+              <Label htmlFor="forgejo-session">Conversation</Label>
               <Choice
                 id="forgejo-session"
                 value={session}
                 options={[
-                  { label: "New session in this checkout", value: "" },
+                  { label: "New conversation in this checkout", value: "" },
                   ...sessions.map((s) => ({
                     label: `${s.title} · ${s.status}`,
                     value: s.id,
@@ -281,5 +281,5 @@ const sendLabel = (busy: boolean, hasSession: boolean): string => {
   if (busy) {
     return "Sending…";
   }
-  return hasSession ? "Send to session" : "Start session";
+  return hasSession ? "Send to conversation" : "Start conversation";
 };

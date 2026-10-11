@@ -34,7 +34,7 @@ export const ENTITY_NAME: Record<ObjectType, string> = {
   project: "Project",
   pull_request: "Pull request",
   review: "AI review",
-  session: "Session",
+  session: "Conversation",
   task: "Task",
   ticket: "Ticket",
   variant: "Variant",

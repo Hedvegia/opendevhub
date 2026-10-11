@@ -5,6 +5,7 @@ import type {
   SessionSummary,
   TaskView,
 } from "../../../../src/shared/types";
+import type { ProjectTask } from "../../../../src/web/features/checkouts/checkouts";
 import {
   checkoutCounts,
   checkoutOf,
@@ -13,9 +14,14 @@ import {
   checkouts,
   checkoutTone,
   legacyPath,
-  orphanSessions,
   projectTasks,
+  checkoutTasks,
   sessionPath,
+  matchesTaskFilter,
+  sessionRedirect,
+  standaloneCheckouts,
+  tasksPathFromSessions,
+  worktreeRedirect,
 } from "../../../../src/web/features/checkouts/checkouts";
 
 const wt = (b: string) => `/workspaces/demo.worktrees/${b}`;
@@ -120,11 +126,22 @@ describe(checkouts, () => {
     ).toBe("off");
   });
 
-  it("links a session to its checkout, or to the project when its checkout is unknown", () => {
+  it("links a session without a task to its checkout, or to the project when its checkout is unknown", () => {
     const v = view([session("a", wt("login")), session("b", "/gone")]);
-    expect(sessionPath(v, v.sessions[0])).toBe("/p/p%201/w/login/s/a");
+    expect(sessionPath(v, v.sessions[0])).toBe("/p/p%201/w/login");
     expect(sessionPath(v, v.sessions[1])).toBe("/p/p%201?session=b");
-    expect(orphanSessions(v).map((s) => s.id)).toStrictEqual(["b"]);
+  });
+
+  it("links a session to its task's Conversation tab with its variant, as a thread when it isn't the variant's own", () => {
+    const v = view(
+      [
+        session("a", wt("login"), { task: ref("t1", 2) }),
+        session("b", wt("login"), { task: ref("t1", 2) }),
+      ],
+      [task("t1", [{ sessionId: "x" }, { sessionId: "a" }])]
+    );
+    expect(sessionPath(v, v.sessions[0])).toBe("/p/p%201/t/t1?v=2");
+    expect(sessionPath(v, v.sessions[1])).toBe("/p/p%201/t/t1?v=2&thread=b");
   });
 
   const ref = (id: string, n: number) => ({
@@ -147,7 +164,7 @@ describe(checkouts, () => {
     ...over,
   });
 
-  it("lists multi-variant tasks once, needing attention when any variant does", () => {
+  it("lists every task, most recent first, with the variant that waits on the user", () => {
     const v = view(
       [
         session("a", wt("login"), { task: ref("t1", 1), updatedAt: 5 }),
@@ -161,16 +178,14 @@ describe(checkouts, () => {
       ],
       [
         task("t1", [{ sessionId: "a" }, { sessionId: "b" }]),
-        // One variant: the session stands for it, in its checkout.
-        task("t2", [{ sessionId: "c" }]),
+        task("t2", [{ sessionId: "c" }], { createdAt: 4 }),
         task("t3", [{ sessionId: "d" }, {}, {}], { state: "starting" }),
-        // A manual task is its session.
-        task("t4", [{ sessionId: "e" }], { kind: "manual" }),
       ]
     );
     expect(projectTasks(v)).toStrictEqual([
       {
         attention: false,
+        directories: [wt("login")],
         kind: "task",
         running: true,
         state: "starting",
@@ -181,6 +196,7 @@ describe(checkouts, () => {
       },
       {
         attention: true,
+        directories: [wt("login"), wt("main")],
         kind: "task",
         running: false,
         state: "running",
@@ -188,11 +204,38 @@ describe(checkouts, () => {
         title: "T t1",
         updatedAt: 5,
         variants: 2,
+        waiting: 2,
+      },
+      {
+        attention: false,
+        directories: ["/workspaces/demo"],
+        kind: "task",
+        running: false,
+        state: "running",
+        task: "t2",
+        title: "T t2",
+        updatedAt: 4,
+        variants: 1,
       },
     ]);
+    expect(
+      checkoutTasks(v, "/workspaces/demo").map((t) => t.task)
+    ).toStrictEqual(["t2"]);
   });
 
-  it("lists starting tasks with one variant, failed starts, and ended tasks of either kind", () => {
+  it("marks a manual task found in opencode as adopted", () => {
+    const v = view(
+      [
+        session("e", "/workspaces/demo", {
+          task: { ...ref("t4", 1), adopted: true, kind: "manual" },
+        }),
+      ],
+      [task("t4", [{ sessionId: "e" }], { kind: "manual" })]
+    );
+    expect(projectTasks(v)[0].adopted).toBe(true);
+  });
+
+  it("lists failed starts and ended tasks of either kind", () => {
     const v = view(
       [],
       [
@@ -215,6 +258,111 @@ describe(checkouts, () => {
       ["t1", "starting", false, true],
       ["t5", "ended", false, false],
     ]);
+  });
+
+  it("sends a worktree a task variant created to that task, mapping its tabs", () => {
+    const v = view([], [task("t1", [{}, {}])]);
+    const created = {
+      ...v,
+      runtime: {
+        ...v.runtime,
+        worktrees: [
+          {
+            createdBy: { by: "variant" as const, n: 2, task: "t1", title: "T" },
+            path: wt("login"),
+          },
+          {
+            createdBy: {
+              by: "variant" as const,
+              n: 1,
+              task: "archived",
+              title: "A",
+            },
+            path: wt("old"),
+          },
+          { createdBy: { by: "pull" as const }, path: wt("pr") },
+        ],
+      },
+    };
+    const [main, login, old, pr] = checkouts(created);
+    expect(worktreeRedirect(created, login)).toBe("/p/p%201/t/t1?v=2");
+    expect(worktreeRedirect(created, login, "review")).toBe(
+      "/p/p%201/t/t1/changes?v=2"
+    );
+    expect(worktreeRedirect(created, login, "terminal")).toBe(
+      "/p/p%201/t/t1/terminal?v=2"
+    );
+    expect(worktreeRedirect(created, login, "runtime")).toBe(
+      "/p/p%201/t/t1/runtime?v=2"
+    );
+    expect(worktreeRedirect(created, main)).toBeUndefined();
+    expect(worktreeRedirect(created, pr)).toBeUndefined();
+    // Its task was archived: the worktree keeps its page.
+    expect(worktreeRedirect(created, old)).toBeUndefined();
+    expect(standaloneCheckouts(created).map((c) => c.target)).toStrictEqual([
+      "",
+      "old",
+      "pr",
+    ]);
+  });
+
+  it("sends an old session link to its task, else to its checkout", () => {
+    const v = view(
+      [
+        session("a", wt("login"), { task: ref("t1", 1) }),
+        session("x", wt("login")),
+      ],
+      [
+        task("t1", [
+          { sessionId: "a" },
+          { sessionId: "gone", sessionRemoved: true },
+        ]),
+      ]
+    );
+    expect(sessionRedirect(v, "login", "a")).toBe("/p/p%201/t/t1?v=1");
+    // The session is gone from opencode, but its variant still names it.
+    expect(sessionRedirect(v, "login", "gone")).toBe("/p/p%201/t/t1?v=2");
+    expect(sessionRedirect(v, "login", "x")).toBe("/p/p%201/w/login");
+    expect(sessionRedirect(v, "", "unknown")).toBe("/p/p%201/main");
+  });
+
+  it("filters tasks by what needs the user and by state", () => {
+    const t = (over: Partial<ProjectTask>): ProjectTask => ({
+      attention: false,
+      directories: [],
+      kind: "task",
+      running: false,
+      state: "running",
+      task: "t",
+      title: "T",
+      updatedAt: 1,
+      variants: 1,
+      ...over,
+    });
+    const tasks = {
+      ended: t({ state: "ended" }),
+      idle: t({}),
+      running: t({ running: true }),
+      waiting: t({ attention: true, running: true }),
+    };
+    const pick = (f: Parameters<typeof matchesTaskFilter>[1]) =>
+      Object.entries(tasks)
+        .filter(([, x]) => matchesTaskFilter(x, f))
+        .map(([k]) => k);
+    expect(pick("all")).toStrictEqual(["ended", "idle", "running", "waiting"]);
+    expect(pick("attention")).toStrictEqual(["waiting"]);
+    expect(pick("running")).toStrictEqual(["running"]);
+    expect(pick("idle")).toStrictEqual(["idle"]);
+    expect(pick("ended")).toStrictEqual(["ended"]);
+  });
+
+  it("keeps the old Sessions page's status filter on the Tasks page", () => {
+    expect(tasksPathFromSessions("running")).toBe("/tasks?status=running");
+    expect(tasksPathFromSessions("attention")).toBe("/tasks?status=attention");
+    expect(tasksPathFromSessions("needs-permission")).toBe(
+      "/tasks?status=attention"
+    );
+    expect(tasksPathFromSessions(undefined)).toBe("/tasks");
   });
 
   it("maps the old project tab URLs to worktree URLs", () => {

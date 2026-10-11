@@ -187,8 +187,17 @@ describe("created-by origins", () => {
       task: "tsk_1",
       title: "Fix",
     });
-    expect(
-      sessionOrigin({ ...ref, adopted: true, kind: "manual" }, "Fix")
-    ).toStrictEqual({ by: "unmanaged" });
+    const adopted = sessionOrigin(
+      { ...ref, adopted: true, kind: "manual" },
+      "Fix"
+    );
+    expect(adopted).toStrictEqual({
+      adopted: true,
+      by: "session",
+      kind: "manual",
+      task: "tsk_1",
+      title: "Fix",
+    });
+    expect(originLabel(adopted).text).toBe("Started in opencode");
   });
 });

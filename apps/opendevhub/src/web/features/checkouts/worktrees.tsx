@@ -44,6 +44,7 @@ import type { Checkout } from "./checkouts";
 /** Runs one checkout action at a time, reporting failures to the error banner. */
 export const useCheckoutActions = (view: ProjectView) => {
   const { report } = useDash();
+  const navigate = useNavigate();
   const [pending, setPending] = useState<string>();
   const busy = useCallback(
     (key: string, fn: () => Promise<unknown>) => {
@@ -55,19 +56,23 @@ export const useCheckoutActions = (view: ProjectView) => {
     [report]
   );
 
+  /** Starts a conversation in the checkout; its manual task's page opens once the dashboard lists it. */
   const newSession = (c: Checkout) =>
-    busy(`session:${c.directory}`, () =>
-      openSessionTab(
-        view,
-        () => startSession(view.project.id, c.directory, c.worktree?.branch),
-        c.directory
-      )
-    );
+    busy(`session:${c.directory}`, async () => {
+      const id = await startSession(
+        view.project.id,
+        c.directory,
+        c.worktree?.branch
+      );
+      await navigate(
+        `/p/${encodeURIComponent(view.project.id)}?session=${encodeURIComponent(id)}`
+      );
+    });
 
   /** Removes a worktree after confirming, asking again before discarding uncommitted changes. */
   const remove = async (c: Checkout, after?: () => void) => {
     const what = envOfDirectory(view, c.directory)
-      ? "Its folder, its container and the container's sessions are deleted"
+      ? "Its folder, its container and the container's conversations are deleted"
       : "Its folder is deleted";
     if (
       !(await confirm({
@@ -111,7 +116,7 @@ export const useCheckoutActions = (view: ProjectView) => {
       confirmLabel: "Remove",
       description: env.node
         ? "Its container, worktree and branch there are deleted; bring the branch home first to keep its commits."
-        : "Its sessions are deleted; the worktree and its files stay.",
+        : "Its conversations are deleted; the worktree and its files stay.",
       destructive: true,
       title: env.node
         ? `Remove ${label} from ${env.node}?`
@@ -197,7 +202,7 @@ const MainContainerMenu = ({
             if (
               await confirm({
                 confirmLabel: "Rebuild",
-                description: "Running sessions will be interrupted.",
+                description: "Running conversations will be interrupted.",
                 title: `Rebuild the container of ${c.label}?`,
               })
             ) {
@@ -214,7 +219,7 @@ const MainContainerMenu = ({
               await confirm({
                 confirmLabel: "Rebuild",
                 description:
-                  "Every image layer is built again, which can take a while. Running sessions will be interrupted.",
+                  "Every image layer is built again, which can take a while. Running conversations will be interrupted.",
                 title: `Rebuild the container of ${c.label} without cache?`,
               })
             ) {
@@ -288,7 +293,7 @@ export const ContainerMenu = ({
                 if (
                   await confirm({
                     confirmLabel: "Rebuild",
-                    description: "Running sessions will be interrupted.",
+                    description: "Running conversations will be interrupted.",
                     title: `Rebuild the container of ${c.label}?`,
                   })
                 ) {
@@ -305,7 +310,7 @@ export const ContainerMenu = ({
                   await confirm({
                     confirmLabel: "Rebuild",
                     description:
-                      "Every image layer is built again, which can take a while. Running sessions will be interrupted.",
+                      "Every image layer is built again, which can take a while. Running conversations will be interrupted.",
                     title: `Rebuild the container of ${c.label} without cache?`,
                   })
                 ) {
@@ -393,7 +398,7 @@ export const UnmountedNotice = ({ view }: { view: ProjectView }) => {
           if (
             await confirm({
               confirmLabel: "Rebuild",
-              description: "Running sessions will be interrupted.",
+              description: "Running conversations will be interrupted.",
               title: `Rebuild the devcontainer for ${view.project.name}?`,
             })
           ) {
@@ -504,7 +509,7 @@ export const NewWorktreeButton = ({ view }: { view: ProjectView }) => {
                 disabled={!canOpen}
                 onCheckedChange={(c) => setWithSession(c === true)}
               />
-              Start a session
+              Start a conversation
             </Label>
             <DialogFooter>
               <Button

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRightIcon, PlayIcon } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -48,7 +48,7 @@ export const NewTaskDialog = () => {
   // Mounted per opening, with integration context prefilled when provided.
   return (
     <TaskForm
-      initialProject={newTaskFor.projectId}
+      projectId={newTaskFor.projectId}
       draft={newTaskFor}
       onClose={closeNewTask}
     />
@@ -56,32 +56,17 @@ export const NewTaskDialog = () => {
 };
 
 const TaskForm = ({
-  initialProject,
+  projectId,
   draft,
   onClose,
 }: {
-  initialProject?: string;
+  projectId: string;
   draft?: NewTaskDraft;
   onClose: () => void;
 }) => {
   const { snapshot, act } = useDash();
   const jira = draft?.jira;
   const navigate = useNavigate();
-  const projects = useMemo(
-    () =>
-      [...(snapshot?.projects ?? [])].toSorted((a, b) =>
-        a.project.name.localeCompare(b.project.name)
-      ),
-    [snapshot]
-  );
-  const [projectId, setProjectId] = useState(
-    () =>
-      initialProject ??
-      projects.find((v) => v.runtime.containerState === "running")?.project
-        .id ??
-      projects[0]?.project.id ??
-      ""
-  );
   const [prompt, setPrompt] = useState(
     () => draft?.prompt ?? (jira ? jiraTaskPrompt(jira) : "")
   );
@@ -100,7 +85,7 @@ const TaskForm = ({
   const [error, setError] = useState<string>();
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
-  const view = projects.find((v) => v.project.id === projectId);
+  const view = snapshot?.projects.find((v) => v.project.id === projectId);
   const nodes = snapshot?.nodes ?? [];
   const remote = node !== "local";
   const flags = view
@@ -132,8 +117,8 @@ const TaskForm = ({
   // Cached per project, so the dialog opens with its lists ready; without them, it offers the defaults. Refreshed on
   // every opening, so a model, agent or OpenSpec setup added since shows up.
   const modelsQuery = useQuery({
-    enabled: canOpen && !!projectId,
-    queryFn: () => fetchModels(projectId ?? ""),
+    enabled: canOpen,
+    queryFn: () => fetchModels(projectId),
     queryKey: ["models", projectId],
     refetchOnMount: "always",
   });
@@ -197,32 +182,19 @@ const TaskForm = ({
         <DialogHeader>
           <DialogTitle>
             {jira ? `New task from ${jira.key}` : "New task"}
+            {view && (
+              <span className="text-muted-foreground font-normal">
+                {" "}
+                in {view.project.name}
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Start an agent on a prompt in one of your projects.
+            Start an agent on a prompt in {view?.project.name ?? "this project"}
+            .
           </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={submit}>
-          <div className="grid gap-2">
-            <Label htmlFor="task-project">Project</Label>
-            <Choice
-              id="task-project"
-              size="default"
-              className="w-full"
-              value={projectId}
-              options={projects.map((v) => ({
-                label: v.project.name,
-                value: v.project.id,
-              }))}
-              onChange={(id) => {
-                setProjectId(id);
-                setRows([EMPTY_ROW]);
-                setEnvironment(undefined);
-                setNode("local");
-              }}
-            />
-          </div>
-
           {view && !canOpen && (
             <Alert className="border-warn/40 bg-warn/10 text-warn">
               <AlertDescription className="text-warn flex items-center justify-between gap-2">

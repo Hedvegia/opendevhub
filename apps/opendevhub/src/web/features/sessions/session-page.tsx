@@ -1,7 +1,5 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
 import {
-  ArrowLeftIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   ExternalLinkIcon,
@@ -27,14 +25,12 @@ import type {
 } from "../../../shared/types";
 import { sessionUrl } from "../../../shared/urls";
 import { fetchSessionDetail, sendPrompt } from "../../api";
-import { Chip, Empty, muted, Section } from "../../components/page";
+import { Chip, muted, Section } from "../../components/page";
 import { SessionBadge } from "../../components/status";
 import { Tip } from "../../components/tip";
 import { When } from "../../components/when";
 import { needsAttention, openUrlOf, sessionHref } from "../../derive";
 import { Link } from "../../routing";
-import { useCheckout } from "../checkouts/checkout-page";
-import { checkoutPath } from "../checkouts/checkouts";
 import type { Checkout } from "../checkouts/checkouts";
 import { TurnChanges } from "../review/turn-changes";
 import { formatCost, formatTokens, taskChip } from "../tasks/tasks";
@@ -54,45 +50,20 @@ const sessionDetailQuery = (projectId: string, sessionId: string) =>
     staleTime: 0,
   });
 
-/** One session of a checkout: its usage, its turns with what each changed, and a box to prompt it. */
-export const SessionPage = () => {
-  const { view, checkout } = useCheckout();
-  const { sessionId = "" } = useParams({ strict: false });
-  const session = view.sessions.find(
-    (s) => s.id === sessionId && s.directory === checkout.directory
-  );
-  if (!session) {
-    return (
-      <Empty title="Unknown session">
-        <p className={muted}>
-          This checkout has no session {sessionId}; it may have been removed.
-        </p>
-        <Button asChild variant="link">
-          <Link to={checkoutPath(view.project.id, checkout.target)}>
-            Back to the sessions
-          </Link>
-        </Button>
-      </Empty>
-    );
-  }
-  return (
-    <SessionView
-      key={session.id}
-      view={view}
-      checkout={checkout}
-      session={session}
-    />
-  );
-};
-
-const SessionView = ({
+/**
+ * One conversation: its usage, its turns with what each changed, and a box to prompt it. `showTask` adds a chip
+ * linking to the task it belongs to, for a conversation shown on another task's page.
+ */
+export const SessionView = ({
   view,
   checkout,
   session,
+  showTask = false,
 }: {
   view: ProjectView;
   checkout: Checkout;
   session: SessionSummary;
+  showTask?: boolean;
 }) => {
   const projectId = view.project.id;
   const queryClient = useQueryClient();
@@ -114,18 +85,12 @@ const SessionView = ({
     }
   }, [version, queryClient, projectId, session.id]);
 
-  const title = session.title || "Untitled session";
-  const task = taskChip(view, session);
+  const title = session.title || "Untitled conversation";
+  const task = showTask ? taskChip(view, session) : undefined;
   const running = session.status !== "idle";
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <Link
-          to={checkoutPath(projectId, checkout.target)}
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 self-start text-sm"
-        >
-          <ArrowLeftIcon className="size-3.5" /> Sessions
-        </Link>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
             <h2 className="text-xl font-semibold tracking-tight break-words">
@@ -203,7 +168,7 @@ const SessionView = ({
         )}
         {detail?.turns.length === 0 && (
           <p className={cn(muted, "px-4 py-3")}>
-            No turns yet: the session hasn&apos;t been prompted.
+            No turns yet: the conversation hasn&apos;t been prompted.
           </p>
         )}
         {detail && detail.turns.length > 0 && (
@@ -232,7 +197,7 @@ const SessionView = ({
               target="_blank"
               rel="noopener noreferrer"
             >
-              open the session in opencode
+              open the conversation in opencode
             </a>{" "}
             for its whole history.
           </p>

@@ -832,7 +832,10 @@ export const turnReviewData = (
 
 /** The rate-limit worktree's session: three turns, the newest waiting on a permission, and one subagent. */
 export const sessionDetail = (sessionId: string): SessionDetail | undefined => {
-  const session = webSessions.find((s) => s.id === sessionId);
+  // The task variants of billing-api get the same turns, so their Conversation tab has something to show.
+  const session = [...webSessions, ...apiProject.sessions].find(
+    (s) => s.id === sessionId
+  );
   if (!session) {
     return undefined;
   }
@@ -1729,9 +1732,9 @@ const steps = {
     url: RATE_LIMIT_PR.url,
   },
   session: {
-    href: `${base}/w/rate-limit/s/ses_perm01`,
+    href: `${base}/t/tsk_rate?v=1`,
     id: "ses_perm01",
-    label: "Session",
+    label: "Conversation",
     type: "session",
   },
   task: {
@@ -1748,7 +1751,7 @@ const steps = {
     url: ACME_118.url,
   },
   variant: {
-    href: `${base}/t/tsk_rate`,
+    href: `${base}/t/tsk_rate?v=1`,
     id: "tsk_rate/1",
     label: "Variant 1 (claude-opus-5-5)",
     type: "variant",
@@ -1784,6 +1787,9 @@ export const provenanceOf = (
   switch (`${type}:${id}`) {
     case "task:tsk_rate": {
       return { ledTo, trail: [steps.ticket, steps.task] };
+    }
+    case "variant:tsk_rate/1": {
+      return { ledTo, trail: chain };
     }
     case "session:ses_perm01": {
       return { ledTo, trail: [...chain, steps.worktree, steps.session] };

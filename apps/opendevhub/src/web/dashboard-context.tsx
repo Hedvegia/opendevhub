@@ -62,9 +62,9 @@ interface DashboardContextValue {
   dismissError: () => void;
   /** Shows a failed request in the error banner. */
   report: (err: unknown) => void;
-  /** Opens the New task dialog, with a project preselected when given. */
-  newTask: (projectId?: string, draft?: NewTaskDraft) => void;
-  newTaskFor: (NewTaskDraft & { projectId?: string }) | undefined;
+  /** Opens the New task dialog for a project; tasks only start inside one. */
+  newTask: (projectId: string, draft?: NewTaskDraft) => void;
+  newTaskFor: (NewTaskDraft & { projectId: string }) | undefined;
   closeNewTask: () => void;
   /** Whether the Add project dialog is open. */
   addProjectOpen: boolean;
@@ -231,7 +231,7 @@ export const DashboardProvider = ({ children }: { children: ReactNode }) => {
       .finally(() => setScanning(false));
   }, [fail]);
   const newTask = useCallback(
-    (projectId?: string, draft?: NewTaskDraft) =>
+    (projectId: string, draft?: NewTaskDraft) =>
       setNewTaskFor({ projectId, ...draft }),
     []
   );

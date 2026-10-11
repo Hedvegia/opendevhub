@@ -1,6 +1,5 @@
 import { GitBranchIcon, InfoIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -11,29 +10,22 @@ import type { ProjectView } from "../../../shared/types";
 import { archiveTask, refreshWorktrees } from "../../api";
 import { CopyButton } from "../../components/copy-button";
 import { EnvBadge } from "../../components/env-badge";
-import { Chip, muted, Note, PageHeader, Section } from "../../components/page";
+import { Chip, Note, PageHeader, Section } from "../../components/page";
 import { ResourceStat } from "../../components/resource-stat";
 import { STATE_LABEL, StatusDot, TONE_LABEL } from "../../components/status";
 import { Tip } from "../../components/tip";
 import { useDash } from "../../dashboard-context";
-import {
-  compareSessions,
-  envOfDirectory,
-  needsAttention,
-  projectTone,
-  workspaceFolderOf,
-} from "../../derive";
+import { envOfDirectory, projectTone, workspaceFolderOf } from "../../derive";
 import { checkoutResources } from "../../lib/resources";
 import { Link, Navigate, useSearchParams } from "../../routing";
 import { ActivityButton } from "../activity/activity-button";
 import {
   checkoutCounts,
-  checkoutOf,
   checkoutPath,
-  checkouts,
   checkoutTone,
-  orphanSessions,
   projectTasks,
+  sessionPath,
+  standaloneCheckouts,
 } from "../checkouts/checkouts";
 import type { Checkout, ProjectTask } from "../checkouts/checkouts";
 import { OpenInMenu } from "../checkouts/open-in-menu";
@@ -44,8 +36,9 @@ import {
   NewWorktreeButton,
   useCheckoutActions,
 } from "../checkouts/worktrees";
-import { SessionList } from "../sessions/session-list";
-import { formatCost, formatTokens, taskPath } from "../tasks/tasks";
+import { PendingStack } from "../sessions/pending-cards";
+import { TaskRow } from "../tasks/task-rows";
+import { formatCost, formatTokens } from "../tasks/tasks";
 import { projectUsage } from "../usage/usage";
 import { AllContainersMenu, projectFlags } from "./project-actions";
 import { useProjectView } from "./project-layout";
@@ -67,28 +60,21 @@ export const ProjectOverview = () => {
     }
   }, [project.id, running]);
 
-  // `?session=` (from notifications and new tasks) goes to the session's checkout once it is known.
+  // `?session=` (from notifications and new conversations) goes to the session's task once it is known.
   const highlight = params.get("session");
   const highlighted = highlight
     ? view.sessions.find((s) => s.id === highlight)
     : undefined;
-  const target = highlighted && checkoutOf(view, highlighted.directory)?.target;
-  if (highlight && target !== undefined) {
-    return (
-      <Navigate
-        replace
-        to={`${checkoutPath(project.id, target)}?session=${encodeURIComponent(highlight)}`}
-      />
-    );
+  // Its checkout unknown, sessionPath points back here; stay rather than loop.
+  const destination = highlighted && sessionPath(view, highlighted);
+  if (destination && !destination.includes("?session=")) {
+    return <Navigate replace to={destination} />;
   }
 
-  const attention = view.sessions
-    .filter((s) => needsAttention(s.status))
-    .toSorted(compareSessions);
   const tasks = projectTasks(view);
-  const active = tasks.filter((t) => t.state !== "ended");
+  const attention = tasks.filter((t) => t.attention && t.state !== "ended");
+  const active = tasks.filter((t) => !t.attention && t.state !== "ended");
   const ended = tasks.filter((t) => t.state === "ended");
-  const orphans = orphanSessions(view).toSorted(compareSessions);
 
   return (
     <>
@@ -167,12 +153,27 @@ export const ProjectOverview = () => {
 
       {attention.length > 0 && (
         <Section title="Needs you" hint={attention.length} attention>
-          <SessionList
-            showMain
-            entries={attention.map((session) => ({ session, view }))}
-          />
+          <ul>
+            {attention.map((t) => (
+              <TaskRow key={t.task} projectId={project.id} task={t}>
+                <WaitingCards view={view} task={t.task} />
+              </TaskRow>
+            ))}
+          </ul>
         </Section>
       )}
+
+      {active.length > 0 && (
+        <Section title="Tasks" hint={active.length}>
+          <ul>
+            {active.map((t) => (
+              <TaskRow key={t.task} projectId={project.id} task={t} />
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {ended.length > 0 && <EndedTasks projectId={project.id} tasks={ended} />}
 
       <Section
         title="Worktrees"
@@ -219,36 +220,29 @@ export const ProjectOverview = () => {
           </Note>
         )}
         <ul>
-          {checkouts(view).map((c) => (
+          {standaloneCheckouts(view).map((c) => (
             <CheckoutRow key={c.directory} view={view} checkout={c} />
           ))}
         </ul>
       </Section>
-
-      {active.length > 0 && (
-        <Section title="Tasks" hint="each variant works in its own worktree">
-          <ul>
-            {active.map((t) => (
-              <TaskRow key={t.task} projectId={project.id} task={t} />
-            ))}
-          </ul>
-        </Section>
-      )}
-
-      {ended.length > 0 && <EndedTasks projectId={project.id} tasks={ended} />}
-
-      {orphans.length > 0 && (
-        <Section
-          title="Other sessions"
-          hint="in folders that are no longer a worktree"
-        >
-          <SessionList
-            entries={orphans.map((session) => ({ session, view }))}
-            highlight={highlight ?? undefined}
-          />
-        </Section>
-      )}
     </>
+  );
+};
+
+/** The permission and question cards of a task's conversations that wait on the user, to answer in place. */
+const WaitingCards = (props: { view: ProjectView; task: string }) => {
+  const waiting = props.view.sessions.filter(
+    (s) => s.task?.id === props.task && s.pending
+  );
+  if (waiting.length === 0) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-2 px-4 pb-3">
+      {waiting.map((s) => (
+        <PendingStack key={s.id} session={s} view={props.view} />
+      ))}
+    </div>
   );
 };
 
@@ -327,7 +321,9 @@ const CheckoutRow = ({
         )}
         {n.running > 0 && <span>{n.running} working</span>}
         {n.idle > 0 && <span>{n.idle} idle</span>}
-        {n.attention + n.running + n.idle === 0 && <span>No sessions</span>}
+        {n.attention + n.running + n.idle === 0 && (
+          <span>No conversations</span>
+        )}
       </div>
       <span className="max-md:hidden">
         {resources && <ResourceStat {...resources} />}
@@ -339,7 +335,7 @@ const CheckoutRow = ({
           disabled={!checkoutReady(view, c) || !!pending}
           onClick={() => newSession(c)}
         >
-          <PlusIcon /> Session
+          <PlusIcon /> Conversation
         </Button>
         <OpenInMenu
           view={view}
@@ -375,49 +371,14 @@ const OPENCODE_PILL: Record<ProjectView["runtime"]["opencode"], string> = {
   unhealthy: "border-destructive/45 text-destructive",
 };
 
-/** What a task row says it holds: a session, an AI review, or its variants. */
-const taskSize = (t: ProjectTask): string => {
-  if (t.kind === "manual") {
-    return "session";
-  }
-  if (t.kind === "review") {
-    return "AI review";
-  }
-  return `${t.variants} variant${t.variants === 1 ? "" : "s"}`;
-};
-
-const TaskRow = (props: {
-  projectId: string;
-  task: ProjectTask;
-  action?: ReactNode;
-}) => {
-  const { task: t } = props;
-  return (
-    <li className="hover:bg-muted/50 flex items-center border-t first:border-t-0">
-      <Link
-        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2"
-        to={taskPath(props.projectId, t.task)}
-      >
-        <StatusDot tone={t.state === "ended" ? "off" : taskTone(t)} />
-        <span className="flex-1 truncate">{t.title || "Task"}</span>
-        <span className={muted}>
-          {t.state === "starting" && "starting · "}
-          {taskSize(t)}
-        </span>
-      </Link>
-      {props.action && <span className="pr-3">{props.action}</span>}
-    </li>
-  );
-};
-
-/** Tasks whose sessions are all gone, collapsed until opened; each can be archived. */
+/** Tasks whose conversations are all gone, collapsed until opened; each can be archived. */
 const EndedTasks = (props: { projectId: string; tasks: ProjectTask[] }) => {
   const { report } = useDash();
   const [open, setOpen] = useState(false);
   return (
     <Section
       title={`Ended tasks (${props.tasks.length})`}
-      hint="their sessions are gone; archive them to hide them"
+      hint="their conversations are gone; archive them to hide them"
       action={
         <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
           {open ? "Hide" : "Show"}
@@ -448,14 +409,4 @@ const EndedTasks = (props: { projectId: string; tasks: ProjectTask[] }) => {
       )}
     </Section>
   );
-};
-
-const taskTone = (t: {
-  attention: boolean;
-  running: boolean;
-}): "attention" | "running" | "ok" => {
-  if (t.attention) {
-    return "attention";
-  }
-  return t.running ? "running" : "ok";
 };

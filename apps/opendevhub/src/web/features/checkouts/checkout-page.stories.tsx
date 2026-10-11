@@ -5,46 +5,51 @@ import { mockApi } from "../../mocks/story";
 
 const meta = preview.meta({
   component: App,
-  parameters: { route: "/p/acme-web/w/rate-limit" },
+  parameters: { route: "/p/acme-web/w/dark-mode" },
   title: "Pages/Checkout",
 });
 
-/** A worktree's sessions, one waiting on a permission. */
-export const Sessions = meta.story();
+/** A worktree no task created: the tasks whose conversations run there. */
+export const Conversations = meta.story();
 
 export const MainCheckout = meta.story({
   parameters: { route: "/p/acme-web/main" },
 });
 
 /** Changed files, diffs, checks and the commit / publish actions. */
-export const Review = meta.story({
-  parameters: { route: "/p/acme-web/w/rate-limit/review" },
+export const Changes = meta.story({
+  parameters: { route: "/p/acme-web/main/review" },
 });
 
-/** One session: its usage, its turns (the newest with its changes open) and its subagents. */
-export const Session = meta.story({
-  parameters: { route: "/p/acme-web/w/rate-limit/s/ses_perm01" },
+/** One conversation: its usage, its turns (the newest with its changes open) and its subagents. */
+export const Conversation = meta.story({
+  parameters: { route: "/p/acme-web/t/tsk_rate" },
 });
 
-export const SessionLoading = meta.story({
+export const ConversationLoading = meta.story({
   beforeEach: mockApi(
     {},
     pending("get", "/api/projects/:id/sessions/:session")
   ),
-  parameters: { route: "/p/acme-web/w/rate-limit/s/ses_perm01" },
+  parameters: { route: "/p/acme-web/t/tsk_rate" },
 });
 
-export const ReviewLoading = meta.story({
+export const ChangesLoading = meta.story({
   beforeEach: mockApi({}, pending("get", "/api/projects/:id/review")),
-  parameters: { route: "/p/acme-web/w/rate-limit/review" },
+  parameters: { route: "/p/acme-web/main/review" },
 });
 
-export const ReviewError = meta.story({
+export const ChangesError = meta.story({
   beforeEach: mockApi(
     {},
     failing("get", "/api/projects/:id/review", "fatal: bad revision 'main'")
   ),
-  parameters: { route: "/p/acme-web/w/rate-limit/review" },
+  parameters: { route: "/p/acme-web/main/review" },
+});
+
+/** An old session link: lands on the session's task, variant selected. */
+export const OldSessionLink = meta.story({
+  parameters: { route: "/p/acme-web/w/rate-limit/s/ses_perm01" },
 });
 
 /** Ports, container state and logs. */

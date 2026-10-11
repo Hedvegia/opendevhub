@@ -10,6 +10,8 @@ import type {
   TaskView,
   VariantView,
 } from "../../../shared/types";
+import { taskHref } from "../../../shared/urls";
+import type { TaskTab } from "../../../shared/urls";
 import { workspaceFolderOf } from "../../derive";
 import type { Tone } from "../../derive";
 
@@ -73,21 +75,14 @@ export const formatTokens = (n: number | undefined): string => {
   return `${(n / 1_000_000).toFixed(1)}M`;
 };
 
-/** Where to go after starting a task: the session for one variant, the task page for several; nowhere if none started. */
+/** Where to go after starting a task: its page, on the Conversation tab; nowhere if no variant started. */
 export const taskDestination = (
   projectId: string,
   result: TaskResult
-): string | undefined => {
-  const sessionId = result.variants.find((v) => v.sessionId)?.sessionId;
-  if (!sessionId) {
-    return undefined;
-  }
-  const base = `/p/${encodeURIComponent(projectId)}`;
-  if (result.variants.length === 1) {
-    return `${base}?session=${encodeURIComponent(sessionId)}`;
-  }
-  return `${base}/t/${encodeURIComponent(result.task)}`;
-};
+): string | undefined =>
+  result.variants.some((v) => v.sessionId)
+    ? taskHref(projectId, result.task)
+    : undefined;
 
 /** The variants that failed, as one line for the error banner. */
 export const taskFailures = (result: TaskResult): string | undefined => {
@@ -168,8 +163,8 @@ export const pickPrompts = (
   const one = discardCount === 1;
   const discard = `Keep ${keepName} and discard the other ${one ? "variant" : `${discardCount} variants`}? ${
     one
-      ? "It disappears from the dashboard; its session stays"
-      : "They disappear from the dashboard; their sessions stay"
+      ? "It disappears from the dashboard; its conversation stays"
+      : "They disappear from the dashboard; their conversations stay"
   } in opencode.${othersRunning ? " Running variants are stopped." : ""}`;
   if (list.length === 0) {
     return { discard };
@@ -196,8 +191,8 @@ export const pickPrompts = (
 };
 
 /**
- * The "created by" chip on a session row, linking to the task page: the task's variant (with its model when there
- * are several), the AI review it runs, a session started on its own here, or one found outside opendevhub.
+ * The "created by" chip on a conversation row, linking to the task page: the task's variant (with its model when there
+ * are several), the AI review it runs, a conversation started on its own here, or one started in opencode.
  */
 export const taskChip = (
   view: ProjectView,
@@ -214,8 +209,9 @@ export const taskChip = (
   if (task.kind === "manual") {
     return s.task?.adopted
       ? {
-          label: "outside opendevhub",
+          label: "started in opencode",
           title: "Found in opencode; started outside opendevhub",
+          to,
         }
       : {
           label: "started here",
@@ -268,6 +264,13 @@ export const projectIdFromPath = (pathname: string): string | undefined => {
   return m ? decodeURIComponent(m[1]) : undefined;
 };
 
+/** The project `n` opens New task for: the one whose page is open; none elsewhere, since tasks start in a project. */
+export const newTaskShortcut = (
+  e: Parameters<typeof opensNewTask>[0],
+  pathname: string
+): string | undefined =>
+  opensNewTask(e) ? projectIdFromPath(pathname) : undefined;
+
 /** `<select>` values for models; "" is the project's default. Model ids can contain "/", so encode as JSON. */
 export const modelKey = (
   ref: { id: string; providerID: string } | undefined
@@ -289,7 +292,7 @@ const STEP_LABELS: Record<StartStep, string> = {
   image: "Preparing the image",
   pushing: "Pushing the base",
   queued: "Waiting",
-  session: "Starting the session",
+  session: "Starting the conversation",
   worktree: "Creating the worktree",
 };
 
@@ -298,7 +301,7 @@ export const startStepLabel = (step: StartStep): string => STEP_LABELS[step];
 
 /** A task's page: its variants, and while they're set up, their progress. */
 export const taskPath = (projectId: string, task: string): string =>
-  `/p/${encodeURIComponent(projectId)}/t/${encodeURIComponent(task)}`;
+  taskHref(projectId, task);
 
 export interface FileCell {
   status: ReviewFile["status"];
@@ -380,4 +383,70 @@ export const variantStatus = (
     return { label: `${picked}idle`, tone: "ok" };
   }
   return { label: `${picked}needs you`, tone: "attention" };
+};
+
+/** The variant a task page shows without `?v=`: the picked one, else the first not discarded, else the first. */
+export const defaultVariant = (task: TaskView): VariantView | undefined =>
+  task.variants.find((v) => v.picked) ??
+  task.variants.find((v) => !v.discarded) ??
+  task.variants[0];
+
+/** The variant `?v=` names, or the default one when it names none of the task's. */
+export const selectedVariant = (
+  task: TaskView,
+  v: string | null | undefined
+): VariantView | undefined =>
+  (v ? task.variants.find((x) => String(x.n) === v) : undefined) ??
+  defaultVariant(task);
+
+/** The variants the switcher offers: those not discarded, plus the selected one if it was. */
+export const switchableVariants = (
+  task: TaskView,
+  selected: VariantView | undefined
+): VariantView[] =>
+  task.variants.filter((v) => !v.discarded || v.n === selected?.n);
+
+/** A task with several live variants to choose between and compare. */
+export const comparesVariants = (task: TaskView): boolean =>
+  task.kind === "task" && task.variants.filter((v) => !v.discarded).length > 1;
+
+/** A spec-first task, or one implementing a change: it gets a Spec tab. */
+export const hasSpec = (task: TaskView): boolean =>
+  !!task.spec || task.variants.some((v) => v.spec);
+
+/** The tabs of a task page, in order. */
+export const taskTabs = (task: TaskView): TaskTab[] => [
+  "conversation",
+  "changes",
+  "terminal",
+  "runtime",
+  ...(hasSpec(task) ? (["spec"] as const) : []),
+  ...(comparesVariants(task) ? (["compare"] as const) : []),
+];
+
+/**
+ * The conversations of a variant's checkout: every session in the same directory and environment, the variant's own
+ * first, then the others newest first.
+ */
+export const conversationThreads = (
+  view: ProjectView,
+  variant: VariantView
+): SessionSummary[] => {
+  const own = variant.sessionId
+    ? view.sessions.find((s) => s.id === variant.sessionId)
+    : undefined;
+  const directory = own?.directory ?? variant.directory;
+  if (!directory) {
+    return [];
+  }
+  // A variant names the main environment by the project's id; sessions leave it out.
+  const env =
+    own?.envId ??
+    (variant.envId === view.project.id ? undefined : variant.envId);
+  const others = view.sessions
+    .filter(
+      (s) => s.id !== own?.id && s.directory === directory && s.envId === env
+    )
+    .toSorted((a, b) => b.updatedAt - a.updatedAt);
+  return own ? [own, ...others] : others;
 };

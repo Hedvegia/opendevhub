@@ -50,7 +50,7 @@ const plural = (n: number, one: string, many = `${one}s`) =>
   `${n} ${n === 1 ? one : many}`;
 
 export const Overview = () => {
-  const { snapshot, newTask, openAddProject, rescan, scanning } = useDash();
+  const { snapshot, openAddProject, rescan, scanning } = useDash();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   if (!snapshot) {
@@ -127,21 +127,12 @@ export const Overview = () => {
             </p>
           )}
         </div>
-        {hasProjects && (
-          <Button
-            onClick={() => newTask()}
-            title="New task (n)"
-            className="max-md:w-full"
-          >
-            <PlusIcon /> New task
-          </Button>
-        )}
       </header>
 
       {attention.length > 0 && (
         <Section
           title="Waiting on you"
-          hint="Answer here, or open the session in opencode"
+          hint="Answer here, or open the conversation in opencode"
           attention
         >
           <SessionList entries={attention} showProject />
@@ -229,7 +220,7 @@ export const Overview = () => {
           action={
             active.length > ACTIVE_LIMIT && (
               <Link
-                to="/sessions?status=running"
+                to="/tasks?status=running"
                 className="text-muted-foreground hover:text-foreground text-sm"
               >
                 See all {active.length}
@@ -258,7 +249,7 @@ const ProjectRack = ({ views }: { views: ProjectView[] }) => {
         )}
       >
         <span>Project</span>
-        <span>Sessions</span>
+        <span>Conversations</span>
         <span>Status</span>
         <span>Ports</span>
         <span className="justify-self-end">Usage</span>
@@ -295,7 +286,7 @@ const AgentLights = ({
     counts.running > 0 && `${counts.running} working`,
     counts.idle > 0 && `${counts.idle} idle`,
   ].filter(Boolean);
-  const label = `Sessions: ${parts.join(", ")}`;
+  const label = `Conversations: ${parts.join(", ")}`;
   if (shown.length === 0) {
     return null;
   }

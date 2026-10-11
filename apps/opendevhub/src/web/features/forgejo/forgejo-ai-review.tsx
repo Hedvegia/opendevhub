@@ -46,7 +46,6 @@ import { useDash } from "../../dashboard-context";
 import { Link } from "../../routing";
 import {
   checkoutOf,
-  checkoutPath,
   checkoutRuntime,
   checkouts,
   sessionPath,
@@ -208,7 +207,7 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
     if (!session) {
       if (view && waited > GONE_MS) {
         patch(current.id, {
-          error: "The review session is gone.",
+          error: "The review conversation is gone.",
           stage: "failed",
         });
       }
@@ -242,8 +241,9 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
   let sessionLink: string | undefined;
   if (view && session) {
     sessionLink = sessionPath(view, session);
-  } else if (view && checkout && run?.sessionId) {
-    sessionLink = `${checkoutPath(view.project.id, checkout.target)}?session=${encodeURIComponent(run.sessionId)}`;
+  } else if (view && run?.sessionId) {
+    // Not listed yet: the project page sends it on to its task once it is.
+    sessionLink = `/p/${encodeURIComponent(view.project.id)}?session=${encodeURIComponent(run.sessionId)}`;
   }
 
   return {
@@ -507,7 +507,7 @@ const stageText = (run: AiReviewRun, session?: SessionSummary): string => {
       session?.status === "needs-permission" ||
       session?.status === "needs-answer"
     ) {
-      return "The review session is waiting on you.";
+      return "The review conversation is waiting on you.";
     }
     return "The agent is reviewing the pull request…";
   }
@@ -557,7 +557,7 @@ export const AiReviewPanel = (props: {
           {ai.sessionLink && (
             <Button asChild variant="ghost" size="sm">
               <Link to={ai.sessionLink}>
-                <ExternalLinkIcon /> Session
+                <ExternalLinkIcon /> Conversation
               </Link>
             </Button>
           )}

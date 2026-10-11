@@ -31,7 +31,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "General",
   },
   {
-    hint: "In the New task form and a session's prompt",
+    hint: "In the New task form and a conversation's prompt",
     shortcuts: [{ keys: ["mod", "enter"], label: "Send" }],
     title: "Writing",
   },

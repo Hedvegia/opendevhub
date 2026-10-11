@@ -13,9 +13,10 @@ import {
 
 import { SESSION_LABEL, StatusDot } from "../components/status";
 import { useDash } from "../dashboard-context";
-import { allSessions, matches, projectTone, sessionHref } from "../derive";
+import { allSessions, matches, projectTone } from "../derive";
 import {
   checkoutPath,
+  sessionPath,
   checkouts,
   checkoutTone,
 } from "../features/checkouts/checkouts";
@@ -63,6 +64,8 @@ export const CommandPalette = ({
     }
   }, [open]);
 
+  const projectId = projectIdFromPath(location.pathname);
+
   const items = useMemo<Item[]>(() => {
     if (!snapshot) {
       return [];
@@ -72,9 +75,9 @@ export const CommandPalette = ({
       ...[
         { key: "nav-overview", label: "Overview", run: go("/") },
         {
-          key: "nav-sessions",
-          label: "All sessions",
-          run: go("/sessions"),
+          key: "nav-tasks",
+          label: "All tasks",
+          run: go("/tasks"),
         },
         ...(forgejo?.enabled
           ? [{ key: "nav-pulls", label: "Pull requests", run: go("/forgejo") }]
@@ -101,13 +104,18 @@ export const CommandPalette = ({
         label: `Settings › ${label}`,
         run: go(`/settings/${id}`),
       })),
-      {
-        group: "Actions",
-        hint: "n",
-        key: "act-new-task",
-        label: "New task",
-        run: () => newTask(projectIdFromPath(location.pathname)),
-      },
+      // Only on a project's pages: tasks start inside a project.
+      ...(projectId
+        ? [
+            {
+              group: "Actions",
+              hint: "n",
+              key: "act-new-task",
+              label: "New task",
+              run: () => newTask(projectId),
+            },
+          ]
+        : []),
       {
         group: "Actions",
         key: "act-rescan",
@@ -158,12 +166,11 @@ export const CommandPalette = ({
     }
     for (const { session, view } of allSessions(snapshot)) {
       list.push({
-        group: "Sessions",
+        group: "Conversations",
         hint: `${view.project.name} · ${SESSION_LABEL[session.status]}`,
         key: `s-${session.id}`,
-        label: session.title || "Untitled session",
-        run: () =>
-          window.open(sessionHref(view, session), "_blank", "noreferrer"),
+        label: session.title || "Untitled conversation",
+        run: go(sessionPath(view, session)),
       });
     }
     return list;
@@ -175,7 +182,7 @@ export const CommandPalette = ({
     openAddProject,
     permission,
     report,
-    location.pathname,
+    projectId,
     settingsHref,
     forgejo?.enabled,
     jira?.enabled,
@@ -203,13 +210,13 @@ export const CommandPalette = ({
       onOpenChange={(o) => !o && onClose()}
       shouldFilter={false}
       title="Command palette"
-      description="Jump to a project, session or action"
+      description="Jump to a project, conversation or action"
       showCloseButton={false}
     >
       <CommandInput
         value={query}
         onValueChange={setQuery}
-        placeholder="Jump to a project, session or action…"
+        placeholder="Jump to a project, conversation or action…"
       />
       <CommandList>
         <CommandEmpty>No matches</CommandEmpty>

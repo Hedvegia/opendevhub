@@ -97,17 +97,18 @@ describe("ProvenanceStore", () => {
       "branch task/add-login-2",
       "worktree task-add-login-2",
       "environment Container",
-      "session Session",
+      "session Conversation",
     ]);
     const base = `/p/${project.id}`;
     expect(p.trail.map((s) => s.href)).toStrictEqual([
       "/jira/APP-42",
       `${base}/t/${T1}`,
-      `${base}/t/${T1}`,
+      `${base}/t/${T1}?v=2`,
       `${base}/w/task-add-login-2`,
       `${base}/w/task-add-login-2`,
       `${base}/w/task-add-login-2/runtime`,
-      `${base}/w/task-add-login-2/s/ses_2`,
+      // Sessions have no page: the step opens the task's Conversation tab.
+      `${base}/t/${T1}?v=2`,
     ]);
     expect(p.trail[4].id).toBe(String(worktree.id));
     expect(lines(p.ledTo)).toStrictEqual([
@@ -240,5 +241,15 @@ describe("ProvenanceStore", () => {
     expect(() => provenance.of("session", "nope")).toThrow(NotFoundError);
     expect(() => provenance.of("worktree", "999")).toThrow(NotFoundError);
     expect(() => provenance.of("variant", "garbage")).toThrow(NotFoundError);
+  });
+
+  it("ends a variant's trail at the branch it works on, for the task page's breadcrumb", () => {
+    const { provenance } = setup();
+    expect(lines(provenance.of("variant", `${T1}/2`).trail)).toStrictEqual([
+      "ticket APP-42",
+      "task Add login",
+      "variant Variant 2 (opus)",
+      "branch task/add-login-2",
+    ]);
   });
 });

@@ -154,7 +154,7 @@ describe("cleanup selection", () => {
       "discards uncommitted changes in wip",
       "deletes sq, whose upstream is gone but which may not be merged",
       "stops and removes the running container busy",
-      "deletes the session Old chat, idle for 45 days",
+      "deletes the conversation Old chat, idle for 45 days",
     ]);
   });
 

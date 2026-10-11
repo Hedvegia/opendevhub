@@ -21,17 +21,32 @@ export const ContainerError = meta.story({
   parameters: { route: "/p/ml-pipeline" },
 });
 
-/** A task's hub: its variants, reviews and activity. */
+/** A task with two variants: the variant switcher above its tabs, on variant 1's conversation. */
 export const Task = meta.story({
   parameters: { route: "/p/billing-api/t/tsk_round" },
 });
 
-/** Two variants of one task side by side, in the hub's Compare tab. */
-export const TaskCompare = meta.story({
-  parameters: { route: "/p/billing-api/t/tsk_round?tab=compare" },
+/** A task's worktree changes: changed files, diffs, checks and the commit / publish actions. */
+export const TaskChanges = meta.story({
+  parameters: { route: "/p/acme-web/t/tsk_rate/changes" },
 });
 
-/** A session started on its own: one row, no comparison. */
+/** Variant 2's changes; switching variants keeps the tab. */
+export const TaskVariantChanges = meta.story({
+  parameters: { route: "/p/billing-api/t/tsk_round/changes?v=2" },
+});
+
+/** Two variants of one task side by side, in the Compare tab. */
+export const TaskCompare = meta.story({
+  parameters: { route: "/p/billing-api/t/tsk_round/compare" },
+});
+
+/** A task's terminal and runtime, from its variant's worktree. */
+export const TaskRuntime = meta.story({
+  parameters: { route: "/p/acme-web/t/tsk_rate/runtime" },
+});
+
+/** A conversation started on its own: no variant switcher, no Compare tab. */
 export const ManualTask = meta.story({
   parameters: { route: "/p/acme-web/t/tsk_dark" },
 });
@@ -41,7 +56,10 @@ export const TaskStarting = meta.story({
   parameters: { route: "/p/acme-web/t/tsk_search" },
 });
 
-/** A task started from a Jira ticket, with the ticket's status and the pull request its variant was published as. */
+/**
+ * A task started from a Jira ticket, with the ticket's status and the pull request its variant was published as; its
+ * Conversation tab waits on a permission.
+ */
 export const TaskFromTicket = meta.story({
   parameters: { route: "/p/acme-web/t/tsk_rate" },
 });

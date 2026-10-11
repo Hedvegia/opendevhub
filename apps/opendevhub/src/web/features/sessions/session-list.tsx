@@ -26,11 +26,7 @@ import { useDash } from "../../dashboard-context";
 import { openUrlOf, worktreeLabel } from "../../derive";
 import type { SessionEntry } from "../../derive";
 import { Link } from "../../routing";
-import {
-  checkoutOf,
-  checkoutPath,
-  sessionPagePath,
-} from "../checkouts/checkouts";
+import { checkoutOf, checkoutPath, sessionPath } from "../checkouts/checkouts";
 import { taskChip } from "../tasks/tasks";
 import { PendingStack } from "./pending-cards";
 
@@ -53,14 +49,14 @@ export const SessionRow = (props: {
   const waiting =
     session.status === "needs-permission" || session.status === "needs-answer";
   const remove = async () => {
-    const title = session.title || "Untitled session";
+    const title = session.title || "Untitled conversation";
     const stop = session.status === "idle" ? "" : " It is stopped first.";
     if (
       !(await confirm({
         confirmLabel: "Remove",
         description: `It is deleted in opencode with its subagents.${stop} This can't be undone.`,
         destructive: true,
-        title: `Remove the session ${title}?`,
+        title: `Remove the conversation ${title}?`,
       }))
     ) {
       return;
@@ -70,7 +66,7 @@ export const SessionRow = (props: {
       .catch(report)
       .finally(() => setRemoving(false));
   };
-  const title = session.title || "Untitled session";
+  const title = session.title || "Untitled conversation";
   const chips = props.task || worktree;
   const projectLink = project && (
     <Link
@@ -186,7 +182,7 @@ export const SessionRow = (props: {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem variant="destructive" onSelect={remove}>
-              <Trash2Icon /> Remove session…
+              <Trash2Icon /> Remove conversation…
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -201,14 +197,6 @@ const checkoutTo = (
 ): string | undefined => {
   const c = checkoutOf(view, directory);
   return c ? checkoutPath(view.project.id, c.target) : undefined;
-};
-
-const sessionTo = (
-  view: SessionEntry["view"],
-  session: SessionSummary
-): string | undefined => {
-  const c = checkoutOf(view, session.directory);
-  return c ? sessionPagePath(view.project.id, c.target, session.id) : undefined;
 };
 
 export const SessionList = (props: {
@@ -238,7 +226,7 @@ export const SessionList = (props: {
                 (props.showMain ? "main" : undefined))
           }
           worktreeTo={checkoutTo(view, session.directory)}
-          to={sessionTo(view, session)}
+          to={sessionPath(view, session)}
           highlighted={session.id === props.highlight}
           task={taskChip(view, session)}
         />

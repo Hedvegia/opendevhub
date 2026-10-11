@@ -60,7 +60,7 @@ import { ReviewSkeleton } from "../../components/skeletons";
 import { Tip } from "../../components/tip";
 import { workspaceFolderOf } from "../../derive";
 import { useNavigate } from "../../routing";
-import { useCheckout } from "../checkouts/checkout-page";
+import { useCheckoutContext } from "../checkouts/checkout-context";
 import { fixPrompt, publishWarning, STATE_LABEL } from "../checks/checks";
 import { ChecksIcon, ChecksPanel, useChecks } from "../checks/checks-panel";
 import { JiraSourceCard } from "../jira/jira-source-card";
@@ -104,10 +104,13 @@ const ReviewTarget = ({
   view,
   directory,
   target,
+  sessionId,
 }: {
   view: ProjectView;
   directory: string;
   target: string;
+  /** The conversation comments go to unless the user picks another; else the latest in the checkout. */
+  sessionId?: string;
 }) => {
   const navigate = useNavigate();
   const projectId = view.project.id;
@@ -195,7 +198,8 @@ const ReviewTarget = ({
     }
   }
   const [sessionChoice, setSessionChoice] = useState("");
-  const chosen = sessionChoice || sessions[0]?.id || "new";
+  const preferred = sessions.find((s) => s.id === sessionId) ?? sessions[0];
+  const chosen = sessionChoice || preferred?.id || "new";
 
   const deliver = (text: string) =>
     chosen === "new"
@@ -738,7 +742,7 @@ const ReviewTarget = ({
               label: `${s.title}${s.status === "running" ? " (working, queued)" : ""}`,
               value: s.id,
             })),
-            { label: "New session", value: "new" },
+            { label: "New conversation", value: "new" },
           ]}
           session={chosen}
           busy={!!busy}
@@ -816,7 +820,7 @@ const ReviewTarget = ({
 };
 
 export const ProjectReview = () => {
-  const { view, checkout } = useCheckout();
+  const { view, checkout, sessionId } = useCheckoutContext();
   const ready =
     view.runtime.containerState === "running" &&
     view.runtime.opencode === "healthy";
@@ -835,6 +839,7 @@ export const ProjectReview = () => {
       view={view}
       directory={checkout.directory}
       target={checkout.target}
+      sessionId={sessionId}
     />
   );
 };

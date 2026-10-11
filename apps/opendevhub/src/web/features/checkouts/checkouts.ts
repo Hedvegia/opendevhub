@@ -6,6 +6,8 @@ import type {
   TaskState,
   Worktree,
 } from "../../../shared/types";
+import { taskHref } from "../../../shared/urls";
+import type { TaskTab } from "../../../shared/urls";
 import {
   envOfDirectory,
   envTone,
@@ -63,29 +65,28 @@ export const checkoutPath = (
   return tab ? `${base}/${tab}` : base;
 };
 
-/** A session's own page in its checkout. */
-export const sessionPagePath = (
-  projectId: string,
-  target: string,
-  sessionId: string
-): string =>
-  `${checkoutPath(projectId, target)}/s/${encodeURIComponent(sessionId)}`;
-
-/** Where a session lives: its page in its checkout, or the project overview when the checkout is unknown. */
+/**
+ * Where a session lives: its task's Conversation tab with its variant selected (and the session as the thread when it
+ * isn't the variant's own), else its checkout's page while the session has no task yet, else the project overview.
+ */
 export const sessionPath = (
   view: ProjectView,
   session: SessionSummary
 ): string => {
+  const ref = session.task;
+  if (ref) {
+    const own = view.tasks
+      .find((t) => t.id === ref.id)
+      ?.variants.find((v) => v.n === ref.n)?.sessionId;
+    return taskHref(view.project.id, ref.id, {
+      v: ref.n,
+      ...(own && own !== session.id ? { thread: session.id } : {}),
+    });
+  }
   const c = checkoutOf(view, session.directory);
   return c
-    ? sessionPagePath(view.project.id, c.target, session.id)
+    ? checkoutPath(view.project.id, c.target)
     : `/p/${encodeURIComponent(view.project.id)}?session=${encodeURIComponent(session.id)}`;
-};
-
-/** Sessions in no known checkout, e.g. one whose worktree was removed. */
-export const orphanSessions = (view: ProjectView): SessionSummary[] => {
-  const dirs = new Set(checkouts(view).map((c) => c.directory));
-  return view.sessions.filter((s) => !dirs.has(s.directory));
 };
 
 export const checkoutCounts = (
@@ -139,25 +140,25 @@ export interface ProjectTask {
   attention: boolean;
   running: boolean;
   updatedAt: number;
+  /** The variant whose conversation waits on the user, which its link selects. */
+  waiting?: number;
+  /** A manual task whose session was found in opencode rather than started by opendevhub. */
+  adopted?: true;
+  /** The checkouts its sessions run in. */
+  directories: string[];
 }
 
-/**
- * The tasks the overview lists: tasks with several variants (they span worktrees, so they live at project level),
- * tasks still being set up, and ended tasks of any kind, waiting to be archived. Most recent first. A running task
- * with one variant shows as its session, in its checkout.
- */
+/** Every task of the project, most recent first. */
 export const projectTasks = (view: ProjectView): ProjectTask[] =>
   view.tasks
-    .filter(
-      (t) =>
-        t.state !== "running" || (t.kind === "task" && t.variants.length > 1)
-    )
-    .map((t) => {
+    .map((t): ProjectTask => {
       const sessions = view.sessions.filter((s) => s.task?.id === t.id);
+      const waiting = sessions.find((s) => needsAttention(s.status))?.task?.n;
       return {
         attention:
-          sessions.some((s) => needsAttention(s.status)) ||
+          waiting !== undefined ||
           t.variants.some((v) => v.step === "failed" && !v.discarded),
+        directories: [...new Set(sessions.map((s) => s.directory))],
         kind: t.kind,
         running:
           t.state === "starting" ||
@@ -167,9 +168,24 @@ export const projectTasks = (view: ProjectView): ProjectTask[] =>
         title: t.title,
         updatedAt: Math.max(t.createdAt, ...sessions.map((s) => s.updatedAt)),
         variants: t.variants.length,
+        ...(waiting === undefined ? {} : { waiting }),
+        ...(t.kind === "manual" && sessions.some((s) => s.task?.adopted)
+          ? { adopted: true as const }
+          : {}),
       };
     })
     .toSorted((a, b) => b.updatedAt - a.updatedAt);
+
+/** The tasks whose conversations run in a checkout, most recent first. */
+export const checkoutTasks = (
+  view: ProjectView,
+  directory: string
+): ProjectTask[] =>
+  projectTasks(view).filter((t) => t.directories.includes(directory));
+
+/** The checkouts with a page of their own: the main checkout and the worktrees no (listed) task variant created. */
+export const standaloneCheckouts = (view: ProjectView): Checkout[] =>
+  checkouts(view).filter((c) => !worktreeRedirect(view, c));
 
 /** Where the project tabs of earlier versions went. */
 export const legacyPath = (
@@ -185,4 +201,95 @@ export const legacyPath = (
     target,
     tab === "review" ? "review" : "runtime"
   );
+};
+
+/** The checkout tabs a worktree created by a task maps to on the task page; `review` became Changes. */
+const TASK_TAB_OF: Record<string, TaskTab> = {
+  "": "conversation",
+  review: "changes",
+  runtime: "runtime",
+  terminal: "terminal",
+};
+
+/**
+ * Where a worktree page goes when a task variant created the worktree: that task, with the variant selected, on the
+ * matching tab. Undefined for the main checkout and worktrees no (listed) task created, which keep their own page.
+ */
+export const worktreeRedirect = (
+  view: ProjectView,
+  checkout: Checkout,
+  tab = ""
+): string | undefined => {
+  const creator = checkout.worktree?.createdBy;
+  if (creator?.by !== "variant" || !(tab in TASK_TAB_OF)) {
+    return undefined;
+  }
+  if (!view.tasks.some((t) => t.id === creator.task)) {
+    return undefined;
+  }
+  return taskHref(view.project.id, creator.task, {
+    tab: TASK_TAB_OF[tab],
+    v: creator.n,
+  });
+};
+
+/**
+ * Where an old session page (`…/s/:session`) goes: the session's task with its variant (and the session as the thread
+ * when it isn't the variant's own), found from the session or, once it is gone, from the variant that ran it; else the
+ * checkout's page.
+ */
+export const sessionRedirect = (
+  view: ProjectView,
+  target: string,
+  sessionId: string
+): string => {
+  const session = view.sessions.find((s) => s.id === sessionId);
+  if (session?.task) {
+    return sessionPath(view, session);
+  }
+  for (const t of view.tasks) {
+    const v = t.variants.find((x) => x.sessionId === sessionId);
+    if (v) {
+      return taskHref(view.project.id, t.id, { v: v.n });
+    }
+  }
+  return checkoutPath(view.project.id, target);
+};
+
+/** The Tasks page's filters: what needs the user, and each state. */
+export type TaskFilter = "all" | "attention" | "running" | "idle" | "ended";
+
+export const matchesTaskFilter = (t: ProjectTask, f: TaskFilter): boolean => {
+  const ended = t.state === "ended";
+  switch (f) {
+    case "all": {
+      return true;
+    }
+    case "attention": {
+      return t.attention && !ended;
+    }
+    case "running": {
+      return t.running && !t.attention && !ended;
+    }
+    case "idle": {
+      return !t.running && !t.attention && !ended;
+    }
+    case "ended": {
+      return ended;
+    }
+    default: {
+      return false;
+    }
+  }
+};
+
+/** Where the old Sessions page's `status` filter goes on the Tasks page. */
+export const tasksPathFromSessions = (status: string | undefined): string => {
+  let filter: TaskFilter | undefined;
+  if (status === "running" || status === "idle" || status === "attention") {
+    filter = status;
+  } else if (status?.startsWith("needs-")) {
+    filter = "attention";
+  }
+  return filter ? `/tasks?status=${filter}` : "/tasks";
 };

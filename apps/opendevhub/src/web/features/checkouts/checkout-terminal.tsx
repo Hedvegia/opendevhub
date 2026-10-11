@@ -5,11 +5,11 @@ import { useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { Button } from "@/components/ui/button";
 
-import { useCheckout } from "./checkout-page";
+import { useCheckoutContext } from "./checkout-context";
 import { checkoutRuntime } from "./checkouts";
 
 export const CheckoutTerminal = () => {
-  const { view, checkout } = useCheckout();
+  const { view, checkout } = useCheckoutContext();
   return (
     <TerminalPanel
       key={`${view.project.id}:${checkout.directory}`}

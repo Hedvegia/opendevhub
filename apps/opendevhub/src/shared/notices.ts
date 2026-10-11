@@ -3,6 +3,7 @@ import type {
   PendingPermission,
   SessionSummary,
 } from "./types";
+import { taskHref } from "./urls";
 
 /** Something worth a notification, computed on the server and delivered by Web Push. */
 export interface Notice {
@@ -10,7 +11,7 @@ export interface Notice {
   tag: string;
   title: string;
   body: string;
-  /** Dashboard path: /p/<projectId>?session=<sessionId>. */
+  /** Dashboard path: the session's task, else /p/<projectId>?session=<sessionId> until it has one. */
   url: string;
   projectId: string;
   sessionId: string;
@@ -65,7 +66,9 @@ export const diffForNotifications = (
         body: s.title,
         projectId: view.project.id,
         sessionId: s.id,
-        url: `/p/${encodeURIComponent(view.project.id)}?session=${encodeURIComponent(s.id)}`,
+        url: s.task
+          ? taskHref(view.project.id, s.task.id, { v: s.task.n })
+          : `/p/${encodeURIComponent(view.project.id)}?session=${encodeURIComponent(s.id)}`,
       };
       for (const p of s.pending?.permissions ?? []) {
         const tag = `perm:${p.id}`;

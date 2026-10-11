@@ -151,7 +151,7 @@ export const CleanupPage = () => {
   const header = (
     <PageHeader
       title="Cleanup"
-      description="Merged branches with their worktrees, stale sessions, containers opendevhub no longer needs, and unused images. Nothing is removed until you confirm."
+      description="Merged branches with their worktrees, stale conversations, containers opendevhub no longer needs, and unused images. Nothing is removed until you confirm."
       actions={
         <>
           {plan && (
@@ -310,8 +310,8 @@ export const CleanupPage = () => {
           </Section>
 
           <Section
-            title="Sessions"
-            hint="discarded task variants, sessions of removed worktrees, and ones idle for 30 days"
+            title="Conversations"
+            hint="discarded task variants, conversations of removed worktrees, and ones idle for 30 days"
             action={selectAll("session")}
           >
             {sessions.length === 0 && (
@@ -476,7 +476,7 @@ export const CleanupPage = () => {
               Clean up {selectionSummary(plan, selected)}?
             </DialogTitle>
             <DialogDescription>
-              Branches are deleted locally only. Sessions are deleted in
+              Branches are deleted locally only. Conversations are deleted in
               opencode with their subagents. This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>

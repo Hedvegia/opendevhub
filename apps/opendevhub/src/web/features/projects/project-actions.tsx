@@ -141,7 +141,7 @@ export const AllContainersMenu = ({ view }: { view: ProjectView }) => {
             if (
               await confirm({
                 confirmLabel: "Rebuild",
-                description: "Running sessions will be interrupted.",
+                description: "Running conversations will be interrupted.",
                 title: `Rebuild all ${count} containers of ${view.project.name}?`,
               })
             ) {

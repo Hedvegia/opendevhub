@@ -83,7 +83,7 @@ export const riskyNotes = (
         return `stops and removes the running container ${i.name ?? i.containerId}`;
       }
       if (i.kind === "session") {
-        return `deletes the session ${i.title}, ${i.reason}`;
+        return `deletes the conversation ${i.title}, ${i.reason}`;
       }
       if (i.kind === "task") {
         return `archives the task ${i.title}`;

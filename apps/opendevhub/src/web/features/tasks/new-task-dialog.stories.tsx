@@ -10,7 +10,7 @@ import { mockApi } from "../../mocks/story";
 import { NewTaskDialog } from "./new-task-dialog";
 
 /** Opens the dialog the way the "New task" button does. */
-const OpenNewTask = (props: { projectId?: string; draft?: NewTaskDraft }) => {
+const OpenNewTask = (props: { projectId: string; draft?: NewTaskDraft }) => {
   const { newTask } = useDash();
   const { projectId, draft } = props;
   useEffect(() => newTask(projectId, draft), [newTask, projectId, draft]);

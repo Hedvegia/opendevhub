@@ -16,6 +16,7 @@ import {
   modelFromKey,
   modelKey,
   opensNewTask,
+  newTaskShortcut,
   pickPrompts,
   projectIdFromPath,
   specUnavailable,
@@ -26,7 +27,12 @@ import {
   taskDestination,
   taskFailures,
   taskSessions,
+  taskTabs,
   variantName,
+  conversationThreads,
+  defaultVariant,
+  selectedVariant,
+  switchableVariants,
 } from "../../../../src/web/features/tasks/tasks";
 
 /** A session's reference to variant `n` of a task. */
@@ -108,7 +114,7 @@ describe("task sessions", () => {
     expect(variantName(taskSessions(v, "tsk_1")[1])).toBe("#3");
   });
 
-  it("shows a created-by chip linking to the task page, for manual sessions too unless found outside opendevhub", () => {
+  it("shows a created-by chip linking to the task page, for manual conversations too, saying when one started in opencode", () => {
     const v = view(
       [],
       [
@@ -143,8 +149,9 @@ describe("task sessions", () => {
         })
       )
     ).toStrictEqual({
-      label: "outside opendevhub",
+      label: "started in opencode",
       title: "Found in opencode; started outside opendevhub",
+      to: "/p/p%201/t/tsk_man",
     });
     expect(
       taskChip(
@@ -207,13 +214,13 @@ describe("formatting", () => {
 });
 
 describe("after starting a task", () => {
-  it("goes to the session for one variant and to the task page for several", () => {
+  it("goes to the task page once a variant started", () => {
     expect(
       taskDestination("p 1", {
         task: "tsk_1",
         variants: [{ directory: "/w", sessionId: "ses_1" }],
       })
-    ).toBe("/p/p%201?session=ses_1");
+    ).toBe("/p/p%201/t/tsk_1");
     expect(
       taskDestination("p", {
         task: "tsk_1",
@@ -250,7 +257,7 @@ describe("after starting a task", () => {
         task: "tsk_1",
         variants: [{ sessionId: "ses_1", error: "prompt failed" }],
       })
-    ).toBe("/p/p?session=ses_1");
+    ).toBe("/p/p/t/tsk_1");
     expect(
       taskFailures({
         task: "tsk_1",
@@ -340,7 +347,7 @@ describe("picking a variant", () => {
   it("asks to discard, then to remove worktrees, naming the ones with changes", () => {
     expect(pickPrompts("claude", 1, [])).toStrictEqual({
       discard:
-        "Keep claude and discard the other variant? It disappears from the dashboard; its session stays in opencode.",
+        "Keep claude and discard the other variant? It disappears from the dashboard; its conversation stays in opencode.",
     });
     const p = pickPrompts("#2", 2, [
       { name: "fix-a", dirty: true },
@@ -401,7 +408,7 @@ describe("starting tasks", () => {
     expect(startStepLabel("worktree")).toBe("Creating the worktree");
     expect(startStepLabel("image")).toBe("Preparing the image");
     expect(startStepLabel("container")).toBe("Starting the container");
-    expect(startStepLabel("session")).toBe("Starting the session");
+    expect(startStepLabel("session")).toBe("Starting the conversation");
     expect(startStepLabel("failed")).toBe("Failed");
   });
 
@@ -463,5 +470,101 @@ describe(specUnavailable, () => {
       /opsx-update/u
     );
     expect(specUnavailable({ missing: [], cli: false })).toMatch(/CLI/u);
+  });
+});
+
+describe("task page", () => {
+  it("selects the picked variant, else the first not discarded, else the first", () => {
+    expect(defaultVariant(task("t", [{}, {}, { picked: true }]))?.n).toBe(3);
+    expect(defaultVariant(task("t", [{ discarded: true }, {}, {}]))?.n).toBe(2);
+    expect(
+      defaultVariant(task("t", [{ discarded: true }, { discarded: true }]))?.n
+    ).toBe(1);
+  });
+
+  it("selects the variant `v` names, falling back to the default", () => {
+    const t = task("t", [{}, {}, { picked: true }]);
+    expect(selectedVariant(t, "1")?.n).toBe(1);
+    expect(selectedVariant(t, "9")?.n).toBe(3);
+    expect(selectedVariant(t, null)?.n).toBe(3);
+  });
+
+  it("offers the variants not discarded, keeping a discarded one that is selected", () => {
+    const t = task("t", [{}, { discarded: true }, {}]);
+    expect(switchableVariants(t, t.variants[0]).map((v) => v.n)).toStrictEqual([
+      1, 3,
+    ]);
+    expect(switchableVariants(t, t.variants[1]).map((v) => v.n)).toStrictEqual([
+      1, 2, 3,
+    ]);
+  });
+
+  it("shows Compare for two or more live variants and Spec for spec-first tasks", () => {
+    const base = ["conversation", "changes", "terminal", "runtime"];
+    expect(taskTabs(task("t", [{}]))).toStrictEqual(base);
+    expect(taskTabs(task("t", [{}, { discarded: true }]))).toStrictEqual(base);
+    expect(taskTabs(task("t", [{}, {}]))).toStrictEqual([...base, "compare"]);
+    expect(taskTabs(task("t", [{}], { kind: "manual" }))).toStrictEqual(base);
+    expect(
+      taskTabs(task("t", [{}, {}], { spec: { first: true } }))
+    ).toStrictEqual([...base, "spec", "compare"]);
+  });
+
+  it("lists the conversations in the variant's checkout, its own first, then newest first", () => {
+    const v = view(
+      [
+        session("other-env", wt("a"), { envId: "env-2", updatedAt: 9 }),
+        session("old", wt("a"), { updatedAt: 2 }),
+        session("own", wt("a"), { task: ref(1), updatedAt: 1 }),
+        session("new", wt("a"), { updatedAt: 5 }),
+        session("elsewhere", wt("b"), { updatedAt: 7 }),
+      ],
+      [task("tsk_1", [{ directory: wt("a"), sessionId: "own" }])]
+    );
+    expect(
+      conversationThreads(v, v.tasks[0].variants[0]).map((s) => s.id)
+    ).toStrictEqual(["own", "new", "old"]);
+  });
+
+  it("still lists the checkout's other conversations when the variant's own is gone", () => {
+    const v = view([session("new", wt("a"))]);
+    expect(
+      conversationThreads(v, {
+        directory: wt("a"),
+        envId: "p 1",
+        n: 1,
+        sessionId: "gone",
+        sessionRemoved: true,
+        step: "session",
+      }).map((s) => s.id)
+    ).toStrictEqual(["new"]);
+  });
+});
+
+describe(newTaskShortcut, () => {
+  const n = {
+    altKey: false,
+    ctrlKey: false,
+    key: "n",
+    metaKey: false,
+    target: null,
+  };
+
+  it("opens nothing outside a project", () => {
+    expect(newTaskShortcut(n, "/")).toBeUndefined();
+    expect(newTaskShortcut(n, "/tasks")).toBeUndefined();
+    expect(newTaskShortcut(n, "/jira/APP-42")).toBeUndefined();
+  });
+
+  it("opens New task for the project whose page is open", () => {
+    expect(newTaskShortcut(n, "/p/app")).toBe("app");
+    expect(newTaskShortcut(n, "/p/app/t/abc/changes")).toBe("app");
+    expect(newTaskShortcut(n, "/p/my%20app/w/feat")).toBe("my app");
+  });
+
+  it("ignores n while typing", () => {
+    expect(
+      newTaskShortcut({ ...n, target: { tagName: "INPUT" } }, "/p/app")
+    ).toBeUndefined();
   });
 });

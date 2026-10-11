@@ -89,7 +89,7 @@ export const NotificationSettings = () => {
     <>
       <SettingsHeader
         title="Notifications"
-        description="Hear about sessions that need you, even with no opendevhub tab open."
+        description="Hear about conversations that need you, even with no opendevhub tab open."
       />
       <SettingsBlock
         title="Browser notifications"

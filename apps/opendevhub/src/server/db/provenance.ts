@@ -4,6 +4,7 @@ import type {
   ProvenanceStep,
 } from "../../shared/activity";
 import type { ModelRef } from "../../shared/types";
+import { taskHref } from "../../shared/urls";
 import { NotFoundError } from "../errors";
 import type { Db } from "./database";
 
@@ -184,11 +185,18 @@ export class ProvenanceStore {
         return this.taskTrail(this.task(id), seen);
       }
       case "variant": {
+        // A task page's breadcrumb: up to the variant, then the branch it works on.
         const slash = id.lastIndexOf("/");
-        return this.variantTrail(
-          this.variant(id.slice(0, slash), Number(id.slice(slash + 1))),
-          seen
-        );
+        const v = this.variant(id.slice(0, slash), Number(id.slice(slash + 1)));
+        const branch =
+          v.branch_id ??
+          (v.worktree_id === null
+            ? null
+            : this.worktree(v.worktree_id).branch_id);
+        return [
+          ...this.variantTrail(v, seen),
+          ...(branch === null ? [] : [this.branchStep(this.branch(branch))]),
+        ];
       }
       case "branch": {
         return this.branchTrail(this.branch(Number(id)), seen);
@@ -336,7 +344,7 @@ export class ProvenanceStore {
       ...(branch === null ? [] : [this.branchStep(this.branch(branch))]),
       ...(worktree ? [this.worktreeStep(worktree)] : []),
       ...(env?.kind === "task" ? [this.environmentStep(env)] : []),
-      this.sessionStep(v, task, worktree),
+      this.sessionStep(v, task),
     ];
   }
 
@@ -448,7 +456,7 @@ export class ProvenanceStore {
       t.id,
       t.title || (t.kind === "review" ? "Review" : "Task"),
       {
-        href: `${projectPath(t.project_id)}/t/${enc(t.id)}`,
+        href: taskHref(t.project_id, t.id),
         removed: t.archived_at !== null,
       }
     );
@@ -461,7 +469,7 @@ export class ProvenanceStore {
       `${v.task_id}/${v.n}`,
       `Variant ${v.n}${model ? ` (${model})` : ""}`,
       {
-        href: `${projectPath(t.project_id)}/t/${enc(t.id)}`,
+        href: taskHref(t.project_id, t.id, { v: v.n }),
         removed: v.discarded_at !== null,
       }
     );
@@ -504,22 +512,15 @@ export class ProvenanceStore {
     );
   }
 
-  private sessionStep(
-    v: VariantRow,
-    t: TaskRow,
-    worktree: WorktreeRow | undefined
-  ): ProvenanceStep {
-    const checkout =
-      worktree && worktree.removed_at === null
-        ? worktreePath(worktree)
-        : `${projectPath(t.project_id)}/main`;
+  /** Sessions have no page of their own: the step opens its task's Conversation tab with its variant selected. */
+  private sessionStep(v: VariantRow, t: TaskRow): ProvenanceStep {
     const id = v.session_id ?? "";
     return step(
       "session",
       id,
-      t.kind === "task" ? "Session" : t.title || "Session",
+      t.kind === "task" ? "Conversation" : t.title || "Conversation",
       {
-        href: `${checkout}/s/${enc(id)}`,
+        href: taskHref(t.project_id, t.id, { v: v.n }),
         removed: v.session_removed_at !== null,
       }
     );

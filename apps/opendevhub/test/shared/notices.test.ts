@@ -11,6 +11,7 @@ import type {
 
 interface S {
   status: SessionStatus;
+  task?: SessionSummary["task"];
   permissions?: PendingPermission[];
   forms?: PendingForm[];
 }
@@ -43,6 +44,7 @@ function snap(sessions: Record<string, S>): DashboardSnapshot {
           directory: "/w",
           updatedAt: 1,
           status: s.status,
+          ...(s.task ? { task: s.task } : {}),
           ...(s.permissions || s.forms
             ? {
                 pending: {
@@ -200,5 +202,14 @@ describe(diffForNotifications, () => {
       url: "/p/p?session=root",
       permission: { requestId: "r9" },
     });
+  });
+
+  it("opens the session's task on its Conversation tab with its variant", () => {
+    const task = { discarded: false, id: "abc", kind: "task" as const, n: 2 };
+    const [notice] = diffForNotifications(
+      snap({ a: { status: "running", task } }),
+      snap({ a: { status: "idle", task } })
+    );
+    expect(notice).toMatchObject({ url: "/p/p/t/abc?v=2" });
   });
 });

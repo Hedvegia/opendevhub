@@ -3,6 +3,7 @@ import { useParams } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  ChevronDownIcon,
   ExternalLinkIcon,
   KanbanIcon,
   ListIcon,
@@ -16,6 +17,13 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -645,6 +653,50 @@ export const JiraPage = () => {
   );
 };
 
+/** Starts a task from the ticket: the project first (a plain button when there is one), then the New task dialog. */
+const StartTask = (props: {
+  label: string;
+  primary: boolean;
+  disabled: boolean;
+  onStart: (projectId: string) => void;
+}) => {
+  const { snapshot } = useDash();
+  const projects = (snapshot?.projects ?? [])
+    .map((v) => v.project)
+    .toSorted((a, b) => a.name.localeCompare(b.name));
+  const variant = props.primary ? "default" : "outline";
+  if (projects.length <= 1) {
+    return (
+      <Button
+        size="sm"
+        variant={variant}
+        disabled={props.disabled || projects.length === 0}
+        title={projects.length === 0 ? "Add a project first" : undefined}
+        onClick={() => projects[0] && props.onStart(projects[0].id)}
+      >
+        <PlusIcon /> {props.label}
+      </Button>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant={variant} disabled={props.disabled}>
+          <PlusIcon /> {props.label} <ChevronDownIcon />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>In which project?</DropdownMenuLabel>
+        {projects.map((p) => (
+          <DropdownMenuItem key={p.id} onSelect={() => props.onStart(p.id)}>
+            {p.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
 export const JiraTicketPage = () => {
   const { key = "" } = useParams({ strict: false });
   return <TicketDetails key={key} ticketKey={key} />;
@@ -706,14 +758,12 @@ const TicketDetails = ({ ticketKey }: { ticketKey: string }) => {
               </Button>
             )}
             {source && (
-              <Button
-                size="sm"
-                variant={firstTask ? "outline" : "default"}
+              <StartTask
+                label={firstTask ? "Another task" : "Create task"}
+                primary={!firstTask}
                 disabled={!!tooLarge}
-                onClick={() => newTask(undefined, { jira: source })}
-              >
-                <PlusIcon /> {firstTask ? "Another task" : "Create task"}
-              </Button>
+                onStart={(projectId) => newTask(projectId, { jira: source })}
+              />
             )}
             <Button
               variant="outline"

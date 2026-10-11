@@ -51,7 +51,7 @@ const shots: Shot[] = [
   {
     name: "review",
     ready: "text=MAX_BURST",
-    story: "pages-checkout--review",
+    story: "pages-project--task-changes",
   },
   {
     height: 548,
