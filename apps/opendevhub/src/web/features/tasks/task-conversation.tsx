@@ -6,17 +6,15 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 import type { SessionSummary } from "../../../shared/types";
-import { Empty, muted, Note } from "../../components/page";
+import { Note } from "../../components/page";
 import { SessionBadge } from "../../components/status";
 import { When } from "../../components/when";
 import { Link, useSearchParams } from "../../routing";
-import { checkoutOf, sessionPath } from "../checkouts/checkouts";
-import type { Checkout } from "../checkouts/checkouts";
+import { sessionPath } from "../checkouts/checkouts";
 import { SessionView } from "../sessions/session-page";
 import { useTaskPage } from "./task-context";
-import { conversationThreads, startStepLabel, taskOf } from "./tasks";
-
-const folderName = (path: string) => path.split("/").findLast(Boolean) ?? path;
+import { conversationThreads, taskOf } from "./tasks";
+import { conversationCheckout, VariantWaiting } from "./variant-waiting";
 
 /** The selected variant's conversation, and the other conversations in its checkout as threads (`?thread=`). */
 export const TaskConversation = () => {
@@ -26,14 +24,7 @@ export const TaskConversation = () => {
   const own = threads.find((s) => s.id === variant.sessionId);
   const selected = threads.find((s) => s.id === params.get("thread")) ?? own;
   const others = threads.filter((s) => s.id !== own?.id);
-  // A removed worktree still has turns worth reading; its changes just won't load.
-  const checkout: Checkout | undefined =
-    selected &&
-    (checkoutOf(view, selected.directory) ?? {
-      directory: selected.directory,
-      label: folderName(selected.directory),
-      target: folderName(selected.directory),
-    });
+  const checkout = selected && conversationCheckout(view, selected.directory);
 
   const select = (id: string | undefined) =>
     setParams(
@@ -61,27 +52,8 @@ export const TaskConversation = () => {
         onStarted={select}
       />
     );
-  } else if (variant.sessionId) {
-    body = (
-      <Empty title="Conversation removed">
-        <p className={muted}>
-          This variant&apos;s conversation is gone from opencode.
-          {variant.directory &&
-            checkoutOf(view, variant.directory) &&
-            " Its changes, terminal and runtime are still here."}
-        </p>
-      </Empty>
-    );
   } else {
-    body = (
-      <Empty title="No conversation yet">
-        <p className={muted}>
-          {variant.step === "failed"
-            ? "This variant failed to start."
-            : `${startStepLabel(variant.step)}…`}
-        </p>
-      </Empty>
-    );
+    body = <VariantWaiting view={view} variant={variant} />;
   }
 
   return (

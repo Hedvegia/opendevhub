@@ -10,6 +10,7 @@ import { jiraQueryValues } from "../shared/jira";
 import type { JiraSettingsInput, JiraTicketQuery } from "../shared/jira";
 import type { StackId } from "../shared/stacks";
 import type {
+  ChatStartRequest,
   CheckDef,
   CleanupItem,
   ComposerSendRequest,
@@ -566,6 +567,13 @@ export const sendPrompt = async (
     "send to agent"
   );
 };
+
+/** Starts a chat from Chat's start composer: a task in a new worktree, or a conversation in a checkout. */
+export const startChat = (projectId: string, request: ChatStartRequest) =>
+  read(
+    project.chat.$post({ param: projectParam(projectId), json: request }),
+    "start chat"
+  );
 
 /** Sends what the composer holds; the hub decides whether it's a hub command, an opencode command or a prompt. */
 export const sendComposerMessage = (

@@ -5,6 +5,7 @@ import {
   EraserIcon,
   GitPullRequestIcon,
   LayoutGridIcon,
+  MessageSquareIcon,
   ListIcon,
   TicketIcon,
   PlusIcon,
@@ -197,6 +198,9 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
           <SidebarMenu>
             <NavItem to="/" end>
               <LayoutGridIcon /> Overview
+            </NavItem>
+            <NavItem to="/chat">
+              <MessageSquareIcon /> Chat
             </NavItem>
             <NavItem
               to="/tasks"

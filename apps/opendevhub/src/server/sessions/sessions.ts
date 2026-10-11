@@ -19,12 +19,7 @@ import type { Environments } from "../environments/environments";
 import type { HubDeps } from "../environments/ports";
 import { AlreadyAnsweredError, NotFoundError } from "../errors";
 import { InvalidRequestError } from "../git/worktrees";
-import {
-  OpencodeHttpError,
-  isGone,
-  isInvalidAnswer,
-  toAttachments,
-} from "../opencode/client";
+import { OpencodeHttpError, isGone, isInvalidAnswer } from "../opencode/client";
 import type {
   OpencodeClient,
   PromptAttachments,
@@ -39,13 +34,17 @@ import {
   toBreakdown,
   toSessionTurns,
 } from "./detail";
+import {
+  attachmentsOf,
+  hubCommandOf,
+  resolveMessage,
+  slashOf,
+} from "./message";
 
 const MODELS_TTL_MS = 60_000;
 const MODELS_RETRY_MS = 1500;
 /** At most this many `@` file suggestions per query. */
 export const FILE_SEARCH_LIMIT = 50;
-/** `/name` at the very start of a message, then whitespace or the end; `/etc/hosts` isn't one. */
-const SLASH_COMMAND = /^\/(?<name>[^\s/]+)(?:\s+|$)/u;
 const DECISIONS: readonly string[] = [
   "once",
   "always",
@@ -108,6 +107,51 @@ export class Sessions {
         options.attachments ?? {}
       );
     }
+    this.envs.reconcile(env.id);
+    return session.id;
+  }
+
+  /**
+   * Starts a conversation in a checkout, owned by a manual task, with a composer message as its first turn: a
+   * command the checkout has, or a prompt. The message is resolved first, so that a bad mention starts nothing.
+   * Hub commands are the caller's to refuse.
+   */
+  async startWithMessage(
+    id: ProjectId,
+    directory: string,
+    request: ComposerSendRequest
+  ): Promise<string> {
+    const project = this.envs.requireProject(id);
+    this.envs.checkDirectory(id, directory);
+    const env = this.envs.envForDirectory(project, directory);
+    const client = this.envs.opencodeClient(env.id);
+    const message = await resolveMessage(
+      () => this.checkoutCommands(id, directory),
+      directory,
+      request
+    );
+    const session = await this.createManual(
+      project,
+      env.id,
+      client,
+      directory,
+      undefined
+    );
+    await (message.command
+      ? client.command(
+          session.id,
+          message.command,
+          message.text,
+          directory,
+          message.attachments
+        )
+      : client.prompt(
+          session.id,
+          message.text,
+          undefined,
+          directory,
+          message.attachments
+        ));
     this.envs.reconcile(env.id);
     return session.id;
   }
@@ -304,7 +348,6 @@ export class Sessions {
   ): Promise<ComposerSendResult> {
     this.envs.requireProject(id);
     const { text } = request;
-    const mentions = request.mentions ?? [];
     if (!text.trim()) {
       throw new InvalidRequestError("the message is empty");
     }
@@ -317,23 +360,11 @@ export class Sessions {
     const { directory } = session;
     const envId = session.envId ?? id;
     const client = this.envs.opencodeClient(envId);
-    const attach = (offset = 0) => {
-      try {
-        return toAttachments(directory, text, mentions, offset);
-      } catch (error) {
-        throw new InvalidRequestError(
-          error instanceof Error ? error.message : String(error)
-        );
-      }
-    };
     const queued = session.status === "running";
     const delivery = queued ? ("queue" as const) : undefined;
-    const slash = SLASH_COMMAND.exec(text);
-    const name = slash?.groups?.name;
-    const offset = slash?.[0].length ?? 0;
-    const args = text.slice(offset);
+    const hub = hubCommandOf(text);
 
-    if (name === "interrupt") {
+    if (hub === "interrupt") {
       if (session.status === "idle") {
         throw new InvalidRequestError("the conversation isn't working");
       }
@@ -341,26 +372,43 @@ export class Sessions {
       this.envs.reconcile(envId);
       return { kind: "interrupt" };
     }
-    if (name === "new") {
+    if (hub === "new") {
+      const { offset } = slashOf(text);
       const started = await this.startSession(
         id,
         directory,
         undefined,
-        args.trim() || undefined,
-        { attachments: attach(offset) }
+        text.slice(offset).trim() || undefined,
+        { attachments: attachmentsOf(directory, request, offset) }
       );
       return { kind: "new", sessionId: started };
     }
-    const known = name ? await this.checkoutCommands(id, directory) : [];
-    if (name && known.some((c) => c.name === name)) {
-      await client.command(sessionId, name, args, directory, {
-        ...attach(offset),
-        ...(delivery ? { delivery } : {}),
-      });
+    const message = await resolveMessage(
+      () => this.checkoutCommands(id, directory),
+      directory,
+      request
+    );
+    if (message.command) {
+      await client.command(
+        sessionId,
+        message.command,
+        message.text,
+        directory,
+        {
+          ...message.attachments,
+          ...(delivery ? { delivery } : {}),
+        }
+      );
       this.envs.reconcile(envId);
-      return { kind: "command", name, queued };
+      return { kind: "command", name: message.command, queued };
     }
-    await client.prompt(sessionId, text, delivery, directory, attach());
+    await client.prompt(
+      sessionId,
+      message.text,
+      delivery,
+      directory,
+      message.attachments
+    );
     this.envs.reconcile(envId);
     return { kind: "prompt", queued };
   }

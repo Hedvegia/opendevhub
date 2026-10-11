@@ -9,6 +9,8 @@ import type { AnyRoute, RouterHistory } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
 
+import { ChatStart } from "./features/chat/chat-start";
+import { ChatView } from "./features/chat/chat-view";
 import {
   CheckoutPage,
   CheckoutRuntime,
@@ -161,6 +163,8 @@ const legacyRoute = (path: string, tab: Parameters<typeof legacyPath>[1]) =>
 const routeTree = rootRoute.addChildren([
   shellRoute.addChildren([
     page("/", Overview),
+    page("chat", ChatStart),
+    page("chat/$projectId/$task", ChatView),
     page("tasks", TasksPage),
     // The Sessions page became Tasks; its status filter carries over.
     createRoute({

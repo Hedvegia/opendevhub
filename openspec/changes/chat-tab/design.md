@@ -26,18 +26,18 @@ The pieces are mostly there already:
 
 ## Decisions
 
-### 1. One server route: `POST /p/:project/chat`
+### 1. One server route: `POST /api/projects/:id/chat`
 
 Body: `{ target: { kind: "worktree" } | { kind: "checkout"; directory: string }, message: ComposerSendRequest }`. Result: `{ task: string; sessionId?: string }`.
 
 - `worktree`: build a `TaskRequest` with `where: "worktree"`, one default variant, `prompt: message.text`, the title from `deriveTitle(message.text)`, and the new field `message`. Then call the existing task start. It returns the task id at once, while setup goes on in the background.
-- `checkout`: check that the directory is a checkout of the project, as the composer routes do. Call `startSession(id, directory)` with no prompt, then `sendMessage(id, sessionId, message)`. Return the manual task's id, which `startSession` already creates.
+- `checkout`: check that the directory is a checkout of the project, as the composer routes do. Call `Sessions.startWithMessage(id, directory, message)`: it resolves the message first (so a bad mention starts nothing), creates the conversation and its manual task, and sends the command or prompt to it. Return the manual task's id. (`sendMessage` can't be used here: it looks the session up in the snapshot, which only lists a new session after the next reconcile.)
 
 _Why one route rather than calling `createTask` and `startSession` + `send` from the browser:_ the checkout path would take two round trips, and between them a session exists with no message. The browser also has no task id for the session until the snapshot catches up. On the server, the manual task is known as soon as `startSession` returns, so the route can return it right away.
 
 ### 2. Task first turns accept a composer message
 
-`TaskRequest` gets an optional `message?: ComposerSendRequest`. When it is set, `firstTurn` uses it instead of `prompt`. To keep one source of truth, the part of `sendMessage` that maps `/name` to a command and mentions to attachments is extracted into a shared `resolveMessage(client, directory, request)`. It returns `{ command?, args, attachments }`, and `sendMessage` and `startVariant` both call it. Hub commands (`/new`, `/interrupt`) aren't valid as a first message, so the route rejects them. Unknown `/name` stays a prompt.
+`TaskRequest` gets an optional `message?: ComposerSendRequest`. When it is set, `firstTurn` uses it instead of `prompt`. To keep one source of truth, the part of `sendMessage` that maps `/name` to a command and mentions to attachments is extracted into a shared `resolveMessage(commands, directory, request)` in `server/sessions/message.ts` (`commands` lists the checkout's commands, cached for the composer). It returns `{ command?, text, attachments }`, and `sendMessage`, `startWithMessage` and `startVariant` all call it. Hub commands (`/new`, `/interrupt`) aren't valid as a first message, so the route rejects them. Unknown `/name` stays a prompt.
 
 _Alternative:_ send the message from the browser once the variant's session appears. That fails if the tab is closed during worktree setup, and it duplicates `startVariant`'s claim/attach logic. Rejected.
 

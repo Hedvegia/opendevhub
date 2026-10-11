@@ -22,7 +22,7 @@ import type {
   SessionTurn,
 } from "../../../shared/types";
 import { sessionUrl } from "../../../shared/urls";
-import { fetchSessionDetail } from "../../api";
+import { fetchSessionDetail, sendComposerMessage } from "../../api";
 import { Chip, muted, Section } from "../../components/page";
 import { SessionBadge } from "../../components/status";
 import { Tip } from "../../components/tip";
@@ -150,10 +150,22 @@ export const SessionView = ({
 
       <Composer
         view={view}
-        checkout={checkout}
-        session={session}
+        directory={checkout.directory}
+        checkoutLabel={checkout.worktree?.branch ?? checkout.label}
+        running={running}
+        hubCommands
+        onSend={async (message) => {
+          const result = await sendComposerMessage(
+            projectId,
+            session.id,
+            message
+          );
+          if (result.kind === "new") {
+            onStarted?.(result.sessionId);
+          }
+          return result;
+        }}
         onSent={setNotice}
-        onStarted={onStarted}
       />
 
       <Section

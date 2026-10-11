@@ -455,6 +455,23 @@ export type ComposerSendResult =
   | { kind: "interrupt" }
   | { kind: "new"; sessionId: string };
 
+/** Where a chat runs: a new worktree on the project's defaults, or one of the project's checkouts. */
+export type ChatTarget =
+  | { kind: "worktree" }
+  | { kind: "checkout"; directory: string };
+
+/** `POST …/chat`: the start composer's first message and where it goes. */
+export interface ChatStartRequest {
+  target: ChatTarget;
+  message: ComposerSendRequest;
+}
+
+/** The task the chat belongs to; `sessionId` once its conversation exists (a checkout's, at once). */
+export interface ChatStartResult {
+  task: string;
+  sessionId?: string;
+}
+
 /** OpenSpec's workflow as the project's environment offers it. Spec-first tasks need every command and the CLI. */
 export interface SpecWorkflow {
   /** The `opsx-*` commands a spec-first task needs that opencode doesn't have. */
@@ -546,6 +563,11 @@ export interface TaskRequest {
    * `opsx-apply <change>`, for a change another task proposed and committed on the base.
    */
   spec?: TaskStartSpec;
+  /**
+   * The first turn as the composer sent it (Chat): run like a later message, a `/name` of a command the variant's
+   * checkout has as that command and mentions as attachments. `prompt` is then its text.
+   */
+  message?: ComposerSendRequest;
   variants: TaskVariantSpec[];
 }
 
@@ -554,7 +576,9 @@ export type TaskStartSpec =
   | { phase: "implement"; change: string; proposedIn: string };
 
 /** `POST …/tasks`: spec-first tasks start by proposing; implementing one needs the spec approved first. */
-export type NewTaskBody = Omit<TaskRequest, "spec"> & { spec?: true };
+export type NewTaskBody = Omit<TaskRequest, "spec" | "message"> & {
+  spec?: true;
+};
 
 export interface TaskVariantResult {
   branch?: string;

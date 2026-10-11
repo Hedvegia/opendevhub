@@ -230,6 +230,9 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
           )
         )
     )
+    .post("/api/projects/:id/chat", validateJson(bodies.chat), (c) =>
+      json(c, (id) => hub.chat.start(id, c.req.valid("json")))
+    )
     .get(
       "/api/projects/:id/composer/commands",
       validateQuery(queries.directory),

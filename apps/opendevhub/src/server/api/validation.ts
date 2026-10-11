@@ -47,6 +47,20 @@ const actionFlag = z
   .transform((value) => value === true)
   .optional();
 const directory = z.object({ directory: text });
+const composerSend = z.object({
+  text: z.string().max(100_000),
+  mentions: z
+    .array(
+      z.object({
+        kind: z.enum(["file", "agent"]),
+        start: z.number().int().min(0),
+        end: z.number().int().min(0),
+        name: z.string().min(1).max(4096),
+      })
+    )
+    .max(100)
+    .optional(),
+});
 const aiReview = z.object({
   projectId: z.string(),
   directory: z.string(),
@@ -130,19 +144,13 @@ export const bodies = {
   environment: z.object({ path: text }),
   session: directory.extend({ title: text, prompt: text }),
   prompt: z.object({ text }),
-  composerSend: z.object({
-    text: z.string().max(100_000),
-    mentions: z
-      .array(
-        z.object({
-          kind: z.enum(["file", "agent"]),
-          start: z.number().int().min(0),
-          end: z.number().int().min(0),
-          name: z.string().min(1).max(4096),
-        })
-      )
-      .max(100)
-      .optional(),
+  composerSend,
+  chat: z.object({
+    target: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("worktree") }),
+      z.object({ kind: z.literal("checkout"), directory: z.string().min(1) }),
+    ]),
+    message: composerSend,
   }),
   editor: directory.extend({ editor: text }),
   task: z.object({

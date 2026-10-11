@@ -2,6 +2,8 @@ import { JIRA_KEY } from "../../shared/jira";
 import type { JiraTaskSource } from "../../shared/jira";
 import { MAX_VARIANTS } from "../../shared/tasks";
 import type {
+  ComposerMention,
+  ComposerSendRequest,
   ModelRef,
   ModelsInfo,
   TaskRequest,
@@ -10,6 +12,7 @@ import type {
 import { InvalidRequestError, validateBranch } from "../git/worktrees";
 import { jiraUrl } from "../integrations/jira";
 import type { RawAgent, RawModel } from "../opencode/client";
+import { hubCommandOf } from "../sessions/message";
 
 const PROMPT_MAX = 100_000;
 const TITLE_LIMIT = 200;
@@ -57,6 +60,52 @@ const parseVariant = (value: unknown, n: number): TaskVariantSpec => {
     throw new InvalidRequestError(`variant ${n}: invalid agent`);
   }
   return { ...(model ? { model } : {}), ...(agent ? { agent } : {}) };
+};
+
+const MENTIONS_MAX = 100;
+
+const parseMention = (value: unknown): ComposerMention => {
+  const o = (value && typeof value === "object" ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  const { kind, start, end, name } = o;
+  if (
+    (kind !== "file" && kind !== "agent") ||
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    typeof name !== "string" ||
+    !name
+  ) {
+    throw new InvalidRequestError("invalid mention in the message");
+  }
+  return { end: end as number, kind, name, start: start as number };
+};
+
+/** A composer message as a task's first turn; the hub's own commands need a conversation already. */
+export const parseFirstMessage = (value: unknown): ComposerSendRequest => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new InvalidRequestError("message must be an object");
+  }
+  const o = value as Record<string, unknown>;
+  const text = str(o.text) ?? "";
+  if (!text.trim()) {
+    throw new InvalidRequestError("the message is empty");
+  }
+  const hub = hubCommandOf(text);
+  if (hub) {
+    throw new InvalidRequestError(
+      `/${hub} needs a conversation; it can't start one`
+    );
+  }
+  const raw = o.mentions ?? [];
+  if (!Array.isArray(raw) || raw.length > MENTIONS_MAX) {
+    throw new InvalidRequestError(
+      `mentions must be a list of at most ${MENTIONS_MAX}`
+    );
+  }
+  const mentions = raw.map(parseMention);
+  return { text, ...(mentions.length > 0 ? { mentions } : {}) };
 };
 
 /** Copy only the ticket snapshot fields; never accept credentials or remote HTML. */
@@ -146,6 +195,13 @@ export const parseTaskRequest = (
     throw new InvalidRequestError("spec must be true or false");
   }
   const spec = body.spec === true ? { phase: "propose" as const } : undefined;
+  const message =
+    body.message === undefined ? undefined : parseFirstMessage(body.message);
+  if (message && spec) {
+    throw new InvalidRequestError(
+      "a spec-first task starts with opsx-propose, not a message"
+    );
+  }
   if (where === "workspace") {
     if (environment === "isolated") {
       throw new InvalidRequestError(
@@ -173,6 +229,7 @@ export const parseTaskRequest = (
     ...(branch ? { branch } : {}),
     ...(base ? { base } : {}),
     ...(spec ? { spec } : {}),
+    ...(message ? { message } : {}),
     variants,
   };
 };

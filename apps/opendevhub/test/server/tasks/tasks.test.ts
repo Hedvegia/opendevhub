@@ -114,7 +114,8 @@ describe("tasks", () => {
       "ses_1",
       "Fix the login bug\nIt fails on Safari",
       undefined,
-      dir
+      dir,
+      {}
     );
     expect(monitors.at(-1)!.reconciled).toBeGreaterThan(0);
   });
@@ -409,6 +410,7 @@ describe("tasks", () => {
         "opsx-propose",
         "Add dark mode",
         v.directory,
+        {},
       ])
     );
     expect(client.prompt).not.toHaveBeenCalled();
@@ -418,6 +420,64 @@ describe("tasks", () => {
       { phase: "propose" },
       { phase: "propose" },
     ]);
+  });
+
+  it("runs a first message's command with its mentions resolved in the variant's worktree", async () => {
+    const { hub, client } = await started();
+    client.commands.mockResolvedValue([{ name: "opsx-propose" }]);
+    const text = "/opsx-propose add x @src/a.ts";
+    const result = await hub.tasks.createTask(project.id, {
+      prompt: text,
+      message: {
+        text,
+        mentions: [{ kind: "file", start: 20, end: 29, name: "src/a.ts" }],
+      },
+      environment: "shared",
+    });
+    const [variant] = result.variants;
+    expect(variant.sessionId).toBe("ses_1");
+    expect(client.command.mock.calls).toStrictEqual([
+      [
+        "ses_1",
+        "opsx-propose",
+        "add x @src/a.ts",
+        variant.directory,
+        {
+          files: [
+            {
+              uri: `file://${variant.directory}/src/a.ts`,
+              name: "src/a.ts",
+              mention: { start: 6, end: 15, text: "@src/a.ts" },
+            },
+          ],
+        },
+      ],
+    ]);
+    expect(client.prompt).not.toHaveBeenCalled();
+  });
+
+  it("sends a first message with an unknown /name as a prompt, and refuses the hub's commands", async () => {
+    const { hub, client } = await started();
+    client.commands.mockResolvedValue([{ name: "opsx-propose" }]);
+    const result = await hub.tasks.createTask(project.id, {
+      prompt: "/nope do it",
+      message: { text: "/nope do it" },
+      environment: "shared",
+    });
+    const [variant] = result.variants;
+    expect(client.prompt).toHaveBeenCalledWith(
+      variant.sessionId,
+      "/nope do it",
+      undefined,
+      variant.directory,
+      {}
+    );
+    expect(client.command).not.toHaveBeenCalled();
+    for (const text of ["/new", "/interrupt now"]) {
+      await expect(
+        hub.tasks.createTask(project.id, { prompt: text, message: { text } })
+      ).rejects.toThrow(InvalidRequestError);
+    }
   });
 
   it("starts a task implementing an approved change by running opsx-apply in each variant's worktree", async () => {

@@ -5,6 +5,7 @@ import {
   variantTitle,
 } from "../../shared/tasks";
 import type {
+  ComposerSendRequest,
   EnvWorktree,
   NodeId,
   PickResult,
@@ -28,17 +29,25 @@ import { LOCAL_NODE } from "../nodes/host";
 import type { NodeRepoLayout } from "../nodes/repo";
 import type { OpencodeClient } from "../opencode/client";
 import { TASK_ID, newTaskId } from "../projects/ids";
+import { resolveMessage } from "../sessions/message";
+import type { ResolvedMessage } from "../sessions/message";
 import { APPLY_COMMAND, PROPOSE_COMMAND } from "./openspec";
 import { parseTaskRequest } from "./request";
 
-/** What a variant's session starts with: the prompt, `opsx-propose <prompt>`, or `opsx-apply <change>`. */
-const firstTurn = (req: TaskRequest): { command?: string; text: string } => {
+/** A variant's first turn: an OpenSpec command or the prompt, or a composer message resolved in its checkout. */
+type FirstTurn =
+  | { command?: string; text: string }
+  | { message: ComposerSendRequest };
+
+/** What a variant's session starts with: the prompt, the composer's message, `opsx-propose <prompt>`, or `opsx-apply <change>`. */
+const firstTurn = (req: TaskRequest): FirstTurn => {
   if (req.spec?.phase === "implement") {
     return { command: APPLY_COMMAND, text: req.spec.change };
   }
-  return req.spec
-    ? { command: PROPOSE_COMMAND, text: req.prompt }
-    : { text: req.prompt };
+  if (req.spec) {
+    return { command: PROPOSE_COMMAND, text: req.prompt };
+  }
+  return req.message ? { message: req.message } : { text: req.prompt };
 };
 
 const NO_WORKTREE_MOUNT =
@@ -472,8 +481,8 @@ export class Tasks {
 
   /**
    * Creates a variant's session (recorded on the result and the variant's row at once) and sends its first turn:
-   * the prompt, or for a spec-first variant an OpenSpec command, checked first so that a missing command leaves
-   * no session. The directory is claimed meanwhile, so that reconcile doesn't adopt the session as a manual task.
+   * the prompt, the composer's message (resolved first, so that a bad mention leaves no session), or for a
+   * spec-first variant an OpenSpec command, checked first so that a missing command leaves no session. The directory is claimed meanwhile, so that reconcile doesn't adopt the session as a manual task.
    */
   private async startVariant(
     client: OpencodeClient,
@@ -482,10 +491,18 @@ export class Tasks {
     directory: string,
     title: string,
     v: TaskVariantSpec,
-    turn: { command?: string; text: string }
+    turn: FirstTurn
   ): Promise<void> {
-    const { command } = turn;
-    if (command) {
+    const resolved: ResolvedMessage =
+      "message" in turn
+        ? await resolveMessage(
+            () => client.commands(directory),
+            directory,
+            turn.message
+          )
+        : { attachments: {}, ...turn };
+    const { command } = resolved;
+    if (command && !("message" in turn)) {
       const commands = await client.commands(directory);
       if (!commands.some((c) => c.name === command)) {
         throw new UnavailableError(
@@ -512,9 +529,10 @@ export class Tasks {
       release();
     }
     const { sessionId } = result;
+    const { attachments, text } = resolved;
     await (command
-      ? client.command(sessionId, command, turn.text, directory)
-      : client.prompt(sessionId, turn.text, undefined, directory));
+      ? client.command(sessionId, command, text, directory, attachments)
+      : client.prompt(sessionId, text, undefined, directory, attachments));
   }
 
   private variantFailed(

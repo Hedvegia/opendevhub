@@ -25,6 +25,7 @@ import type { Nodes } from "./nodes/registry";
 import type { Push } from "./notifications/push";
 import type { OnboardingPort } from "./projects/onboarding";
 import type { StateStore } from "./projects/state";
+import type { Chat } from "./sessions/chat";
 import type { Sessions } from "./sessions/sessions";
 import type { UsageStore } from "./sessions/usage";
 import type { Specs } from "./specs/specs";
@@ -32,6 +33,7 @@ import type { Tasks } from "./tasks/tasks";
 
 /** The Hub modules the dashboard routes call. */
 export interface DashboardHub {
+  chat: Pick<Chat, "start">;
   environments: Pick<
     Environments,
     | "start"

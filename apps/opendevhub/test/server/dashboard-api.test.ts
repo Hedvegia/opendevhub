@@ -38,6 +38,8 @@ import type {
   ChecksView,
   CleanupItem,
   CleanupPlan,
+  ChatStartRequest,
+  ChatStartResult,
   CleanupResult,
   ComposerCommand,
   ComposerSendRequest,
@@ -87,6 +89,16 @@ function setup(webDir?: string) {
   store.setProjects([project]);
   store.updateRuntime(project.id, { password: "secret" });
   const hub = {
+    chat: {
+      start: vi.fn(
+        async (
+          _id: string,
+          _req: ChatStartRequest
+        ): Promise<ChatStartResult> => ({
+          task: "tsk_1",
+        })
+      ),
+    },
     environments: {
       createEnv: vi.fn(async (_id: string, _path: string) => ({
         envId: "demo-abc123-x-0a1b",
@@ -1754,6 +1766,29 @@ describe("dashboard API", () => {
         "a"
       );
       expect((await app.request(`${base}/files?${dir}`)).status).toBe(400);
+    });
+
+    it("starts a chat with its target and first message, and refuses a malformed target", async () => {
+      const { app, hub } = setup();
+      const body = {
+        target: { kind: "checkout", directory: "/w" },
+        message: { text: "/opsx-propose add x" },
+      };
+      const res = await post(app, "chat", body);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toStrictEqual({ task: "tsk_1" });
+      expect(hub.chat.start).toHaveBeenCalledWith(project.id, body);
+      expect(
+        (
+          await post(app, "chat", {
+            target: { kind: "checkout" },
+            message: { text: "x" },
+          })
+        ).status
+      ).toBe(400);
+      expect(
+        (await post(app, "chat", { target: { kind: "elsewhere" } })).status
+      ).toBe(400);
     });
 
     it("prompts a session, starts one with a prompt, and removes a worktree with its branch", async () => {

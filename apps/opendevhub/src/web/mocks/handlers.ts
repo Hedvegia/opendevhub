@@ -412,6 +412,9 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
         files: composerFiles.filter((f) => f.includes(query)),
       });
     }),
+    http.post("/api/projects/:id/chat", () =>
+      HttpResponse.json({ task: "tsk_new" })
+    ),
     http.post("/api/projects/:id/sessions/:session/send", () =>
       HttpResponse.json({ kind: "prompt", queued: false })
     ),

@@ -1,7 +1,13 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { BotIcon, FileIcon, SendIcon, SquareSlashIcon } from "lucide-react";
+import {
+  ArrowUpIcon,
+  BotIcon,
+  FileIcon,
+  SendIcon,
+  SquareSlashIcon,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,19 +26,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import type {
+  ComposerSendRequest,
   ComposerSendResult,
   ProjectView,
-  SessionSummary,
 } from "../../../shared/types";
 import {
   fetchComposerAgents,
   fetchComposerCommands,
   searchComposerFiles,
-  sendComposerMessage,
 } from "../../api";
 import { StatusDot } from "../../components/status";
 import { envOfDirectory, envTone } from "../../derive";
-import type { Checkout } from "../checkouts/checkouts";
 import { caretCoordinates } from "./caret";
 import {
   deleteMentionBefore,
@@ -129,24 +133,37 @@ const targetOf = (view: ProjectView, directory: string) => {
 };
 
 /**
- * The Conversation tab's message box: `/` suggests commands at the start of the message, `@` suggests files and
- * agents, and the line above it names the project, checkout and environment it sends to.
+ * The message box of a conversation and of Chat's start page: `/` suggests commands at the start of the message,
+ * `@` suggests files and agents, and the line above it names the project, checkout and environment it sends to.
+ * The caller sends what it holds.
  */
 export const Composer = (props: {
   view: ProjectView;
-  checkout: Checkout;
-  session: SessionSummary;
-  onSent: (notice: string) => void;
-  /** A conversation `/new` started. */
-  onStarted?: (sessionId: string) => void;
+  /** The checkout whose commands, files and agents it suggests; for a new worktree, the main checkout. */
+  directory: string;
+  /** The checkout the line above names. */
+  checkoutLabel: string;
+  /** A turn is running: a message is queued behind it. */
+  running: boolean;
+  /** Suggest the hub's `/new` and `/interrupt`, which need a conversation. */
+  hubCommands: boolean;
+  /** Resolving clears the box; rejecting keeps it and shows the error. */
+  onSend: (
+    message: ComposerSendRequest
+  ) => Promise<ComposerSendResult | undefined>;
+  /** What a send did, as a sentence. */
+  onSent?: (notice: string) => void;
+  autoFocus?: boolean;
+  /** A large box in a card with the send button inside, without the line above; for Chat's start page. */
+  hero?: boolean;
+  /** Under the box, inside the form; with `hero`, the pickers of where the message goes. */
+  footer?: ReactNode;
   /** What the box starts with; for stories. */
   initialText?: string;
 }) => {
-  const { view, checkout, session } = props;
+  const { view, directory, running, hubCommands, hero = false } = props;
   const projectId = view.project.id;
-  const { directory } = checkout;
   const target = targetOf(view, directory);
-  const running = session.status !== "idle";
 
   const [value, setValue] = useState<ComposerValue>({
     mentions: [],
@@ -201,7 +218,7 @@ export const Composer = (props: {
   const suggestions: Suggestion[] = [];
   if (open && trigger.kind === "command") {
     for (const c of ranked(
-      commands.data?.commands ?? [],
+      (commands.data?.commands ?? []).filter((x) => hubCommands || !x.hub),
       trigger.query,
       (x) => x.name
     )) {
@@ -297,18 +314,15 @@ export const Composer = (props: {
       return;
     }
     setBusy(true);
-    sendComposerMessage(projectId, session.id, {
-      mentions: value.mentions,
-      text: value.text,
-    })
+    props
+      .onSend({ mentions: value.mentions, text: value.text })
       .then(
         (result) => {
           setValue({ mentions: [], text: "" });
           setCaret(0);
           setError(undefined);
-          props.onSent(sentNotice(result));
-          if (result.kind === "new") {
-            props.onStarted?.(result.sessionId);
+          if (result) {
+            props.onSent?.(sentNotice(result));
           }
         },
         (error_: unknown) =>
@@ -360,7 +374,9 @@ export const Composer = (props: {
     (trigger?.kind === "mention" && (files.isPending || agents.isPending));
   const failure = commands.error ?? agents.error ?? files.error;
 
-  let placeholder = "Message the agent… / for commands, @ for files and agents";
+  let placeholder = hero
+    ? "Describe the task, or start with a / command…"
+    : "Message the agent… / for commands, @ for files and agents";
   if (!target.ready) {
     placeholder = "Message the agent…";
   } else if (running) {
@@ -369,158 +385,193 @@ export const Composer = (props: {
 
   return (
     <form
-      className="flex flex-col gap-2"
+      className={cn("flex flex-col", hero ? "gap-3" : "gap-2")}
       onSubmit={(e) => {
         e.preventDefault();
         send();
       }}
     >
-      <div className="text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-        <span>To</span>
-        <span className="text-foreground font-medium">{view.project.name}</span>
-        <span aria-hidden>/</span>
-        <span className="text-foreground font-medium">
-          {checkout.worktree?.branch ?? checkout.label}
-        </span>
-        <span aria-hidden>·</span>
-        <span className="inline-flex items-center gap-1">
-          <StatusDot tone={target.tone} />
-          {target.label}
-        </span>
-      </div>
-      <Popover
-        open={open}
-        onOpenChange={(next) => {
-          if (!next && trigger) {
-            setDismissed(trigger.start);
-          }
-        }}
-      >
-        <div className="relative">
-          <label htmlFor="session-prompt" className="sr-only">
-            Message the agent
-          </label>
-          <Textarea
-            ref={textarea}
-            id="session-prompt"
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={open}
-            aria-controls={open ? aria.list : undefined}
-            aria-activedescendant={open ? aria.active : undefined}
-            aria-describedby={target.ready ? undefined : "composer-why"}
-            disabled={!target.ready}
-            placeholder={placeholder}
-            value={value.text}
-            onChange={(e) => {
-              const next = rebase(value, e.target.value);
-              setValue(next);
-              setCaret(e.target.selectionStart);
-              if (!triggerAt(next, e.target.selectionStart)) {
-                setDismissed(undefined);
-              }
-            }}
-            onSelect={syncCaret}
-            onClick={syncCaret}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            onKeyDown={onKeyDown}
-          />
-          <PopoverAnchor asChild>
-            <span
-              aria-hidden
-              className="pointer-events-none absolute size-0"
-              style={{ left: anchor.left, top: anchor.top }}
-            />
-          </PopoverAnchor>
+      {!hero && (
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+          <span>To</span>
+          <span className="text-foreground font-medium">
+            {view.project.name}
+          </span>
+          <span aria-hidden>/</span>
+          <span className="text-foreground font-medium">
+            {props.checkoutLabel}
+          </span>
+          <span aria-hidden>·</span>
+          <span className="inline-flex items-center gap-1">
+            <StatusDot tone={target.tone} />
+            {target.label}
+          </span>
         </div>
-        <PopoverContent
-          align="start"
-          className="w-[min(28rem,calc(100vw-2rem))] p-0"
-          onOpenAutoFocus={(e) => e.preventDefault()}
-          onCloseAutoFocus={(e) => e.preventDefault()}
-          onInteractOutside={(e) => {
-            if (e.target === textarea.current) {
-              e.preventDefault();
+      )}
+      <div
+        className={cn(
+          hero &&
+            "bg-card focus-within:border-ring/60 rounded-2xl border shadow-sm transition-colors"
+        )}
+      >
+        <Popover
+          open={open}
+          onOpenChange={(next) => {
+            if (!next && trigger) {
+              setDismissed(trigger.start);
             }
           }}
-          // Keep the textarea focused when an item is clicked.
-          onMouseDown={(e) => e.preventDefault()}
         >
-          <Command
-            shouldFilter={false}
-            value={active?.key ?? ""}
-            onValueChange={setActiveKey}
+          <div className="relative">
+            <label htmlFor="session-prompt" className="sr-only">
+              Message the agent
+            </label>
+            <Textarea
+              ref={textarea}
+              id="session-prompt"
+              autoFocus={props.autoFocus}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={open}
+              aria-controls={open ? aria.list : undefined}
+              aria-activedescendant={open ? aria.active : undefined}
+              aria-describedby={target.ready ? undefined : "composer-why"}
+              disabled={!target.ready}
+              placeholder={placeholder}
+              className={cn(
+                hero &&
+                  "min-h-24 resize-none rounded-2xl border-0 bg-transparent px-4 pt-4 text-base shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
+              )}
+              value={value.text}
+              onChange={(e) => {
+                const next = rebase(value, e.target.value);
+                setValue(next);
+                setCaret(e.target.selectionStart);
+                if (!triggerAt(next, e.target.selectionStart)) {
+                  setDismissed(undefined);
+                }
+              }}
+              onSelect={syncCaret}
+              onClick={syncCaret}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              onKeyDown={onKeyDown}
+            />
+            <PopoverAnchor asChild>
+              <span
+                aria-hidden
+                className="pointer-events-none absolute size-0"
+                style={{ left: anchor.left, top: anchor.top }}
+              />
+            </PopoverAnchor>
+          </div>
+          <PopoverContent
+            align="start"
+            className="w-[min(28rem,calc(100vw-2rem))] p-0"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            onCloseAutoFocus={(e) => e.preventDefault()}
+            onInteractOutside={(e) => {
+              if (e.target === textarea.current) {
+                e.preventDefault();
+              }
+            }}
+            // Keep the textarea focused when an item is clicked.
+            onMouseDown={(e) => e.preventDefault()}
           >
-            <CommandList ref={list} aria-label="Suggestions">
-              <CommandEmpty>
-                {(() => {
-                  if (failure) {
-                    return failure.message;
-                  }
-                  return loading ? "Loading…" : "Nothing matches.";
-                })()}
-              </CommandEmpty>
-              {groups.map((g) => (
-                <CommandGroup key={g.name} heading={g.name}>
-                  {g.items.map((s) => (
-                    <CommandItem
-                      key={s.key}
-                      value={s.key}
-                      disabled={s.disabled}
-                      onSelect={() => s.choose()}
-                    >
-                      {g.name === "Commands" && <SquareSlashIcon />}
-                      {g.name === "Files" && <FileIcon />}
-                      {g.name === "Agents" && <BotIcon />}
-                      <span className="flex min-w-0 flex-col">
-                        <span className="flex items-center gap-1.5">
-                          <span className="truncate font-mono text-xs">
-                            {s.label}
+            <Command
+              shouldFilter={false}
+              value={active?.key ?? ""}
+              onValueChange={setActiveKey}
+            >
+              <CommandList ref={list} aria-label="Suggestions">
+                <CommandEmpty>
+                  {(() => {
+                    if (failure) {
+                      return failure.message;
+                    }
+                    return loading ? "Loading…" : "Nothing matches.";
+                  })()}
+                </CommandEmpty>
+                {groups.map((g) => (
+                  <CommandGroup key={g.name} heading={g.name}>
+                    {g.items.map((s) => (
+                      <CommandItem
+                        key={s.key}
+                        value={s.key}
+                        disabled={s.disabled}
+                        onSelect={() => s.choose()}
+                      >
+                        {g.name === "Commands" && <SquareSlashIcon />}
+                        {g.name === "Files" && <FileIcon />}
+                        {g.name === "Agents" && <BotIcon />}
+                        <span className="flex min-w-0 flex-col">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate font-mono text-xs">
+                              {s.label}
+                            </span>
+                            {s.note && (
+                              <span className="text-muted-foreground bg-muted rounded px-1 text-[10px] uppercase">
+                                {s.note}
+                              </span>
+                            )}
                           </span>
-                          {s.note && (
-                            <span className="text-muted-foreground bg-muted rounded px-1 text-[10px] uppercase">
-                              {s.note}
+                          {s.description && (
+                            <span className="text-muted-foreground truncate text-xs">
+                              {s.description}
                             </span>
                           )}
                         </span>
-                        {s.description && (
-                          <span className="text-muted-foreground truncate text-xs">
-                            {s.description}
-                          </span>
-                        )}
-                      </span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              ))}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                ))}
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+        {hero && (
+          <div className="flex items-center justify-between gap-3 px-3 pb-3">
+            <span className="text-muted-foreground px-1 text-xs max-sm:hidden">
+              / for commands · @ for files and agents · Ctrl+Enter to send
+            </span>
+            <Button
+              type="submit"
+              size="icon"
+              className="ml-auto rounded-full"
+              aria-label="Send"
+              disabled={busy || !value.text.trim() || !target.ready}
+            >
+              <ArrowUpIcon />
+            </Button>
+          </div>
+        )}
+      </div>
+      {props.footer}
       {!target.ready && (
         <p id="composer-why" className="text-muted-foreground text-sm">
           {target.why}
         </p>
       )}
       {error && <p className="text-destructive text-sm">{error}</p>}
-      <div className="flex items-center justify-end gap-2">
-        <span
-          className={cn(
-            "text-muted-foreground text-xs max-sm:hidden",
-            !target.ready && "invisible"
-          )}
-        >
-          Ctrl+Enter to send
-        </span>
-        <Button
-          type="submit"
-          size="sm"
-          disabled={busy || !value.text.trim() || !target.ready}
-        >
-          <SendIcon /> {running ? "Queue" : "Send"}
-        </Button>
-      </div>
+      {!hero && (
+        <div className="flex items-center justify-end gap-2">
+          <span
+            className={cn(
+              "text-muted-foreground text-xs max-sm:hidden",
+              !target.ready && "invisible"
+            )}
+          >
+            Ctrl+Enter to send
+          </span>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={busy || !value.text.trim() || !target.ready}
+          >
+            <SendIcon /> {running ? "Queue" : "Send"}
+          </Button>
+        </div>
+      )}
     </form>
   );
 };
