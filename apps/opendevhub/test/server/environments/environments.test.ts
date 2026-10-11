@@ -442,6 +442,36 @@ describe("environments", () => {
     );
   });
 
+  it("adds the project's own ports to devcontainer.json's, and forwards them again when they change", async () => {
+    const { hub, forwarder, projectSettings } = setup();
+    projectSettings.mockReturnValue({ forwardPorts: [3000, 5173] });
+    await hub.environments.rescan();
+    await hub.environments.start(project.id);
+    expect(forwarder.open).toHaveBeenLastCalledWith(
+      project.id,
+      expect.objectContaining({ host: "172.17.0.9" }),
+      [{ containerPort: 3000, label: "web" }, { containerPort: 5173 }],
+      expect.any(Function),
+      expect.any(Object)
+    );
+    projectSettings.mockReturnValue({ forwardPorts: [8080] });
+    await hub.environments.refreshPorts(project.id);
+    expect(forwarder.open).toHaveBeenLastCalledWith(
+      project.id,
+      expect.objectContaining({ host: "172.17.0.9" }),
+      [{ containerPort: 3000, label: "web" }, { containerPort: 8080 }],
+      expect.any(Function),
+      expect.any(Object)
+    );
+  });
+
+  it("leaves stopped environments alone when the project's ports change", async () => {
+    const { hub, forwarder } = setup();
+    await hub.environments.rescan();
+    await hub.environments.refreshPorts(project.id);
+    expect(forwarder.open).not.toHaveBeenCalled();
+  });
+
   it("forwards ports before launching opencode, so they survive an opencode failure", async () => {
     const { store, runtime, hub, forwarder } = setup();
     runtime.ensureRunning.mockRejectedValueOnce(

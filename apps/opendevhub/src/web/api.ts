@@ -599,6 +599,22 @@ export const renameProject = async (projectId: string, name: string) => {
   );
 };
 
+export const fetchProjectPorts = (projectId: string, signal?: AbortSignal) =>
+  read(
+    project.ports.$get(
+      { param: projectParam(projectId) },
+      { init: { signal } }
+    ),
+    "project ports"
+  );
+
+/** Saves the ports the project forwards on top of devcontainer.json's, and forwards them right away. */
+export const saveProjectPorts = (projectId: string, ports: number[]) =>
+  read(
+    project.ports.$post({ param: projectParam(projectId), json: { ports } }),
+    "save project ports"
+  );
+
 export const fetchGitSetup = () =>
   read(
     api.settings.git.$get(undefined, { init: { cache: "no-store" } }),

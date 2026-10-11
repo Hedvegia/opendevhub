@@ -100,6 +100,11 @@ export interface DashboardDeps {
   saveRoots?: (input: unknown) => void;
   /** Shows the project under `name`, or its folder name again when `name` is blank. */
   renameProject?: (id: string, name: string) => Promise<void>;
+  /** Ports a project forwards on top of devcontainer.json's `forwardPorts`; saving forwards them right away. */
+  projectPorts?: {
+    get: (id: string) => number[];
+    save: (id: string, ports: number[]) => Promise<void>;
+  };
   /** This machine's git identity and ssh keys; absent in tests that don't need it. */
   gitSetup?: Pick<GitSetupProbe, "view" | "test">;
   push: PushPort;
@@ -192,6 +197,10 @@ export const createDashboardApp = (deps: DashboardDeps) => {
     .route("/", createJiraRoutes(deps))
     .route("/", createLinksRoutes(deps))
     .route("/", createProjectsRoutes(deps));
+  // An unknown API path must fail loudly, not answer 200 with the page (the client would take HTML for data).
+  app.all("/api/*", (c) =>
+    c.json({ error: `no such API route: ${c.req.method} ${c.req.path}` }, 404)
+  );
   const { webDir } = deps;
   if (!webDir) {
     app.get("*", (c) =>

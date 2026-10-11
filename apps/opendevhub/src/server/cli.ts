@@ -28,6 +28,7 @@ import { ProjectStore } from "./db/projects";
 import { ProvenanceStore } from "./db/provenance";
 import { TaskStore } from "./db/tasks";
 import { Checks } from "./environments/checks";
+import { extraForwardPorts } from "./environments/config";
 import { Containers } from "./environments/containers";
 import { Credentials } from "./environments/credentials";
 import {
@@ -417,6 +418,26 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
       }
       projectSettings.update(project.path, { name: name.trim() || undefined });
       await hub.environments.rescan();
+    },
+    projectPorts: {
+      get: (id) => {
+        const project = store.project(id);
+        if (!project) {
+          throw new NotFoundError(id);
+        }
+        return extraForwardPorts(projectSettings.get(project.path));
+      },
+      save: async (id, ports) => {
+        const project = store.project(id);
+        if (!project) {
+          throw new NotFoundError(id);
+        }
+        const unique = [...new Set(ports)].toSorted((a, b) => a - b);
+        projectSettings.update(project.path, {
+          forwardPorts: unique.length > 0 ? unique : undefined,
+        });
+        await hub.environments.refreshPorts(id);
+      },
     },
     gitSetup: new GitSetupProbe({
       projects: () => store.projects(),

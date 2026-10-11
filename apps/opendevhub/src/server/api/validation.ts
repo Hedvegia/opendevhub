@@ -98,6 +98,9 @@ export const bodies = {
   }),
   roots: z.object({ roots: z.array(z.string()) }),
   projectName: z.object({ name: z.string().max(200) }),
+  projectPorts: z.object({
+    ports: z.array(z.number().int().min(1).max(65_535)).max(100),
+  }),
   sshTest: z.object({ host: z.string().min(1) }),
   onboarding: z.object({ path: text, stack: z.enum(STACK_IDS) }),
   cleanup: z

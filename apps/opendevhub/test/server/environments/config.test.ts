@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOverrideConfig,
   envIdFor,
+  extraForwardPorts,
   isolationBlocker,
   resolveEnvSettings,
 } from "../../../src/server/environments/config";
@@ -40,6 +41,18 @@ describe(envIdFor, () => {
     expect(envIdFor("demo-abc123", "/w/x", "___")).toMatch(
       /^demo-abc123-worktree-[0-9a-f]{4}$/u
     );
+  });
+});
+
+describe(extraForwardPorts, () => {
+  it("reads valid, distinct port numbers from the project's entry", () => {
+    expect(extraForwardPorts(undefined)).toStrictEqual([]);
+    expect(extraForwardPorts({ forwardPorts: "3000" })).toStrictEqual([]);
+    expect(
+      extraForwardPorts({
+        forwardPorts: [3000, 3000, 0, 70_000, 1.5, "8080", 5173],
+      })
+    ).toStrictEqual([3000, 5173]);
   });
 });
 

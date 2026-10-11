@@ -435,8 +435,8 @@ const CheckoutPorts = () => {
         <Empty title="No forwarded ports">
           <p className={muted}>
             Add <code className="font-mono">forwardPorts</code> to the
-            project&apos;s devcontainer.json to reach its apps from{" "}
-            <code className="font-mono">localhost</code>.
+            project&apos;s devcontainer.json, or ports in its settings, to reach
+            its apps from <code className="font-mono">localhost</code>.
           </p>
         </Empty>
       ) : (

@@ -37,6 +37,7 @@ import {
   buildOverrideConfig,
   envIdFor,
   isolationBlocker,
+  extraForwardPorts,
   resolveEnvSettings,
 } from "./config";
 import type { EnvSettings } from "./config";
@@ -100,6 +101,8 @@ export class Environments {
   private readonly settings = new Map<ProjectId, EnvSettings>();
   /** Each environment's sshAgent setting, from the configuration it was started with. */
   private readonly sshAgents = new Map<EnvId, boolean>();
+  /** Where each running environment's ports were last forwarded to, so they can be forwarded again when settings change. */
+  private readonly forwardTargets = new Map<EnvId, ForwardTarget>();
   /** The starting task variant an environment is being set up for, so its steps and log lines reach it. */
   private readonly setups = new Map<EnvId, { task: string; variant: number }>();
   private defaultEnvFiles?: EnvFilesPort;
@@ -404,6 +407,31 @@ export class Environments {
       node: env.node,
       user: rt.remoteUser,
     };
+  }
+
+  /** Forwards the ports of the project's running environments again, after its settings changed. */
+  async refreshPorts(id: ProjectId): Promise<void> {
+    const project = this.requireProject(id);
+    const envs = [
+      this.mainEnv(project),
+      ...this.deps.store
+        .environments(id)
+        .map((rec) => this.taskEnv(project, rec)),
+    ];
+    // An environment that is busy starting reads the settings itself when it forwards its ports.
+    const ready = envs.filter(
+      (env) => this.forwardTargets.has(env.id) && !this.busy.has(env.id)
+    );
+    await Promise.all(
+      ready.map((env) =>
+        this.exclusiveEnv(env, async () => {
+          const target = this.forwardTargets.get(env.id);
+          if (target) {
+            await this.forwardPorts(env, target);
+          }
+        })
+      )
+    );
   }
 
   /** Writes a line to the project's log. */
@@ -1427,6 +1455,7 @@ export class Environments {
 
   private async forwardPorts(env: Env, target: ForwardTarget): Promise<void> {
     const { store, forwarder } = this.deps;
+    this.forwardTargets.set(env.id, target);
     const { containers } = this.kit(env);
     let config: PortConfig;
     try {
@@ -1458,7 +1487,10 @@ export class Environments {
         .sshAgent
     );
     const { ports, skipped } = parseForwardPorts(
-      config.forwardPorts,
+      [
+        ...config.forwardPorts,
+        ...extraForwardPorts(this.deps.projectSettings?.(env.project)),
+      ],
       config.portsAttributes
     );
     for (const s of skipped) {
@@ -1632,6 +1664,7 @@ export class Environments {
   private async closePorts(id: EnvId): Promise<void> {
     this.stopTunnel(id);
     this.sshAgents.delete(id);
+    this.forwardTargets.delete(id);
     await this.deps.forwarder.close(id);
     this.deps.store.updateRuntime(id, {
       ports: undefined,

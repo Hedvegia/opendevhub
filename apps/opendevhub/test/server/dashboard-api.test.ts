@@ -1260,6 +1260,44 @@ describe("dashboard API", () => {
     expect((await post(deps.app, { name: "Acme" })).status).toBe(412);
   });
 
+  it("answers an unknown API path with a JSON 404, not the page", async () => {
+    const { app } = setup();
+    const res = await app.request("/api/projects/x/nonexistent");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toStrictEqual({
+      error: "no such API route: GET /api/projects/x/nonexistent",
+    });
+  });
+
+  it("reads and saves a project's own forwarded ports", async () => {
+    const deps = setup();
+    let saved = [3000];
+    const projectPorts = {
+      get: vi.fn((_id: string) => saved),
+      save: vi.fn(async (_id: string, ports: number[]) => {
+        saved = ports;
+      }),
+    };
+    const app = createDashboardApp({ ...deps, projectPorts });
+    const url = `/api/projects/${project.id}/ports`;
+    const post = (target: typeof app, body: unknown) =>
+      target.request(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect(await (await app.request(url)).json()).toStrictEqual({
+      ports: [3000],
+    });
+    const res = await post(app, { ports: [3000, 8080] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ ports: [3000, 8080] });
+    expect(projectPorts.save).toHaveBeenCalledWith(project.id, [3000, 8080]);
+    expect((await post(app, { ports: [0] })).status).toBe(400);
+    expect((await post(app, { ports: ["80"] })).status).toBe(400);
+    expect((await post(deps.app, { ports: [] })).status).toBe(412);
+  });
+
   it("serves the git setup and tests a host", async () => {
     const deps = setup();
     const view = {
