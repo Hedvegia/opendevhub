@@ -73,11 +73,16 @@ export const resolveEnvSettings = (
 const isPort = (n: unknown): n is number =>
   typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 65_535;
 
+const portList = (value: unknown): number[] =>
+  Array.isArray(value) ? [...new Set(value.filter(isPort))] : [];
+
 /** Ports the project's `config.json` entry forwards on top of devcontainer.json's `forwardPorts`. */
-export const extraForwardPorts = (override: unknown): number[] => {
-  const ports = record(override).forwardPorts;
-  return Array.isArray(ports) ? [...new Set(ports.filter(isPort))] : [];
-};
+export const extraForwardPorts = (override: unknown): number[] =>
+  portList(record(override).forwardPorts);
+
+/** Ports on this machine the project's `config.json` entry makes reachable inside its containers. */
+export const hostPorts = (override: unknown): number[] =>
+  portList(record(override).hostPorts);
 
 export const LIFECYCLE_KEYS = [
   "onCreateCommand",

@@ -10,6 +10,7 @@ import type { Worktrees } from "../git/worktrees";
 import type { PortForwarder } from "../network/port-forwarder";
 import type { AgentTunnelOptions } from "../network/relay/agent";
 import type { RelayTarget } from "../network/relay/client";
+import type { HostPortTunnelOptions } from "../network/relay/host-ports";
 import type { RelayRuntime } from "../network/relay/runtime";
 import { directRoute } from "../network/routes";
 import type { Network, RouteContainer } from "../network/routes";
@@ -90,6 +91,11 @@ export interface AgentTunnelHandle {
 export type AgentTunnelFactory = (
   target: RelayTarget,
   opts: AgentTunnelOptions
+) => AgentTunnelHandle;
+export type HostPortTunnelFactory = (
+  target: RelayTarget,
+  port: number,
+  opts: HostPortTunnelOptions
 ) => AgentTunnelHandle;
 
 /** Everything that acts on one node's Docker and files; the local node's come from the deps below. */
@@ -172,6 +178,8 @@ export interface HubDeps {
   recordUsage?: (projectId: ProjectId, sessions: RawSession[]) => void;
   /** Defaults to a real AgentTunnel; tests pass their own. */
   agentTunnel?: AgentTunnelFactory;
+  /** Defaults to a real HostPortTunnel; tests pass their own. */
+  hostPortTunnel?: HostPortTunnelFactory;
   /** Other nodes' kits; absent when nodes aren't wired (and then every environment is local). */
   nodes?: NodeKitsPort;
 }

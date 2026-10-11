@@ -66,8 +66,8 @@ const handshake = (
     socket.once("connect", () => socket.write(line));
   });
 
-/** The relay's answer to ping; older relays answer a bare PONG and are replaced (they have no agent verbs). */
-const PONG = "PONG 2";
+/** The relay's answer to ping; older relays are replaced (`PONG 2` has no host port verbs, a bare PONG no agent verbs). */
+const PONG = "PONG 3";
 
 export const pingRelay = async (
   target: RelayTarget,
@@ -129,14 +129,15 @@ export const openGatewayConnection = async (
   return socket;
 };
 
-/** Opens the relay's agent control connection; resolves after OK with the socket paused and any bytes that came along. */
-export const openAgentControl = async (
+/** Sends a listen verb; resolves after OK with the control socket paused and any bytes that came along. */
+const openControl = async (
   target: RelayTarget,
-  timeoutMs = 5000
+  verb: string,
+  timeoutMs: number
 ): Promise<{ socket: net.Socket; rest: Buffer }> => {
   const { socket, reply, rest } = await handshake(
     target,
-    `${target.token} agent-listen\n`,
+    `${target.token} ${verb}\n`,
     timeoutMs
   );
   if (reply === "OK") {
@@ -146,15 +147,15 @@ export const openAgentControl = async (
   throw new RelayError(reply.startsWith("ERR ") ? reply.slice(4) : "EPROTO");
 };
 
-/** Takes the container client the relay announced as `CONN <id>`; the socket is returned paused, ready to pipe. */
-export const acceptAgentConnection = async (
+/** Sends an accept verb; the socket is returned paused, ready to pipe. */
+const acceptConnection = async (
   target: RelayTarget,
-  id: number,
-  timeoutMs = 5000
+  verb: string,
+  timeoutMs: number
 ): Promise<net.Socket> => {
   const { socket, reply, rest } = await handshake(
     target,
-    `${target.token} agent-accept ${id}\n`,
+    `${target.token} ${verb}\n`,
     timeoutMs
   );
   if (reply !== "OK") {
@@ -166,3 +167,34 @@ export const acceptAgentConnection = async (
   }
   return socket;
 };
+
+/** Opens the relay's agent control connection; resolves after OK with the socket paused and any bytes that came along. */
+export const openAgentControl = (
+  target: RelayTarget,
+  timeoutMs = 5000
+): Promise<{ socket: net.Socket; rest: Buffer }> =>
+  openControl(target, "agent-listen", timeoutMs);
+
+/** Takes the container client the relay announced as `CONN <id>`; the socket is returned paused, ready to pipe. */
+export const acceptAgentConnection = (
+  target: RelayTarget,
+  id: number,
+  timeoutMs = 5000
+): Promise<net.Socket> =>
+  acceptConnection(target, `agent-accept ${id}`, timeoutMs);
+
+/** Makes the relay listen on the container's loopback `port`; the control socket then carries `CONN <id>` lines. */
+export const openHostControl = (
+  target: RelayTarget,
+  port: number,
+  timeoutMs = 5000
+): Promise<{ socket: net.Socket; rest: Buffer }> =>
+  openControl(target, `host-listen ${port}`, timeoutMs);
+
+/** Takes the container client a host port control announced as `CONN <id>`; returned paused, ready to pipe. */
+export const acceptHostConnection = (
+  target: RelayTarget,
+  id: number,
+  timeoutMs = 5000
+): Promise<net.Socket> =>
+  acceptConnection(target, `host-accept ${id}`, timeoutMs);

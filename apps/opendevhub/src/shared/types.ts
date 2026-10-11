@@ -96,6 +96,13 @@ export interface WorktreeRoot {
 /** Whether the host's ssh-agent reaches a container: forwarded, turned off for the project, or not working (see the reason). */
 export type SshAgentState = "forwarded" | "off" | "unavailable";
 
+/** A host port the project makes reachable inside its containers: forwarded, or not working (see the reason). */
+export interface HostPortStatus {
+  port: number;
+  state: "forwarded" | "unavailable";
+  reason?: string;
+}
+
 export interface ProjectRuntime {
   projectId: ProjectId;
   containerId?: string;
@@ -113,6 +120,8 @@ export interface ProjectRuntime {
   relay?: "active" | "unavailable";
   sshAgent?: SshAgentState;
   sshAgentReason?: string;
+  /** Kept in memory only, like the ssh-agent state. */
+  hostPorts?: HostPortStatus[];
   worktreeRoot?: WorktreeRoot;
   worktrees?: Worktree[];
 }

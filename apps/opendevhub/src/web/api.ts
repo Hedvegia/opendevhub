@@ -615,6 +615,28 @@ export const saveProjectPorts = (projectId: string, ports: number[]) =>
     "save project ports"
   );
 
+export const fetchProjectHostPorts = (
+  projectId: string,
+  signal?: AbortSignal
+) =>
+  read(
+    project["host-ports"].$get(
+      { param: projectParam(projectId) },
+      { init: { signal } }
+    ),
+    "project host ports"
+  );
+
+/** Saves the ports on this machine the project's containers reach, and applies them right away. */
+export const saveProjectHostPorts = (projectId: string, ports: number[]) =>
+  read(
+    project["host-ports"].$post({
+      json: { ports },
+      param: projectParam(projectId),
+    }),
+    "save project host ports"
+  );
+
 export const fetchGitSetup = () =>
   read(
     api.settings.git.$get(undefined, { init: { cache: "no-store" } }),

@@ -11,6 +11,10 @@ icon: TriangleAlert
 - Forwarded ports go through a small relay that opendevhub starts inside the container, so apps bound to the container's `localhost` work too. The relay runs on the opencode binary (Bun mode) or `node`; if neither can run it, forwarding connects directly and only apps listening on `0.0.0.0` are reachable (the project log says so).
 - `http://<project>.localhost:7777` relies on the browser resolving subdomains of `localhost` to loopback, as Chrome and Firefox do.
 - Containers using `--network=host` are not supported.
+- [Host ports](/docs/host-browser) need the relay; when it can't run in a container, they are unavailable there (the checkout page and log say so).
+- Host ports only work while opendevhub is running; otherwise connections to them inside the container are refused.
+- A host port keeps its number: it can't be mapped to a different port, and it only reaches your machine's loopback, not other addresses like `192.168.1.10:5432`.
+- Host ports are shared by all tasks of a project, so tasks using one browser can get in each other's way.
 
 ## Containers and worktrees
 

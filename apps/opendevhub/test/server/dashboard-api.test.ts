@@ -1298,6 +1298,48 @@ describe("dashboard API", () => {
     expect((await post(deps.app, { ports: [] })).status).toBe(412);
   });
 
+  it("reads and saves a project's host ports", async () => {
+    const deps = setup();
+    let saved = [9222];
+    const projectHostPorts = {
+      get: vi.fn((_id: string) => saved),
+      save: vi.fn(async (_id: string, ports: number[]) => {
+        if (ports.includes(3000)) {
+          throw new InvalidRequestError(
+            "port 3000 is already a forwarded port of this project"
+          );
+        }
+        saved = ports;
+      }),
+    };
+    const app = createDashboardApp({ ...deps, projectHostPorts });
+    const url = `/api/projects/${project.id}/host-ports`;
+    const post = (target: typeof app, body: unknown) =>
+      target.request(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect(await (await app.request(url)).json()).toStrictEqual({
+      ports: [9222],
+    });
+    const res = await post(app, { ports: [9222, 5432] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ ports: [9222, 5432] });
+    expect(projectHostPorts.save).toHaveBeenCalledWith(
+      project.id,
+      [9222, 5432]
+    );
+    const overlap = await post(app, { ports: [3000] });
+    expect(overlap.status).toBe(400);
+    expect(await overlap.json()).toStrictEqual({
+      error: "port 3000 is already a forwarded port of this project",
+    });
+    expect((await post(app, { ports: [0] })).status).toBe(400);
+    expect((await post(app, { ports: [70_000] })).status).toBe(400);
+    expect((await post(deps.app, { ports: [] })).status).toBe(412);
+  });
+
   it("serves the git setup and tests a host", async () => {
     const deps = setup();
     const view = {

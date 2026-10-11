@@ -21,6 +21,7 @@ import type { ForwardTarget } from "../../src/server/network/port-forwarder";
 import type { PortSpec } from "../../src/server/network/ports";
 import type { AgentTunnelOptions } from "../../src/server/network/relay/agent";
 import type { RelayTarget } from "../../src/server/network/relay/client";
+import type { HostPortTunnelOptions } from "../../src/server/network/relay/host-ports";
 import type { RelayStatus } from "../../src/server/network/relay/runtime";
 import type {
   Dial,
@@ -707,6 +708,20 @@ export function setup(
     tunnels.push(t);
     return t;
   });
+  const hostTunnels: {
+    target: RelayTarget;
+    port: number;
+    opts: HostPortTunnelOptions;
+    start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+  }[] = [];
+  const hostPortTunnel = vi.fn(
+    (target: RelayTarget, port: number, opts: HostPortTunnelOptions) => {
+      const t = { target, port, opts, start: vi.fn(), stop: vi.fn() };
+      hostTunnels.push(t);
+      return t;
+    }
+  );
   const recordUsage = vi.fn();
   const hub = createHub({
     store,
@@ -733,6 +748,7 @@ export function setup(
     projectSettings,
     credentials,
     agentTunnel,
+    hostPortTunnel,
     recordUsage,
     roots: () => ["/src"],
     scan: async () => projects,
@@ -786,6 +802,8 @@ export function setup(
     credentials,
     agentTunnel,
     tunnels,
+    hostPortTunnel,
+    hostTunnels,
     recordUsage,
   };
 }

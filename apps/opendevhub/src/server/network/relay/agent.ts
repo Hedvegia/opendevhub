@@ -4,6 +4,7 @@ import net from "node:net";
 import type { SshAgentState } from "../../../shared/types";
 import { acceptAgentConnection, openAgentControl } from "./client";
 import type { RelayTarget } from "./client";
+import { ReverseTunnel } from "./tunnel";
 
 /** Where the relay serves the forwarded agent inside the container. */
 export const AGENT_SOCKET = "/tmp/opendevhub-ssh-agent.sock";
@@ -112,20 +113,47 @@ const connectUnix = (socketPath: string): Promise<net.Socket> =>
  * announces to the host's ssh-agent. Reconnects with backoff until stopped.
  */
 export class AgentTunnel {
-  private stopped = false;
-  private control?: net.Socket;
-  private timer?: NodeJS.Timeout;
-  private delay: number;
-  private readonly pipes = new Set<net.Socket>();
   private lastWarn = -Infinity;
   private status?: string;
+  private readonly tunnel: ReverseTunnel;
 
-  private readonly target: RelayTarget;
   private readonly opts: AgentTunnelOptions;
   constructor(target: RelayTarget, opts: AgentTunnelOptions) {
-    this.target = target;
     this.opts = opts;
-    this.delay = opts.retryMinMs ?? 1000;
+    this.tunnel = new ReverseTunnel({
+      accept: (id) => acceptAgentConnection(target, id),
+      dial: () => {
+        const socketPath = this.hostSocket();
+        if (!socketPath) {
+          throw new Error("SSH_AUTH_SOCK is not set");
+        }
+        return connectUnix(socketPath);
+      },
+      onDialFailed: (error) =>
+        this.warn(
+          `ssh-agent: can't reach the agent on this machine (${message(error)})`
+        ),
+      onLost: () =>
+        this.setStatus({
+          reason: "lost the relay connection; reconnecting",
+          state: "unavailable",
+        }),
+      onOpenFailed: (error) => {
+        this.setStatus({
+          reason: `relay: ${message(error)}`,
+          state: "unavailable",
+        });
+        this.opts.onRelayLost?.();
+      },
+      onOpened: () => {
+        this.setStatus({ state: "forwarded" });
+        void this.checkKeys();
+      },
+      onPiped: () => void this.checkKeys(),
+      open: () => openAgentControl(target),
+      retryMaxMs: opts.retryMaxMs,
+      retryMinMs: opts.retryMinMs,
+    });
   }
 
   start(): void {
@@ -134,18 +162,11 @@ export class AgentTunnel {
       this.setStatus({ reason: problem, state: "unavailable" });
       return;
     }
-    void this.connect();
+    this.tunnel.start();
   }
 
   stop(): void {
-    this.stopped = true;
-    clearTimeout(this.timer);
-    this.control?.destroy();
-    this.control = undefined;
-    for (const s of this.pipes) {
-      s.destroy();
-    }
-    this.pipes.clear();
+    this.tunnel.stop();
   }
 
   private hostSocket(): string | undefined {
@@ -159,7 +180,7 @@ export class AgentTunnel {
   }
 
   private setStatus(status: AgentStatus): void {
-    if (this.stopped) {
+    if (this.tunnel.isStopped) {
       return;
     }
     const key = `${status.state}:${status.reason ?? ""}`;
@@ -186,7 +207,7 @@ export class AgentTunnel {
       return;
     }
     const count = await (this.opts.keyCount ?? hostAgentKeyCount)(socketPath);
-    if (count === undefined || !this.control) {
+    if (count === undefined || !this.tunnel.connected) {
       return;
     }
     this.setStatus(
@@ -194,121 +215,6 @@ export class AgentTunnel {
         ? { reason: NO_KEYS_REASON, state: "forwarded" }
         : { state: "forwarded" }
     );
-  }
-
-  private async connect(): Promise<void> {
-    if (this.stopped) {
-      return;
-    }
-    let socket: net.Socket;
-    let rest: Buffer;
-    try {
-      ({ socket, rest } = await openAgentControl(this.target));
-    } catch (error) {
-      this.setStatus({
-        reason: `relay: ${message(error)}`,
-        state: "unavailable",
-      });
-      this.opts.onRelayLost?.();
-      this.retry();
-      return;
-    }
-    if (this.stopped) {
-      socket.destroy();
-      return;
-    }
-    this.control = socket;
-    this.delay = this.opts.retryMinMs ?? 1000;
-    this.setStatus({ state: "forwarded" });
-    void this.checkKeys();
-    let buf = "";
-    const onData = (chunk: Buffer) => {
-      buf += chunk.toString("utf-8");
-      for (let nl = buf.indexOf("\n"); nl !== -1; nl = buf.indexOf("\n")) {
-        const m = /^CONN (?<g1>\d+)$/u.exec(buf.slice(0, nl).trim());
-        buf = buf.slice(nl + 1);
-        if (m) {
-          void this.accept(Number(m[1]));
-        }
-      }
-      if (buf.length > 256) {
-        socket.destroy();
-      }
-    };
-    socket.on("data", onData);
-    socket.on("error", () => socket.destroy());
-    socket.on("end", () => socket.destroy());
-    socket.on("close", () => {
-      if (this.control === socket) {
-        this.control = undefined;
-      }
-      if (this.stopped) {
-        return;
-      }
-      this.setStatus({
-        reason: "lost the relay connection; reconnecting",
-        state: "unavailable",
-      });
-      this.retry();
-    });
-    if (rest.length) {
-      onData(rest);
-    }
-    socket.resume();
-  }
-
-  private retry(): void {
-    if (this.stopped) {
-      return;
-    }
-    clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.connect(), this.delay);
-    this.delay = Math.min(this.delay * 2, this.opts.retryMaxMs ?? 30_000);
-  }
-
-  /** Pipes the announced client to the host agent; when the agent can't be reached the relay's 5 s timeout closes the client. */
-  private async accept(id: number): Promise<void> {
-    let local: net.Socket;
-    try {
-      const socketPath = this.hostSocket();
-      if (!socketPath) {
-        throw new Error("SSH_AUTH_SOCK is not set");
-      }
-      local = await connectUnix(socketPath);
-    } catch (error) {
-      this.warn(
-        `ssh-agent: can't reach the agent on this machine (${message(error)})`
-      );
-      return;
-    }
-    let remote: net.Socket;
-    try {
-      remote = await acceptAgentConnection(this.target, id);
-    } catch {
-      local.destroy();
-      return;
-    }
-    if (this.stopped) {
-      local.destroy();
-      remote.destroy();
-      return;
-    }
-    this.pipes.add(local);
-    this.pipes.add(remote);
-    const close = () => {
-      local.destroy();
-      remote.destroy();
-      this.pipes.delete(local);
-      this.pipes.delete(remote);
-    };
-    for (const s of [local, remote]) {
-      s.on("error", close);
-      s.on("close", close);
-    }
-    local.pipe(remote);
-    remote.pipe(local);
-    remote.resume();
-    void this.checkKeys();
   }
 
   private warn(line: string): void {

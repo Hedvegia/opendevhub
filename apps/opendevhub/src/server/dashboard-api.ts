@@ -105,6 +105,11 @@ export interface DashboardDeps {
     get: (id: string) => number[];
     save: (id: string, ports: number[]) => Promise<void>;
   };
+  /** Ports on this machine the project's containers reach at the same localhost port; saving applies them right away. */
+  projectHostPorts?: {
+    get: (id: string) => number[];
+    save: (id: string, ports: number[]) => Promise<void>;
+  };
   /** This machine's git identity and ssh keys; absent in tests that don't need it. */
   gitSetup?: Pick<GitSetupProbe, "view" | "test">;
   push: PushPort;

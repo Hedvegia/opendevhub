@@ -55,7 +55,7 @@ describe(RELAY_SCRIPT, () => {
   });
 
   it("answers ping with PONG and the protocol version", async () => {
-    await expect(talk("secret ping\n")).resolves.toBe("PONG 2\n");
+    await expect(talk("secret ping\n")).resolves.toBe("PONG 3\n");
   });
 
   it("pipes to a 127.0.0.1 target, forwarding bytes sent together with the header", async () => {
@@ -136,7 +136,7 @@ describe(RELAY_SCRIPT, () => {
 
     it("still answers ping and the loopback form", async () => {
       const port = await echoOn("127.0.0.1");
-      await expect(talkGateway("secret ping\n")).resolves.toBe("PONG 2\n");
+      await expect(talkGateway("secret ping\n")).resolves.toBe("PONG 3\n");
       await expect(
         talkGateway(`secret ${port}\n`, "lo", /echo:lo/u)
       ).resolves.toBe("OK\necho:lo");

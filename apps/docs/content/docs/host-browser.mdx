@@ -1,0 +1,93 @@
+---
+title: Using a browser on the host
+description: Let agents drive a Chrome running on your machine through host ports.
+icon: Globe
+---
+
+Agents that test web apps need a browser. Instead of installing Chrome in every devcontainer, you can let containers reach a Chrome that already runs on your machine. opendevhub carries the connection through the relay it runs in each container, the same way it forwards your ssh-agent.
+
+## Host ports
+
+A project's **host ports** are ports on your machine that its containers reach at `localhost` on the same port. Add them in the project's settings (the gear in the project header), under **Host ports**. Running containers pick changes up right away; nothing restarts.
+
+- Inside the container, the port listens on `127.0.0.1` (and `::1` where the container has it). Each connection goes to `localhost:<port>` on your machine.
+- opendevhub only connects to your machine's loopback, and only on ports in the list. Nothing on your machine is opened to the network.
+- The checkout page shows each host port next to the forwarded ports. A red dot means it isn't working; hover it for the reason.
+- A port can't be both a forwarded port and a host port. If devcontainer.json forwards a port that is also a host port, the host port wins and the log says the forward was skipped.
+
+They are stored in `~/.config/opendevhub/config.json`:
+
+```json
+{ "projects": { "/src/app": { "hostPorts": [9222] } } }
+```
+
+<Callout type="warn" title="Containers get full access">
+  Every process in the project's containers can use whatever listens on a host
+  port: agents, but also dependencies and anything a prompt talks an agent into.
+  A Chrome debugging port gives full control of that browser, including its
+  cookies and logged-in sessions. Use a separate Chrome profile that holds
+  nothing you care about.
+</Callout>
+
+## Start Chrome for agents
+
+Run a separate Chrome with a debugging port and its own profile folder:
+
+```bash
+# Linux
+google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.opendevhub-chrome"
+
+# macOS
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 --user-data-dir="$HOME/.opendevhub-chrome"
+```
+
+`--user-data-dir` is required: Chrome 136 and later ignore `--remote-debugging-port` on your default profile. Check that it listens with `curl http://localhost:9222/json/version` on your machine.
+
+Then add **9222** under **Host ports** in the project's settings. From inside a container, `curl http://localhost:9222/json/version` now answers too.
+
+## Point the MCP server at it
+
+For [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp), pass `--browser-url` so it connects instead of launching its own Chrome. In the project's `opencode.json`:
+
+```json
+{
+  "mcp": {
+    "chrome-devtools": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--browser-url=http://localhost:9222"
+      ]
+    }
+  }
+}
+```
+
+For [Playwright MCP](https://github.com/microsoft/playwright-mcp), use `--cdp-endpoint` the same way:
+
+```json
+{
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@playwright/mcp@latest",
+        "--cdp-endpoint=http://localhost:9222"
+      ]
+    }
+  }
+}
+```
+
+The container still needs Node for `npx`, but no browser.
+
+## Things to know
+
+- All tasks of the project share the one browser, so parallel tasks can step on each other's tabs.
+- The browser is only reachable while opendevhub runs; otherwise connections inside the container are refused.
+- See [Known limitations](/docs/known-limitations) for what host ports don't do.

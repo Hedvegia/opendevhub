@@ -19,11 +19,12 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import type { ForwardedPort } from "../../../shared/types";
+import type { ForwardedPort, HostPortStatus } from "../../../shared/types";
 import { refreshWorktrees } from "../../api";
 import { CopyButton } from "../../components/copy-button";
 import { EnvBadge } from "../../components/env-badge";
 import {
+  Chip,
   Empty,
   GroupTitle,
   muted,
@@ -34,6 +35,7 @@ import {
 } from "../../components/page";
 import { ResourceStat } from "../../components/resource-stat";
 import { Count, StatusDot } from "../../components/status";
+import { Tip } from "../../components/tip";
 import { useDash } from "../../dashboard-context";
 import { envOfDirectory, matches, sshAgentBadge } from "../../derive";
 import { checkoutResources } from "../../lib/resources";
@@ -465,9 +467,50 @@ const CheckoutPorts = () => {
           </p>
         </Card>
       )}
+      {runtime.hostPorts && runtime.hostPorts.length > 0 && (
+        <HostPorts ports={runtime.hostPorts} />
+      )}
     </section>
   );
 };
+
+/** Ports on this machine the container reaches at the same localhost port, from the project's settings. */
+const HostPorts = ({ ports }: { ports: HostPortStatus[] }) => (
+  <div className="flex flex-col gap-2">
+    <div>
+      <h3 className="font-semibold">Host ports</h3>
+      <p className={muted}>
+        Reachable inside the container at{" "}
+        <code className="font-mono">localhost</code> on the same port, and
+        answered by this machine.
+      </p>
+    </div>
+    <ul className="flex flex-wrap gap-2">
+      {ports.map((p) => {
+        const ok = p.state === "forwarded";
+        return (
+          <li key={p.port}>
+            <Tip
+              label={
+                ok
+                  ? `localhost:${p.port} in the container reaches localhost:${p.port} here`
+                  : `Unavailable: ${p.reason}`
+              }
+            >
+              <Chip tabIndex={0} className="gap-1.5 font-mono">
+                <StatusDot
+                  tone={ok ? "ok" : "error"}
+                  label={ok ? "Forwarded" : "Unavailable"}
+                />
+                {p.port}
+              </Chip>
+            </Tip>
+          </li>
+        );
+      })}
+    </ul>
+  </div>
+);
 
 const PortRow = ({ port: p }: { port: ForwardedPort }) => {
   const row = "flex min-h-12 items-center gap-4 px-4 py-2 text-sm";

@@ -28,7 +28,6 @@ import { ProjectStore } from "./db/projects";
 import { ProvenanceStore } from "./db/provenance";
 import { TaskStore } from "./db/tasks";
 import { Checks } from "./environments/checks";
-import { extraForwardPorts } from "./environments/config";
 import { Containers } from "./environments/containers";
 import { Credentials } from "./environments/credentials";
 import {
@@ -66,6 +65,7 @@ import { OpencodeRuntime } from "./opencode/runtime";
 import { preflight } from "./preflight";
 import { scanRoots } from "./projects/discovery";
 import { Onboarding } from "./projects/onboarding";
+import { projectPortSettings } from "./projects/ports";
 import { StateStore } from "./projects/state";
 import { startServer } from "./server";
 import { UsageStore, trackUsage } from "./sessions/usage";
@@ -419,26 +419,11 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
       projectSettings.update(project.path, { name: name.trim() || undefined });
       await hub.environments.rescan();
     },
-    projectPorts: {
-      get: (id) => {
-        const project = store.project(id);
-        if (!project) {
-          throw new NotFoundError(id);
-        }
-        return extraForwardPorts(projectSettings.get(project.path));
-      },
-      save: async (id, ports) => {
-        const project = store.project(id);
-        if (!project) {
-          throw new NotFoundError(id);
-        }
-        const unique = [...new Set(ports)].toSorted((a, b) => a - b);
-        projectSettings.update(project.path, {
-          forwardPorts: unique.length > 0 ? unique : undefined,
-        });
-        await hub.environments.refreshPorts(id);
-      },
-    },
+    ...projectPortSettings({
+      project: (id) => store.project(id),
+      refreshPorts: (id) => hub.environments.refreshPorts(id),
+      settings: projectSettings,
+    }),
     gitSetup: new GitSetupProbe({
       projects: () => store.projects(),
       run: spawnRunner,

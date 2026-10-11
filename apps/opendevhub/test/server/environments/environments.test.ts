@@ -472,6 +472,103 @@ describe("environments", () => {
     expect(forwarder.open).not.toHaveBeenCalled();
   });
 
+  it("starts a host port tunnel per host port on the relay, and stops them with the environment", async () => {
+    const { store, hub, hostPortTunnel, hostTunnels, projectSettings } =
+      setup();
+    projectSettings.mockReturnValue({ hostPorts: [9222, 5432] });
+    await hub.environments.rescan();
+    await hub.environments.start(project.id);
+    const token = store.runtime(project.id).relayToken!;
+    expect(hostPortTunnel.mock.calls.map((c) => [c[0], c[1]])).toStrictEqual([
+      [{ host: "172.17.0.9", port: 4097, token }, 9222],
+      [{ host: "172.17.0.9", port: 4097, token }, 5432],
+    ]);
+    expect(hostTunnels.every((t) => t.start.mock.calls.length === 1)).toBe(
+      true
+    );
+    expect(hostTunnels[0].opts.isAllowed(9222)).toBe(true);
+    expect(hostTunnels[0].opts.isAllowed(22)).toBe(false);
+    hostTunnels[1].opts.onStatus({
+      reason: "the port is in use in the container",
+      state: "unavailable",
+    });
+    hostTunnels[0].opts.onStatus({ state: "forwarded" });
+    expect(store.runtime(project.id).hostPorts).toStrictEqual([
+      {
+        port: 5432,
+        reason: "the port is in use in the container",
+        state: "unavailable",
+      },
+      { port: 9222, state: "forwarded" },
+    ]);
+    await hub.environments.stop(project.id);
+    expect(hostTunnels.every((t) => t.stop.mock.calls.length === 1)).toBe(true);
+    expect(store.runtime(project.id).hostPorts).toBeUndefined();
+  });
+
+  it("starts added host ports and stops removed ones when the settings change", async () => {
+    const { hub, hostTunnels, projectSettings } = setup();
+    projectSettings.mockReturnValue({ hostPorts: [9222] });
+    await hub.environments.rescan();
+    await hub.environments.start(project.id);
+    projectSettings.mockReturnValue({ hostPorts: [5432] });
+    await hub.environments.refreshPorts(project.id);
+    expect(hostTunnels.map((t) => t.port)).toStrictEqual([9222, 5432]);
+    expect(hostTunnels[0].stop).toHaveBeenCalled();
+    expect(hostTunnels[1].start).toHaveBeenCalled();
+    expect(hub.environments.logLines(project.id)).toContain(
+      "host port 9222: removed"
+    );
+    expect(hostTunnels[0].opts.isAllowed(9222)).toBe(false);
+  });
+
+  it("marks host ports unavailable without a relay", async () => {
+    const { store, hub, relay, hostPortTunnel, projectSettings } = setup();
+    projectSettings.mockReturnValue({ hostPorts: [9222] });
+    relay.ensureRunning.mockResolvedValueOnce({
+      status: "unavailable",
+      reason: "no relay runtime",
+    });
+    await hub.environments.rescan();
+    await hub.environments.start(project.id);
+    expect(hostPortTunnel).not.toHaveBeenCalled();
+    expect(store.runtime(project.id).hostPorts).toStrictEqual([
+      {
+        port: 9222,
+        reason: "needs the relay, which can't run here",
+        state: "unavailable",
+      },
+    ]);
+    expect(hub.environments.logLines(project.id)).toContain(
+      "host port 9222: unavailable (needs the relay, which can't run here)"
+    );
+  });
+
+  it("does not forward a port that is also a host port", async () => {
+    const { store, hub, forwarder, projectSettings } = setup();
+    projectSettings.mockReturnValue({
+      forwardPorts: [5173],
+      hostPorts: [3000],
+    });
+    await hub.environments.rescan();
+    await hub.environments.start(project.id);
+    expect(forwarder.open).toHaveBeenLastCalledWith(
+      project.id,
+      expect.anything(),
+      [{ containerPort: 5173 }],
+      expect.any(Function),
+      expect.any(Object)
+    );
+    expect(store.runtime(project.id).ports).toContainEqual({
+      entry: "3000",
+      reason: "it is a host port of the project",
+      status: "skipped",
+    });
+    expect(hub.environments.logLines(project.id)).toContain(
+      "ports: skipped 3000 (it is a host port of the project)"
+    );
+  });
+
   it("forwards ports before launching opencode, so they survive an opencode failure", async () => {
     const { store, runtime, hub, forwarder } = setup();
     runtime.ensureRunning.mockRejectedValueOnce(

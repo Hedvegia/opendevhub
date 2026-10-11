@@ -4,6 +4,7 @@ import {
   buildOverrideConfig,
   envIdFor,
   extraForwardPorts,
+  hostPorts,
   isolationBlocker,
   resolveEnvSettings,
 } from "../../../src/server/environments/config";
@@ -53,6 +54,17 @@ describe(extraForwardPorts, () => {
         forwardPorts: [3000, 3000, 0, 70_000, 1.5, "8080", 5173],
       })
     ).toStrictEqual([3000, 5173]);
+  });
+});
+
+describe(hostPorts, () => {
+  it("reads valid, distinct host ports from the project's entry", () => {
+    expect(hostPorts(undefined)).toStrictEqual([]);
+    expect(hostPorts({ forwardPorts: [3000] })).toStrictEqual([]);
+    expect(hostPorts({ hostPorts: 9222 })).toStrictEqual([]);
+    expect(
+      hostPorts({ hostPorts: [9222, 9222, 0, 70_000, 1.5, "5432", 5432] })
+    ).toStrictEqual([9222, 5432]);
   });
 });
 

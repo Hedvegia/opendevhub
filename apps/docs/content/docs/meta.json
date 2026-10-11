@@ -13,6 +13,7 @@
     "forgejo",
     "jira",
     "git-and-ssh",
+    "host-browser",
     "remote-nodes",
     "notifications",
     "---Reference---",

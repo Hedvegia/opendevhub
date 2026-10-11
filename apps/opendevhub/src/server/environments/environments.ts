@@ -20,6 +20,11 @@ import type { ForwardTarget } from "../network/port-forwarder";
 import { parseForwardPorts } from "../network/ports";
 import { AGENT_SOCKET, AgentTunnel } from "../network/relay/agent";
 import type { RelayTarget } from "../network/relay/client";
+import {
+  HostPortTunnel,
+  RELAY_NEEDED_REASON,
+} from "../network/relay/host-ports";
+import type { HostPortState } from "../network/relay/host-ports";
 import { generateRelayToken } from "../network/relay/runtime";
 import type { HostPort, Route, RouteContainer } from "../network/routes";
 import { LOCAL_NODE } from "../nodes/host";
@@ -38,6 +43,7 @@ import {
   envIdFor,
   isolationBlocker,
   extraForwardPorts,
+  hostPorts,
   resolveEnvSettings,
 } from "./config";
 import type { EnvSettings } from "./config";
@@ -53,6 +59,7 @@ import type {
   AgentTunnelHandle,
   ContainersPort,
   EnvFilesPort,
+  HostPortTunnelFactory,
   HubDeps,
   Kit,
   MonitorHandle,
@@ -101,6 +108,15 @@ export class Environments {
   private readonly settings = new Map<ProjectId, EnvSettings>();
   /** Each environment's sshAgent setting, from the configuration it was started with. */
   private readonly sshAgents = new Map<EnvId, boolean>();
+  /** Each running environment's host port tunnels and their states, for the relay at `relayKey`. */
+  private readonly hostTunnels = new Map<
+    EnvId,
+    {
+      relayKey: string;
+      tunnels: Map<number, AgentTunnelHandle>;
+      states: Map<number, HostPortState>;
+    }
+  >();
   /** Where each running environment's ports were last forwarded to, so they can be forwarded again when settings change. */
   private readonly forwardTargets = new Map<EnvId, ForwardTarget>();
   /** The starting task variant an environment is being set up for, so its steps and log lines reach it. */
@@ -442,6 +458,9 @@ export class Environments {
   async shutdown(): Promise<void> {
     for (const id of this.tunnels.keys()) {
       this.stopTunnel(id);
+    }
+    for (const id of this.hostTunnels.keys()) {
+      this.stopHostTunnels(id);
     }
     for (const id of this.monitors.keys()) {
       this.stopMonitor(id);
@@ -1456,6 +1475,9 @@ export class Environments {
   private async forwardPorts(env: Env, target: ForwardTarget): Promise<void> {
     const { store, forwarder } = this.deps;
     this.forwardTargets.set(env.id, target);
+    const settings = this.deps.projectSettings?.(env.project);
+    const hostList = hostPorts(settings);
+    this.reconcileHostPorts(env, target, hostList);
     const { containers } = this.kit(env);
     let config: PortConfig;
     try {
@@ -1486,13 +1508,23 @@ export class Environments {
       resolveEnvSettings(custom, this.deps.projectSettings?.(env.project))
         .sshAgent
     );
-    const { ports, skipped } = parseForwardPorts(
-      [
-        ...config.forwardPorts,
-        ...extraForwardPorts(this.deps.projectSettings?.(env.project)),
-      ],
+    const parsed = parseForwardPorts(
+      [...config.forwardPorts, ...extraForwardPorts(settings)],
       config.portsAttributes
     );
+    // A host port owns its number in the container, so forwarding it too would loop back to this machine.
+    const ports = parsed.ports.filter(
+      (p) => !hostList.includes(p.containerPort)
+    );
+    const skipped = [
+      ...parsed.skipped,
+      ...parsed.ports
+        .filter((p) => hostList.includes(p.containerPort))
+        .map((p) => ({
+          entry: String(p.containerPort),
+          reason: "it is a host port of the project",
+        })),
+    ];
     for (const s of skipped) {
       this.envLog(env, `ports: skipped ${s.entry} (${s.reason})`);
     }
@@ -1628,6 +1660,98 @@ export class Environments {
     tunnel.start();
   }
 
+  /** Starts and stops the environment's host port tunnels to match `wanted`, on the relay in `target`. */
+  private reconcileHostPorts(
+    env: Env,
+    target: ForwardTarget,
+    wanted: number[]
+  ): void {
+    const { relay } = target;
+    const relayTarget: RelayTarget | undefined = relay && {
+      host: relay.host ?? target.host,
+      port: relay.port,
+      token: relay.token,
+    };
+    const relayKey = relayTarget
+      ? `${relayTarget.host}:${relayTarget.port}:${relayTarget.token}`
+      : "";
+    let entry = this.hostTunnels.get(env.id);
+    if (entry && entry.relayKey !== relayKey) {
+      this.stopHostTunnels(env.id);
+      entry = undefined;
+    }
+    if (!entry) {
+      entry = { relayKey, states: new Map(), tunnels: new Map() };
+      this.hostTunnels.set(env.id, entry);
+    }
+    const { tunnels, states } = entry;
+    for (const [port, tunnel] of tunnels) {
+      if (!wanted.includes(port)) {
+        tunnel.stop();
+        tunnels.delete(port);
+        this.envLog(env, `host port ${port}: removed`);
+      }
+    }
+    for (const port of states.keys()) {
+      if (!wanted.includes(port)) {
+        states.delete(port);
+      }
+    }
+    if (!relayTarget) {
+      for (const port of wanted) {
+        if (!states.has(port)) {
+          this.envLog(
+            env,
+            `host port ${port}: unavailable (${RELAY_NEEDED_REASON})`
+          );
+        }
+        states.set(port, { reason: RELAY_NEEDED_REASON, state: "unavailable" });
+      }
+      this.publishHostPorts(env.id);
+      return;
+    }
+    const factory: HostPortTunnelFactory =
+      this.deps.hostPortTunnel ?? ((t, p, o) => new HostPortTunnel(t, p, o));
+    for (const port of wanted) {
+      if (tunnels.has(port)) {
+        continue;
+      }
+      const tunnel = factory(relayTarget, port, {
+        isAllowed: (p) =>
+          hostPorts(this.deps.projectSettings?.(env.project)).includes(p),
+        onLog: (l) => this.envLog(env, l),
+        onRelayLost: () => void this.recoverRelay(env.id),
+        onStatus: (status) => {
+          if (tunnels.get(port) !== tunnel) {
+            return;
+          }
+          states.set(port, status);
+          this.publishHostPorts(env.id);
+        },
+      });
+      tunnels.set(port, tunnel);
+      tunnel.start();
+    }
+    this.publishHostPorts(env.id);
+  }
+
+  private publishHostPorts(id: EnvId): void {
+    const states = this.hostTunnels.get(id)?.states;
+    const list = [...(states ?? [])]
+      .toSorted(([a], [b]) => a - b)
+      .map(([port, s]) => ({ port, ...s }));
+    this.deps.store.updateRuntime(id, {
+      hostPorts: list.length > 0 ? list : undefined,
+    });
+  }
+
+  private stopHostTunnels(id: EnvId): void {
+    for (const tunnel of this.hostTunnels.get(id)?.tunnels.values() ?? []) {
+      tunnel.stop();
+    }
+    this.hostTunnels.delete(id);
+  }
+
   private stopTunnel(id: EnvId): void {
     this.tunnels.get(id)?.stop();
     this.tunnels.delete(id);
@@ -1663,10 +1787,12 @@ export class Environments {
 
   private async closePorts(id: EnvId): Promise<void> {
     this.stopTunnel(id);
+    this.stopHostTunnels(id);
     this.sshAgents.delete(id);
     this.forwardTargets.delete(id);
     await this.deps.forwarder.close(id);
     this.deps.store.updateRuntime(id, {
+      hostPorts: undefined,
       ports: undefined,
       relay: undefined,
       sshAgent: undefined,

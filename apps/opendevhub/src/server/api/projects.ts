@@ -77,6 +77,26 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
         return { ports: deps.projectPorts.get(id) };
       })
     )
+    .get("/api/projects/:id/host-ports", (c) =>
+      json(c, (id) => {
+        if (!deps.projectHostPorts) {
+          throw new UnavailableError("Project host ports are not available");
+        }
+        return { ports: deps.projectHostPorts.get(id) };
+      })
+    )
+    .post(
+      "/api/projects/:id/host-ports",
+      validateJson(bodies.projectHostPorts),
+      (c) =>
+        json(c, async (id) => {
+          if (!deps.projectHostPorts) {
+            throw new UnavailableError("Project host ports are not available");
+          }
+          await deps.projectHostPorts.save(id, c.req.valid("json").ports);
+          return { ports: deps.projectHostPorts.get(id) };
+        })
+    )
     .post("/api/projects/:id/rebuild", (c) =>
       action(c, () => actions["rebuild"](param(c, "id")))
     )
