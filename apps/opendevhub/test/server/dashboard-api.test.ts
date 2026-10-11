@@ -33,11 +33,15 @@ import type { ActivityPage, Provenance } from "../../src/shared/activity";
 import type {
   Candidate,
   CheckRun,
+  AgentOption,
   ChecksConfig,
   ChecksView,
   CleanupItem,
   CleanupPlan,
   CleanupResult,
+  ComposerCommand,
+  ComposerSendRequest,
+  ComposerSendResult,
   ModelsInfo,
   PickResult,
   Project,
@@ -162,6 +166,26 @@ function setup(webDir?: string) {
       promptSession: vi.fn(
         async (_id: string, _sid: string, _text: string) => {}
       ),
+      sendMessage: vi.fn(
+        async (
+          _id: string,
+          _sid: string,
+          _req: ComposerSendRequest
+        ): Promise<ComposerSendResult> => ({ kind: "prompt", queued: false })
+      ),
+      composerCommands: vi.fn(
+        async (_id: string, _dir: string): Promise<ComposerCommand[]> => [
+          { name: "new", hub: true },
+        ]
+      ),
+      composerAgents: vi.fn(
+        async (_id: string, _dir: string): Promise<AgentOption[]> => [
+          { id: "explore", name: "Explore" },
+        ]
+      ),
+      findFiles: vi.fn(async (_id: string, _dir: string, _query: string) => [
+        "src/a.ts",
+      ]),
       removeSession: vi.fn(async (_id: string, _sid: string) => {}),
       sessionDetail: vi.fn(
         async (_id: string, _sid: string): Promise<SessionDetail> => {
@@ -1686,6 +1710,50 @@ describe("dashboard API", () => {
         project.id,
         "ses_1"
       );
+    });
+
+    it("sends a composer message and serves a checkout's commands, agents and files", async () => {
+      const { app, hub } = setup();
+      const message = {
+        text: "explain @a.ts",
+        mentions: [{ kind: "file", start: 8, end: 13, name: "a.ts" }],
+      };
+      const sent = await post(app, "sessions/ses_1/send", message);
+      expect(sent.status).toBe(200);
+      expect(await sent.json()).toStrictEqual({
+        kind: "prompt",
+        queued: false,
+      });
+      expect(hub.sessions.sendMessage).toHaveBeenCalledWith(
+        project.id,
+        "ses_1",
+        message
+      );
+      expect(
+        (
+          await post(app, "sessions/ses_1/send", {
+            text: "x",
+            mentions: [{ kind: "skill", start: 0, end: 1, name: "x" }],
+          })
+        ).status
+      ).toBe(400);
+      const base = `/api/projects/${project.id}/composer`;
+      const dir = "directory=%2Fw";
+      expect(
+        await (await app.request(`${base}/commands?${dir}`)).json()
+      ).toStrictEqual({ commands: [{ name: "new", hub: true }] });
+      expect(
+        await (await app.request(`${base}/agents?${dir}`)).json()
+      ).toStrictEqual({ agents: [{ id: "explore", name: "Explore" }] });
+      expect(
+        await (await app.request(`${base}/files?${dir}&query=a`)).json()
+      ).toStrictEqual({ files: ["src/a.ts"] });
+      expect(hub.sessions.findFiles).toHaveBeenCalledWith(
+        project.id,
+        "/w",
+        "a"
+      );
+      expect((await app.request(`${base}/files?${dir}`)).status).toBe(400);
     });
 
     it("prompts a session, starts one with a prompt, and removes a worktree with its branch", async () => {

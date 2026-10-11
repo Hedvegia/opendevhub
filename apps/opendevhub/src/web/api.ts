@@ -12,6 +12,7 @@ import type { StackId } from "../shared/stacks";
 import type {
   CheckDef,
   CleanupItem,
+  ComposerSendRequest,
   DashboardSnapshot,
   FormAnswer,
   LogEvent,
@@ -565,6 +566,55 @@ export const sendPrompt = async (
     "send to agent"
   );
 };
+
+/** Sends what the composer holds; the hub decides whether it's a hub command, an opencode command or a prompt. */
+export const sendComposerMessage = (
+  projectId: string,
+  sessionId: string,
+  message: ComposerSendRequest
+) =>
+  read(
+    project.sessions[":sid"].send.$post({
+      param: { ...projectParam(projectId), sid: encodeURIComponent(sessionId) },
+      json: message,
+    }),
+    "send to agent"
+  );
+
+/** The `/` suggestions of a checkout: the hub's commands and opencode's. */
+export const fetchComposerCommands = (projectId: string, directory: string) =>
+  read(
+    project.composer.commands.$get({
+      param: projectParam(projectId),
+      query: { directory },
+    }),
+    "list commands"
+  );
+
+/** The agents `@` can mention in a checkout. */
+export const fetchComposerAgents = (projectId: string, directory: string) =>
+  read(
+    project.composer.agents.$get({
+      param: projectParam(projectId),
+      query: { directory },
+    }),
+    "list agents"
+  );
+
+/** Files in a checkout matching `query`, best first and capped by the hub. */
+export const searchComposerFiles = (
+  projectId: string,
+  directory: string,
+  query: string,
+  signal?: AbortSignal
+) =>
+  read(
+    project.composer.files.$get(
+      { param: projectParam(projectId), query: { directory, query } },
+      { init: { signal } }
+    ),
+    "search files"
+  );
 
 /** Deletes a session with its subagent sessions, stopping it first if it's busy. */
 export const removeSession = async (projectId: string, sessionId: string) => {

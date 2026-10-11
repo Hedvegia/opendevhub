@@ -1,4 +1,8 @@
+import nodePath from "node:path";
+import { pathToFileURL } from "node:url";
+
 import type {
+  ComposerMention,
   FormAnswer,
   FormField,
   ModelRef,
@@ -93,6 +97,38 @@ export interface RawCommand {
   description?: string;
 }
 
+/** A mention's range in the text it was sent with, and that text (`@src/a.ts`, `@explore`). */
+export interface RawMention {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** A file opencode reads into the prompt itself; `uri` is `file://<absolute path>` or a `data:` URL. */
+export interface RawFileAttachment {
+  uri: string;
+  name?: string;
+  mention?: RawMention;
+}
+
+/** An agent the prompt asks for; opencode passes it to the model and keeps the session's own agent. */
+export interface RawAgentAttachment {
+  name: string;
+  mention?: RawMention;
+}
+
+/** What `@` mentions turn into, for `prompt` and `command` alike (opencode 2.0.26's PromptInput). */
+export interface PromptAttachments {
+  files?: RawFileAttachment[];
+  agents?: RawAgentAttachment[];
+}
+
+/** One `GET /api/fs/find` match: a path relative to the checkout; directories end in `/`. */
+export interface RawFsEntry {
+  path: string;
+  type: "file" | "directory";
+}
+
 export interface NewSession {
   title?: string;
   model?: ModelRef;
@@ -180,6 +216,60 @@ export const isInvalidAnswer = (err: unknown): err is OpencodeHttpError => {
     return false;
   }
   return err.tag === "FormInvalidAnswerError" || err.status === 400;
+};
+
+/** A path relative to a checkout that stays inside it: no absolute path, no `..`, no empty segment. */
+const insideCheckout = (path: string): boolean =>
+  path !== "" &&
+  !path.startsWith("/") &&
+  !path.includes("\\") &&
+  path.split("/").every((seg) => seg !== "" && seg !== "." && seg !== "..");
+
+/**
+ * The composer's mentions as opencode's prompt attachments, encoded as opencode's own clients do: the text keeps
+ * `@<path>` or `@<agent>`, and the attachment carries its range. A file becomes a `file://` URI under `directory`.
+ * `offset` is where `text` begins in the composer's message (a command's arguments start after `/name `); mentions
+ * before it are dropped. Throws on a mention whose range doesn't match the text or whose path leaves the checkout,
+ * since opencode reads any `file://` path it is given.
+ */
+export const toAttachments = (
+  directory: string,
+  message: string,
+  mentions: readonly ComposerMention[],
+  offset = 0
+): PromptAttachments => {
+  const files: RawFileAttachment[] = [];
+  const agents: RawAgentAttachment[] = [];
+  for (const m of mentions) {
+    const token = message.slice(m.start, m.end);
+    if (m.end <= m.start || token !== `@${m.name}`) {
+      throw new RangeError(`mention "${m.name}" doesn't match the message`);
+    }
+    if (m.start < offset) {
+      continue;
+    }
+    const mention = {
+      end: m.end - offset,
+      start: m.start - offset,
+      text: token,
+    };
+    if (m.kind === "agent") {
+      agents.push({ mention, name: m.name });
+      continue;
+    }
+    if (!insideCheckout(m.name)) {
+      throw new RangeError(`"${m.name}" isn't a file in the checkout`);
+    }
+    files.push({
+      mention,
+      name: m.name,
+      uri: pathToFileURL(nodePath.posix.join(directory, m.name)).href,
+    });
+  }
+  return {
+    ...(files.length > 0 ? { files } : {}),
+    ...(agents.length > 0 ? { agents } : {}),
+  };
 };
 
 export const basicAuth = (password: string): string =>
@@ -385,34 +475,63 @@ export class OpencodeClient {
     return result.data;
   }
 
-  /** Adds a user message; asynchronous on opencode's side. `queue` waits for a running agent to finish its turn. */
+  /**
+   * Adds a user message; asynchronous on opencode's side. `queue` waits for a running agent to finish its turn.
+   * `attachments` are the message's `@` mentions (see `toAttachments`).
+   */
   prompt(
     sessionId: string,
     text: string,
     delivery?: "queue" | "steer",
-    directory?: string
+    directory?: string,
+    attachments: PromptAttachments = {}
   ): Promise<void> {
     return this.send(
       "POST",
       `/api/session/${encodeURIComponent(sessionId)}/prompt`,
-      { text, ...(delivery ? { delivery } : {}) },
+      { text, ...attachments, ...(delivery ? { delivery } : {}) },
       directory
     );
   }
 
-  /** Runs a slash command in the session, `text` being its arguments; opencode expands it as typed `/name text`. */
+  /**
+   * Runs a slash command in the session, `text` being its arguments; opencode expands it as typed `/name text`.
+   * Takes the same attachments and delivery as `prompt`.
+   */
   command(
     sessionId: string,
     name: string,
     text: string,
-    directory?: string
+    directory?: string,
+    opts: PromptAttachments & { delivery?: "queue" | "steer" } = {}
   ): Promise<void> {
     return this.send(
       "POST",
       `/api/session/${encodeURIComponent(sessionId)}/command`,
-      { name, text },
+      { name, text, ...opts },
       directory
     );
+  }
+
+  /** Files in the checkout whose path fuzzily matches `query`, best first; opencode skips what `.gitignore` lists. */
+  async findFiles(
+    directory: string,
+    query: string,
+    limit: number
+  ): Promise<string[]> {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      query,
+      type: "file",
+    });
+    const result = await this.get<{ data: RawFsEntry[] }>(
+      `/api/fs/find?${params}`,
+      directory
+    );
+    return result.data
+      .filter((e) => e.type === "file")
+      .slice(0, limit)
+      .map((e) => e.path);
   }
 
   /** Stops the session's running turn. */

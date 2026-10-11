@@ -215,7 +215,7 @@ export const sessionHref = (
   session: SessionSummary
 ): string => sessionUrl(openUrlOf(view, session.envId), session.id);
 
-export const envTone = (env: EnvironmentView): Tone => {
+export const envTone = (env: Pick<EnvironmentView, "runtime">): Tone => {
   const { containerState, opencode } = env.runtime;
   if (
     containerState === "error" ||

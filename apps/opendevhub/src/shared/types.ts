@@ -417,6 +417,44 @@ export interface ModelsInfo {
   spec?: SpecWorkflow;
 }
 
+/** The commands opendevhub runs itself from the composer; they win over an opencode command of the same name. */
+export const HUB_COMMANDS = [
+  { description: "Start a new conversation in this checkout", name: "new" },
+  { description: "Stop the running turn", name: "interrupt" },
+] as const;
+
+export type HubCommandName = (typeof HUB_COMMANDS)[number]["name"];
+
+/** A `/` suggestion: an opencode command of the checkout, or one of the hub's. */
+export interface ComposerCommand {
+  name: string;
+  description?: string;
+  /** Handled by opendevhub, not sent to opencode. */
+  hub?: boolean;
+  /** An opencode command a hub command of the same name hides. */
+  shadowed?: boolean;
+}
+
+/** An `@` token in the message: `text.slice(start, end)` is `@${name}`; `name` is a checkout-relative path or an agent id. */
+export interface ComposerMention {
+  kind: "file" | "agent";
+  start: number;
+  end: number;
+  name: string;
+}
+
+export interface ComposerSendRequest {
+  text: string;
+  mentions?: ComposerMention[];
+}
+
+/** What sending did: `sessionId` is the conversation `/new` started. */
+export type ComposerSendResult =
+  | { kind: "prompt"; queued: boolean }
+  | { kind: "command"; name: string; queued: boolean }
+  | { kind: "interrupt" }
+  | { kind: "new"; sessionId: string };
+
 /** OpenSpec's workflow as the project's environment offers it. Spec-first tasks need every command and the CLI. */
 export interface SpecWorkflow {
   /** The `opsx-*` commands a spec-first task needs that opencode doesn't have. */

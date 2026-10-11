@@ -441,7 +441,8 @@ describe("review", () => {
       sid,
       "please look",
       undefined,
-      wt
+      wt,
+      {}
     );
   });
 

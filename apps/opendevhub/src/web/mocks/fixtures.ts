@@ -23,12 +23,14 @@ import type {
   JiraTicketSummary,
 } from "../../shared/jira";
 import type {
+  AgentOption,
   CandidateList,
   PullLinks,
   PullRequestRef,
   TicketLinks,
   TicketRef,
   ChecksView,
+  ComposerCommand,
   SpecView,
   CleanupPlan,
   DashboardSnapshot,
@@ -716,6 +718,50 @@ const branchAt = (directory: string): string =>
     .find((w) => w.path === directory)?.branch ?? "main";
 
 /** A stand-in for a changed image: requests per minute before and after the limit, or the old and new logo. */
+export const composerCommands: ComposerCommand[] = [
+  {
+    description: "Start a new conversation in this checkout",
+    hub: true,
+    name: "new",
+  },
+  { description: "Stop the running turn", hub: true, name: "interrupt" },
+  { description: "guided AGENTS.md setup", name: "init" },
+  {
+    description: "review changes [commit|branch|pr], defaults to uncommitted",
+    name: "review",
+  },
+  {
+    description: "Propose a new change with all artifacts",
+    name: "opsx-propose",
+  },
+  {
+    description: "Implement tasks from an OpenSpec change",
+    name: "opsx-apply",
+  },
+  { description: "Archive a completed change", name: "opsx-archive" },
+];
+
+export const composerAgents: AgentOption[] = [
+  {
+    description: "Fast agent specialized for exploring codebases.",
+    id: "explore",
+    name: "Explore",
+  },
+  {
+    description: "General-purpose agent for multi-step tasks.",
+    id: "general",
+    name: "General",
+  },
+];
+
+export const composerFiles = [
+  "src/server/rate-limit.ts",
+  "src/server/routes.ts",
+  "src/server/auth/login.ts",
+  "src/web/login-form.tsx",
+  "README.md",
+];
+
 export const reviewImage = (file: string, old: boolean): string => {
   if (file.endsWith("logo.png")) {
     const color = old ? "#64748b" : "#7c3aed";

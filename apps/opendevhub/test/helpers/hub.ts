@@ -541,8 +541,21 @@ export function setup(
       { id: "build", name: "Build", mode: "primary" },
     ]),
     commands: vi.fn(async (_dir: string): Promise<RawCommand[]> => []),
+    findFiles: vi.fn(
+      async (
+        _dir: string,
+        _query: string,
+        _limit: number
+      ): Promise<string[]> => []
+    ),
     command: vi.fn(
-      async (_sid: string, _name: string, _text: string, _dir?: string) => {}
+      async (
+        _sid: string,
+        _name: string,
+        _text: string,
+        _dir?: string,
+        _opts?: unknown
+      ) => {}
     ),
     session: vi.fn(async (id: string): Promise<RawSession> => ({
       id,
@@ -614,7 +627,8 @@ export function setup(
         _sid: string,
         _text: string,
         _delivery?: string,
-        _dir?: string
+        _dir?: string,
+        _attachments?: unknown
       ) => {}
     ),
     generate: vi.fn(

@@ -58,6 +58,7 @@ export const TaskConversation = () => {
         checkout={checkout}
         session={selected}
         showTask={selected.id !== own?.id}
+        onStarted={select}
       />
     );
   } else if (variant.sessionId) {

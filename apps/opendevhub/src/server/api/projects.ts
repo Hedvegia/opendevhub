@@ -218,6 +218,52 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
           );
         })
     )
+    .post(
+      "/api/projects/:id/sessions/:sid/send",
+      validateJson(bodies.composerSend),
+      (c) =>
+        json(c, (id) =>
+          hub.sessions.sendMessage(
+            id,
+            c.req.param("sid") ?? "",
+            c.req.valid("json")
+          )
+        )
+    )
+    .get(
+      "/api/projects/:id/composer/commands",
+      validateQuery(queries.directory),
+      (c) =>
+        json(c, async (id) => ({
+          commands: await hub.sessions.composerCommands(
+            id,
+            c.req.valid("query").directory ?? ""
+          ),
+        }))
+    )
+    .get(
+      "/api/projects/:id/composer/agents",
+      validateQuery(queries.directory),
+      (c) =>
+        json(c, async (id) => ({
+          agents: await hub.sessions.composerAgents(
+            id,
+            c.req.valid("query").directory ?? ""
+          ),
+        }))
+    )
+    .get(
+      "/api/projects/:id/composer/files",
+      validateQuery(queries.files),
+      (c) =>
+        json(c, async (id) => ({
+          files: await hub.sessions.findFiles(
+            id,
+            c.req.valid("query").directory ?? "",
+            c.req.valid("query").query
+          ),
+        }))
+    )
     .post("/api/projects/:id/open", validateJson(bodies.editor), (c) =>
       ok(c, (id) => {
         const b = c.req.valid("json");

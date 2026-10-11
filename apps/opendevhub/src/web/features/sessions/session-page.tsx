@@ -4,7 +4,6 @@ import {
   ChevronRightIcon,
   ExternalLinkIcon,
   LoaderCircleIcon,
-  SendIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -13,7 +12,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import { modelShortName } from "../../../shared/tasks";
@@ -24,7 +22,7 @@ import type {
   SessionTurn,
 } from "../../../shared/types";
 import { sessionUrl } from "../../../shared/urls";
-import { fetchSessionDetail, sendPrompt } from "../../api";
+import { fetchSessionDetail } from "../../api";
 import { Chip, muted, Section } from "../../components/page";
 import { SessionBadge } from "../../components/status";
 import { Tip } from "../../components/tip";
@@ -34,6 +32,7 @@ import { Link } from "../../routing";
 import type { Checkout } from "../checkouts/checkouts";
 import { TurnChanges } from "../review/turn-changes";
 import { formatCost, formatTokens, taskChip } from "../tasks/tasks";
+import { Composer } from "./composer";
 import { PendingStack } from "./pending-cards";
 import {
   breakdownLabel,
@@ -51,7 +50,7 @@ const sessionDetailQuery = (projectId: string, sessionId: string) =>
   });
 
 /**
- * One conversation: its usage, its turns with what each changed, and a box to prompt it. `showTask` adds a chip
+ * One conversation: its usage, its turns with what each changed, and a composer to message it. `showTask` adds a chip
  * linking to the task it belongs to, for a conversation shown on another task's page.
  */
 export const SessionView = ({
@@ -59,11 +58,14 @@ export const SessionView = ({
   checkout,
   session,
   showTask = false,
+  onStarted,
 }: {
   view: ProjectView;
   checkout: Checkout;
   session: SessionSummary;
   showTask?: boolean;
+  /** A conversation the composer's `/new` started in this checkout. */
+  onStarted?: (sessionId: string) => void;
 }) => {
   const projectId = view.project.id;
   const queryClient = useQueryClient();
@@ -146,11 +148,12 @@ export const SessionView = ({
 
       <Stats session={session} detail={detail} />
 
-      <PromptBox
-        projectId={projectId}
-        sessionId={session.id}
-        running={running}
+      <Composer
+        view={view}
+        checkout={checkout}
+        session={session}
         onSent={setNotice}
+        onStarted={onStarted}
       />
 
       <Section
@@ -328,75 +331,6 @@ const Stats = ({
         hint={detail?.outcome && `Last run ${detail.outcome}`}
       />
     </div>
-  );
-};
-
-const PromptBox = (props: {
-  projectId: string;
-  sessionId: string;
-  running: boolean;
-  onSent: (notice: string) => void;
-}) => {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const send = () => {
-    if (!text.trim() || busy) {
-      return;
-    }
-    setBusy(true);
-    sendPrompt(props.projectId, props.sessionId, text)
-      .then(
-        () => {
-          setText("");
-          setError(undefined);
-          props.onSent(
-            props.running
-              ? "Queued: the agent reads it when its turn ends."
-              : "Sent to the agent."
-          );
-        },
-        (err) => setError(err instanceof Error ? err.message : String(err))
-      )
-      .finally(() => setBusy(false));
-  };
-  return (
-    <form
-      className="flex flex-col gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        send();
-      }}
-    >
-      <label htmlFor="session-prompt" className="sr-only">
-        Message the agent
-      </label>
-      <Textarea
-        id="session-prompt"
-        placeholder={
-          props.running
-            ? "Message the agent; it's queued behind the current turn…"
-            : "Message the agent…"
-        }
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            send();
-          }
-        }}
-      />
-      {error && <p className="text-destructive text-sm">{error}</p>}
-      <div className="flex items-center justify-end gap-2">
-        <span className="text-muted-foreground text-xs max-sm:hidden">
-          Ctrl+Enter to send
-        </span>
-        <Button type="submit" size="sm" disabled={busy || !text.trim()}>
-          <SendIcon /> {props.running ? "Queue" : "Send"}
-        </Button>
-      </div>
-    </form>
   );
 };
 

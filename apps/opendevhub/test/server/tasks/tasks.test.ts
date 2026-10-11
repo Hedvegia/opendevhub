@@ -490,7 +490,8 @@ describe("tasks", () => {
       res.sessionId,
       "Write docs",
       undefined,
-      res.worktree.path
+      res.worktree.path,
+      {}
     );
   });
 

@@ -1,4 +1,9 @@
+import { HUB_COMMANDS } from "../../shared/types";
 import type {
+  AgentOption,
+  ComposerCommand,
+  ComposerSendRequest,
+  ComposerSendResult,
   EnvId,
   FormAnswer,
   ModelsInfo,
@@ -14,8 +19,18 @@ import type { Environments } from "../environments/environments";
 import type { HubDeps } from "../environments/ports";
 import { AlreadyAnsweredError, NotFoundError } from "../errors";
 import { InvalidRequestError } from "../git/worktrees";
-import { isGone, isInvalidAnswer } from "../opencode/client";
-import type { OpencodeClient, RawSession } from "../opencode/client";
+import {
+  OpencodeHttpError,
+  isGone,
+  isInvalidAnswer,
+  toAttachments,
+} from "../opencode/client";
+import type {
+  OpencodeClient,
+  PromptAttachments,
+  RawCommand,
+  RawSession,
+} from "../opencode/client";
 import { OPENSPEC_CLI_CHECK, specWorkflow } from "../tasks/openspec";
 import { toModelsInfo } from "../tasks/request";
 import {
@@ -27,6 +42,10 @@ import {
 
 const MODELS_TTL_MS = 60_000;
 const MODELS_RETRY_MS = 1500;
+/** At most this many `@` file suggestions per query. */
+export const FILE_SEARCH_LIMIT = 50;
+/** `/name` at the very start of a message, then whitespace or the end; `/etc/hosts` isn't one. */
+const SLASH_COMMAND = /^\/(?<name>[^\s/]+)(?:\s+|$)/u;
 const DECISIONS: readonly string[] = [
   "once",
   "always",
@@ -42,10 +61,23 @@ export class Sessions {
     ProjectId,
     { at: number; value: Promise<ModelsInfo> }
   >();
+  /** A checkout's commands and agents, per project and directory, kept like `modelCache`. */
+  private readonly commandCache = new Map<
+    ProjectId,
+    Map<string, { at: number; value: Promise<RawCommand[]> }>
+  >();
+  private readonly agentCache = new Map<
+    ProjectId,
+    Map<string, { at: number; value: Promise<AgentOption[]> }>
+  >();
   constructor(deps: HubDeps, envs: Environments) {
     this.deps = deps;
     this.envs = envs;
-    envs.onUnwatch((id) => this.modelCache.delete(id));
+    envs.onUnwatch((id) => {
+      this.modelCache.delete(id);
+      this.commandCache.delete(id);
+      this.agentCache.delete(id);
+    });
   }
 
   async startSession(
@@ -53,7 +85,7 @@ export class Sessions {
     directory: string,
     title?: string,
     prompt?: string,
-    options: { reviewOf?: number } = {}
+    options: { reviewOf?: number; attachments?: PromptAttachments } = {}
   ): Promise<string> {
     const project = this.envs.requireProject(id);
     this.envs.checkDirectory(id, directory);
@@ -68,7 +100,13 @@ export class Sessions {
       options.reviewOf
     );
     if (prompt?.trim()) {
-      await client.prompt(session.id, prompt, undefined, directory);
+      await client.prompt(
+        session.id,
+        prompt,
+        undefined,
+        directory,
+        options.attachments ?? {}
+      );
     }
     this.envs.reconcile(env.id);
     return session.id;
@@ -252,6 +290,176 @@ export class Sessions {
         session.directory
       );
     this.envs.reconcile(envId);
+  }
+
+  /**
+   * Sends what the composer holds: `/new` and `/interrupt` are the hub's; `/name` of a command the checkout has
+   * runs it with the rest as arguments; anything else, unknown `/name` included, is a prompt. Mentions go along as
+   * opencode's attachments either way. A running conversation gets it queued behind the current turn.
+   */
+  async sendMessage(
+    id: ProjectId,
+    sessionId: string,
+    request: ComposerSendRequest
+  ): Promise<ComposerSendResult> {
+    this.envs.requireProject(id);
+    const { text } = request;
+    const mentions = request.mentions ?? [];
+    if (!text.trim()) {
+      throw new InvalidRequestError("the message is empty");
+    }
+    const session = this.deps.store
+      .sessionsOf(id)
+      .find((s) => s.id === sessionId);
+    if (!session) {
+      throw new NotFoundError(sessionId, "session");
+    }
+    const { directory } = session;
+    const envId = session.envId ?? id;
+    const client = this.envs.opencodeClient(envId);
+    const attach = (offset = 0) => {
+      try {
+        return toAttachments(directory, text, mentions, offset);
+      } catch (error) {
+        throw new InvalidRequestError(
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    };
+    const queued = session.status === "running";
+    const delivery = queued ? ("queue" as const) : undefined;
+    const slash = SLASH_COMMAND.exec(text);
+    const name = slash?.groups?.name;
+    const offset = slash?.[0].length ?? 0;
+    const args = text.slice(offset);
+
+    if (name === "interrupt") {
+      if (session.status === "idle") {
+        throw new InvalidRequestError("the conversation isn't working");
+      }
+      await client.interrupt(sessionId, directory);
+      this.envs.reconcile(envId);
+      return { kind: "interrupt" };
+    }
+    if (name === "new") {
+      const started = await this.startSession(
+        id,
+        directory,
+        undefined,
+        args.trim() || undefined,
+        { attachments: attach(offset) }
+      );
+      return { kind: "new", sessionId: started };
+    }
+    const known = name ? await this.checkoutCommands(id, directory) : [];
+    if (name && known.some((c) => c.name === name)) {
+      await client.command(sessionId, name, args, directory, {
+        ...attach(offset),
+        ...(delivery ? { delivery } : {}),
+      });
+      this.envs.reconcile(envId);
+      return { kind: "command", name, queued };
+    }
+    await client.prompt(sessionId, text, delivery, directory, attach());
+    this.envs.reconcile(envId);
+    return { kind: "prompt", queued };
+  }
+
+  /** The `/` suggestions for a checkout: the hub's commands, then opencode's, marked when a hub command hides one. */
+  async composerCommands(
+    id: ProjectId,
+    directory: string
+  ): Promise<ComposerCommand[]> {
+    const own = await this.checkoutCommands(id, directory);
+    const hub = new Set<string>(HUB_COMMANDS.map((c) => c.name));
+    return [
+      ...HUB_COMMANDS.map((c) => ({ ...c, hub: true })),
+      ...own.map((c) => ({
+        name: c.name,
+        ...(c.description ? { description: c.description } : {}),
+        ...(hub.has(c.name) ? { shadowed: true } : {}),
+      })),
+    ];
+  }
+
+  /** The agents `@` can mention in a checkout: visible subagents, as opencode's own prompt offers them. */
+  // oxlint-disable-next-line eslint/require-await -- async so that validation errors reject instead of throwing
+  async composerAgents(
+    id: ProjectId,
+    directory: string
+  ): Promise<AgentOption[]> {
+    const client = this.checkoutClient(id, directory);
+    return this.cached(this.agentCache, id, directory, async () => {
+      const agents = await client.agents(directory);
+      return agents
+        .filter((a) => !a.hidden && a.mode !== "primary")
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          ...(a.description ? { description: a.description } : {}),
+        }));
+    });
+  }
+
+  /** Files in a checkout matching `query`, at most `FILE_SEARCH_LIMIT`; none when opencode has no file search. */
+  async findFiles(
+    id: ProjectId,
+    directory: string,
+    query: string
+  ): Promise<string[]> {
+    const client = this.checkoutClient(id, directory);
+    try {
+      return await client.findFiles(directory, query, FILE_SEARCH_LIMIT);
+    } catch (error) {
+      if (error instanceof OpencodeHttpError && error.status === 404) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  // oxlint-disable-next-line eslint/require-await -- async so that validation errors reject instead of throwing
+  private async checkoutCommands(
+    id: ProjectId,
+    directory: string
+  ): Promise<RawCommand[]> {
+    const client = this.checkoutClient(id, directory);
+    return this.cached(this.commandCache, id, directory, () =>
+      client.commands(directory)
+    );
+  }
+
+  /** The opencode serving one of the project's checkouts; refuses any other directory. */
+  private checkoutClient(id: ProjectId, directory: string): OpencodeClient {
+    const project = this.envs.requireProject(id);
+    this.envs.checkDirectory(id, directory);
+    return this.envs.opencodeClient(
+      this.envs.envForDirectory(project, directory).id
+    );
+  }
+
+  /** `fetch`'s answer for a minute per project and directory; a failed one is forgotten at once. */
+  private cached<T>(
+    cache: Map<ProjectId, Map<string, { at: number; value: Promise<T> }>>,
+    id: ProjectId,
+    directory: string,
+    fetch: () => Promise<T>
+  ): Promise<T> {
+    const now = (this.deps.now ?? Date.now)();
+    const entries = cache.get(id) ?? new Map();
+    cache.set(id, entries);
+    const hit = entries.get(directory);
+    if (hit && now - hit.at < MODELS_TTL_MS) {
+      return hit.value;
+    }
+    const value = fetch();
+    entries.set(directory, { at: now, value });
+    value.catch(() => {
+      if (entries.get(directory)?.value === value) {
+        entries.delete(directory);
+      }
+    });
+    return value;
   }
 
   /** Models, the default model and the agents a new session can use; cached for a minute per project. */

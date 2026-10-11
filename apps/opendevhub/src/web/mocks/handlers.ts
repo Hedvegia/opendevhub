@@ -11,6 +11,9 @@ import {
   provenanceOf,
   candidates,
   checksView,
+  composerAgents,
+  composerCommands,
+  composerFiles,
   specView,
   cleanupPlan,
   forgejoApprovals,
@@ -393,6 +396,24 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
     ),
     http.post("/api/projects/:id/sessions", () =>
       HttpResponse.json({ sessionId: "ses_new03" })
+    ),
+    http.get("/api/projects/:id/composer/commands", async () => {
+      await wait();
+      return HttpResponse.json({ commands: composerCommands });
+    }),
+    http.get("/api/projects/:id/composer/agents", async () => {
+      await wait();
+      return HttpResponse.json({ agents: composerAgents });
+    }),
+    http.get("/api/projects/:id/composer/files", async ({ request }) => {
+      await wait();
+      const query = new URL(request.url).searchParams.get("query") ?? "";
+      return HttpResponse.json({
+        files: composerFiles.filter((f) => f.includes(query)),
+      });
+    }),
+    http.post("/api/projects/:id/sessions/:session/send", () =>
+      HttpResponse.json({ kind: "prompt", queued: false })
     ),
     http.get("/api/projects/:id/sessions/:session", async ({ params }) => {
       await wait();

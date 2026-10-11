@@ -130,6 +130,20 @@ export const bodies = {
   environment: z.object({ path: text }),
   session: directory.extend({ title: text, prompt: text }),
   prompt: z.object({ text }),
+  composerSend: z.object({
+    text: z.string().max(100_000),
+    mentions: z
+      .array(
+        z.object({
+          kind: z.enum(["file", "agent"]),
+          start: z.number().int().min(0),
+          end: z.number().int().min(0),
+          name: z.string().min(1).max(4096),
+        })
+      )
+      .max(100)
+      .optional(),
+  }),
   editor: directory.extend({ editor: text }),
   task: z.object({
     prompt: z.string(),
@@ -238,6 +252,7 @@ export const queries = {
   }),
   usage: z.object({ day: text }),
   directory,
+  files: directory.extend({ query: z.string().max(500) }),
   review,
   reviewImage: review.extend({
     side: z.enum(["old", "new"]),

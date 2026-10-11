@@ -7,6 +7,7 @@ import {
 } from "../../../src/server/errors";
 import { InvalidRequestError } from "../../../src/server/git/worktrees";
 import { OpencodeHttpError } from "../../../src/server/opencode/client";
+import { FILE_SEARCH_LIMIT } from "../../../src/server/sessions/sessions";
 import {
   project,
   running,
@@ -305,5 +306,190 @@ describe("manual tasks", () => {
     ).rejects.toThrow("down");
     expect(s.tasks.listForProject(project.id)).toStrictEqual([]);
     expect(s.tasks.isClaimed(project.id, "/workspaces/demo")).toBeFalsy();
+  });
+});
+
+describe("composer", () => {
+  const ws = "/workspaces/demo";
+  async function started(status: "idle" | "running" = "idle") {
+    const s = setup();
+    await s.hub.environments.rescan();
+    await s.hub.environments.start(project.id);
+    s.store.setSessions(project.id, [
+      {
+        id: "ses_1",
+        projectId: project.id,
+        title: "Chat",
+        directory: ws,
+        updatedAt: 1,
+        status,
+      },
+    ]);
+    s.client.commands.mockResolvedValue([
+      { name: "opsx-propose", description: "Propose a change" },
+      { name: "new", description: "opencode's own new" },
+    ]);
+    return s;
+  }
+
+  it("rejects a directory that isn't one of the project's checkouts, asking opencode nothing", async () => {
+    const { hub, client } = await started();
+    await expect(
+      hub.sessions.findFiles(project.id, "/etc", "pass")
+    ).rejects.toThrow(InvalidRequestError);
+    await expect(
+      hub.sessions.composerCommands(project.id, "/elsewhere")
+    ).rejects.toThrow(InvalidRequestError);
+    await expect(
+      hub.sessions.composerAgents(project.id, "/elsewhere")
+    ).rejects.toThrow(InvalidRequestError);
+    expect(client.findFiles).not.toHaveBeenCalled();
+    expect(client.commands).not.toHaveBeenCalled();
+    expect(client.agents).not.toHaveBeenCalled();
+  });
+
+  it("caps file search and finds nothing where opencode has no file search", async () => {
+    const { hub, client } = await started();
+    client.findFiles.mockResolvedValueOnce(["src/a.ts"]);
+    await expect(
+      hub.sessions.findFiles(project.id, ws, "a")
+    ).resolves.toStrictEqual(["src/a.ts"]);
+    expect(client.findFiles).toHaveBeenCalledWith(ws, "a", FILE_SEARCH_LIMIT);
+    expect(FILE_SEARCH_LIMIT).toBe(50);
+    client.findFiles.mockRejectedValueOnce(
+      new OpencodeHttpError(404, "/api/fs/find")
+    );
+    await expect(
+      hub.sessions.findFiles(project.id, ws, "a")
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("lists hub commands first, marks the opencode command one hides, and caches per checkout", async () => {
+    const { hub, client } = await started();
+    const commands = await hub.sessions.composerCommands(project.id, ws);
+    expect(commands.map((c) => [c.name, c.hub, c.shadowed])).toStrictEqual([
+      ["new", true, undefined],
+      ["interrupt", true, undefined],
+      ["opsx-propose", undefined, undefined],
+      ["new", undefined, true],
+    ]);
+    await hub.sessions.composerCommands(project.id, ws);
+    expect(client.commands).toHaveBeenCalledOnce();
+  });
+
+  it("offers visible subagents for mentions", async () => {
+    const { hub, client } = await started();
+    client.agents.mockResolvedValue([
+      { id: "build", name: "Build", mode: "primary" },
+      { id: "explore", name: "Explore", mode: "subagent", description: "Find" },
+      { id: "both", name: "Both", mode: "all" },
+      { id: "hidden", name: "Hidden", mode: "subagent", hidden: true },
+    ]);
+    await expect(
+      hub.sessions.composerAgents(project.id, ws)
+    ).resolves.toStrictEqual([
+      { id: "explore", name: "Explore", description: "Find" },
+      { id: "both", name: "Both" },
+    ]);
+  });
+
+  it("runs a known opencode command with its arguments and their mentions, queued while running", async () => {
+    const { hub, client } = await started("running");
+    const text = "/opsx-propose dark mode for @src/a.ts";
+    await expect(
+      hub.sessions.sendMessage(project.id, "ses_1", {
+        text,
+        mentions: [{ kind: "file", start: 28, end: 37, name: "src/a.ts" }],
+      })
+    ).resolves.toStrictEqual({
+      kind: "command",
+      name: "opsx-propose",
+      queued: true,
+    });
+    expect(client.command).toHaveBeenCalledWith(
+      "ses_1",
+      "opsx-propose",
+      "dark mode for @src/a.ts",
+      ws,
+      {
+        delivery: "queue",
+        files: [
+          {
+            uri: "file:///workspaces/demo/src/a.ts",
+            name: "src/a.ts",
+            mention: { start: 14, end: 23, text: "@src/a.ts" },
+          },
+        ],
+      }
+    );
+    expect(client.prompt).not.toHaveBeenCalled();
+  });
+
+  it("sends anything else as a prompt, unknown slash names included", async () => {
+    const { hub, client } = await started();
+    for (const text of ["/etc/hosts is wrong", "/nope do it", "fix it /new"]) {
+      await expect(
+        hub.sessions.sendMessage(project.id, "ses_1", { text })
+      ).resolves.toStrictEqual({ kind: "prompt", queued: false });
+      expect(client.prompt).toHaveBeenLastCalledWith(
+        "ses_1",
+        text,
+        undefined,
+        ws,
+        {}
+      );
+    }
+    expect(client.command).not.toHaveBeenCalled();
+    expect(client.createSession).not.toHaveBeenCalled();
+  });
+
+  it("interrupts a working conversation without sending the agent anything", async () => {
+    const { hub, client } = await started("running");
+    await expect(
+      hub.sessions.sendMessage(project.id, "ses_1", { text: "/interrupt" })
+    ).resolves.toStrictEqual({ kind: "interrupt" });
+    expect(client.interrupt).toHaveBeenCalledWith("ses_1", ws);
+    expect(client.prompt).not.toHaveBeenCalled();
+    expect(client.command).not.toHaveBeenCalled();
+    const idle = await started("idle");
+    await expect(
+      idle.hub.sessions.sendMessage(project.id, "ses_1", { text: "/interrupt" })
+    ).rejects.toThrow(InvalidRequestError);
+    expect(idle.client.interrupt).not.toHaveBeenCalled();
+  });
+
+  it("starts a new conversation in the same checkout with /new, prompting it with the rest", async () => {
+    const { hub, client } = await started();
+    await expect(
+      hub.sessions.sendMessage(project.id, "ses_1", { text: "/new look at it" })
+    ).resolves.toStrictEqual({ kind: "new", sessionId: "ses_new" });
+    expect(client.createSession).toHaveBeenCalledWith(ws, { title: undefined });
+    expect(client.prompt).toHaveBeenCalledWith(
+      "ses_new",
+      "look at it",
+      undefined,
+      ws,
+      {}
+    );
+    expect(client.command).not.toHaveBeenCalled();
+  });
+
+  it("refuses an empty message, a mention that doesn't match the text, and one outside the checkout", async () => {
+    const { hub, client } = await started();
+    const send = (text: string, name: string, start: number) =>
+      hub.sessions.sendMessage(project.id, "ses_1", {
+        text,
+        mentions: [{ kind: "file", start, end: start + name.length + 1, name }],
+      });
+    await expect(
+      hub.sessions.sendMessage(project.id, "ses_1", { text: "  " })
+    ).rejects.toThrow(InvalidRequestError);
+    await expect(send("see @a.ts", "a.ts", 0)).rejects.toThrow(
+      InvalidRequestError
+    );
+    await expect(send("@../secret", "../secret", 0)).rejects.toThrow(
+      InvalidRequestError
+    );
+    expect(client.prompt).not.toHaveBeenCalled();
   });
 });

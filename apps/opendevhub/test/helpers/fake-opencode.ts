@@ -43,6 +43,12 @@ export interface FakeState {
   vcs: Record<string, FakeVcs>;
   diffQueries: { directory: string; mode: string; base?: string }[];
   prompts: { sessionId: string; body: unknown; directory?: string }[];
+  /** Every `POST /api/session/:id/command`. */
+  commandRuns: { sessionId: string; body: unknown; directory?: string }[];
+  /** `GET /api/fs/find` entries per directory; matched by substring, as many as `limit` (default 50). */
+  files?: Record<string, { path: string; type: "file" | "directory" }[]>;
+  /** Every `GET /api/fs/find` query string. */
+  findQueries: string[];
   generated?: string;
   generateFails?: boolean;
   /** `GET /api/model` data, in opencode's Model.Info shape (may include settings with an apiKey). */
@@ -82,6 +88,8 @@ export async function startFakeOpencode(
     diffQueries: [],
     turnQueries: [],
     prompts: [],
+    commandRuns: [],
+    findQueries: [],
     patches: [],
     interrupts: [],
     deleted: [],
@@ -269,6 +277,16 @@ export async function startFakeOpencode(
           data: state.defaultModel ?? null,
         });
       }
+      case "/api/fs/find": {
+        state.findQueries.push(url.search);
+        const query = url.searchParams.get("query") ?? "";
+        const type = url.searchParams.get("type");
+        const limit = Number(url.searchParams.get("limit") ?? 50);
+        const data = (state.files?.[dir] ?? [])
+          .filter((e) => e.path.includes(query) && (!type || e.type === type))
+          .slice(0, limit);
+        return json({ location: { directory: dir }, data });
+      }
       case "/api/agent": {
         return json({ location: { directory: dir }, data: state.agents ?? [] });
       }
@@ -343,7 +361,7 @@ export async function startFakeOpencode(
           return json(true);
         }
         const sessionCall = url.pathname.match(
-          /^\/api\/session\/([^/]+)\/(prompt|generate)$/u
+          /^\/api\/session\/([^/]+)\/(prompt|command|generate)$/u
         );
         if (sessionCall && req.method === "POST") {
           let raw = "";
@@ -362,6 +380,18 @@ export async function startFakeOpencode(
               return json({
                 data: { id: "msg_1", sessionID: sessionId, type: "user" },
               });
+            }
+            if (sessionCall[2] === "command") {
+              state.commandRuns.push({
+                sessionId,
+                body,
+                directory: req.headers["x-opencode-directory"] as
+                  | string
+                  | undefined,
+              });
+              res.writeHead(204);
+              res.end();
+              return;
             }
             if (state.generateFails) {
               return fail(500, "GenerateError", "no model");

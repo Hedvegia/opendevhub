@@ -5,6 +5,7 @@ import {
   OpencodeHttpError,
   isGone,
   isInvalidAnswer,
+  toAttachments,
 } from "../../../src/server/opencode/client";
 import type { OpencodeEvent } from "../../../src/server/opencode/client";
 import { rawSession, startFakeOpencode } from "../../helpers/fake-opencode";
@@ -360,5 +361,109 @@ describe(OpencodeClient, () => {
     await expect(client.generate("ses_1", "x")).rejects.toBeInstanceOf(
       OpencodeHttpError
     );
+  });
+
+  it("finds files in a checkout through opencode's fs/find, capped", async () => {
+    fake.state.files = {
+      "/w/x": [
+        { path: "src/auth/", type: "directory" },
+        { path: "src/auth/login.ts", type: "file" },
+        { path: "src/auth/logout.ts", type: "file" },
+      ],
+    };
+    await expect(client.findFiles("/w/x", "auth", 50)).resolves.toStrictEqual([
+      "src/auth/login.ts",
+      "src/auth/logout.ts",
+    ]);
+    await expect(client.findFiles("/w/x", "auth", 1)).resolves.toStrictEqual([
+      "src/auth/login.ts",
+    ]);
+    await expect(
+      client.findFiles("/w/other", "auth", 50)
+    ).resolves.toStrictEqual([]);
+    expect(fake.state.findQueries[0]).toBe("?limit=50&query=auth&type=file");
+  });
+
+  it("sends mentions as opencode's file and agent attachments, on prompts and commands", async () => {
+    const message = "/review explain @src/a.ts with @explore";
+    const mentions = [
+      { kind: "file" as const, start: 16, end: 25, name: "src/a.ts" },
+      { kind: "agent" as const, start: 31, end: 39, name: "explore" },
+    ];
+    await client.prompt(
+      "ses_1",
+      message,
+      undefined,
+      "/w/x",
+      toAttachments("/w/x", message, mentions)
+    );
+    await client.command("ses_1", "review", message.slice(8), "/w/x", {
+      ...toAttachments("/w/x", message, mentions, 8),
+      delivery: "queue",
+    });
+    expect(fake.state.prompts[0].body).toStrictEqual({
+      text: message,
+      files: [
+        {
+          uri: "file:///w/x/src/a.ts",
+          name: "src/a.ts",
+          mention: { start: 16, end: 25, text: "@src/a.ts" },
+        },
+      ],
+      agents: [
+        { name: "explore", mention: { start: 31, end: 39, text: "@explore" } },
+      ],
+    });
+    expect(fake.state.commandRuns).toStrictEqual([
+      {
+        sessionId: "ses_1",
+        directory: "/w/x",
+        body: {
+          name: "review",
+          text: "explain @src/a.ts with @explore",
+          files: [
+            {
+              uri: "file:///w/x/src/a.ts",
+              name: "src/a.ts",
+              mention: { start: 8, end: 17, text: "@src/a.ts" },
+            },
+          ],
+          agents: [
+            {
+              name: "explore",
+              mention: { start: 23, end: 31, text: "@explore" },
+            },
+          ],
+          delivery: "queue",
+        },
+      },
+    ]);
+  });
+});
+
+describe(toAttachments, () => {
+  it("sends nothing extra without mentions, and encodes paths as file URLs", () => {
+    expect(toAttachments("/w/x", "hi", [])).toStrictEqual({});
+    expect(
+      toAttachments("/w/my repo", "@a b.ts", [
+        { kind: "file", start: 0, end: 7, name: "a b.ts" },
+      ]).files?.[0].uri
+    ).toBe("file:///w/my%20repo/a%20b.ts");
+  });
+
+  it("refuses paths outside the checkout and ranges that don't match the text", () => {
+    for (const name of ["../etc/passwd", "/etc/passwd", "a/../../b", "a//b"]) {
+      const text = `@${name}`;
+      expect(() =>
+        toAttachments("/w/x", text, [
+          { kind: "file", start: 0, end: text.length, name },
+        ])
+      ).toThrow(RangeError);
+    }
+    expect(() =>
+      toAttachments("/w/x", "see @a.ts", [
+        { kind: "file", start: 0, end: 5, name: "a.ts" },
+      ])
+    ).toThrow(RangeError);
   });
 });
