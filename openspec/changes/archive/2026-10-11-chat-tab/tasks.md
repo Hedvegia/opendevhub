@@ -34,5 +34,5 @@
 ## 6. Wrap-up
 
 - [x] 6.1 Run `pnpm exec ultracite fix`, type-check and the test suite
-- [ ] 6.2 Try both targets in the running app: new worktree with a prompt, main checkout with a slash command
+- [x] 6.2 Try both targets in the running app: new worktree with a prompt, main checkout with a slash command
 - [x] 6.3 Run `graphify update .`
