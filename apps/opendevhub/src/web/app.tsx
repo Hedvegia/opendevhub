@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 import {
   CheckoutPage,
   CheckoutRuntime,
-  CheckoutConversations,
+  CheckoutTasks,
 } from "./features/checkouts/checkout-page";
 import {
   legacyPath,
@@ -84,7 +84,7 @@ const checkoutTabs = (parent: AnyRoute) => {
   const tab = (path: string, component: () => ReactNode) =>
     createRoute({ component, getParentRoute: () => parent, path });
   return [
-    tab("/", CheckoutConversations),
+    tab("/", CheckoutTasks),
     // Sessions have no page any more: CheckoutPage sends these to the session's task.
     tab("s/$sessionId", () => null),
     tab("review", ProjectReview),

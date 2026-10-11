@@ -11,16 +11,18 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 
-import { SESSION_LABEL, StatusDot } from "../components/status";
+import { taskHref } from "../../shared/urls";
+import { StatusDot } from "../components/status";
 import { useDash } from "../dashboard-context";
-import { allSessions, matches, projectTone } from "../derive";
+import { matches, projectTone } from "../derive";
 import {
   checkoutPath,
-  sessionPath,
   checkouts,
   checkoutTone,
+  projectTasks,
 } from "../features/checkouts/checkouts";
 import { useSettingsHref } from "../features/settings/settings-link";
+import { taskTone } from "../features/tasks/task-rows";
 import { projectIdFromPath } from "../features/tasks/tasks";
 import { sendTestNotification } from "../push";
 import { useNavigate } from "../routing";
@@ -164,14 +166,23 @@ export const CommandPalette = ({
         });
       }
     }
-    for (const { session, view } of allSessions(snapshot)) {
-      list.push({
-        group: "Conversations",
-        hint: `${view.project.name} · ${SESSION_LABEL[session.status]}`,
-        key: `s-${session.id}`,
-        label: session.title || "Untitled conversation",
-        run: go(sessionPath(view, session)),
-      });
+    for (const view of snapshot.projects) {
+      for (const t of projectTasks(view)) {
+        list.push({
+          dot: t.state === "ended" ? "off" : taskTone(t),
+          group: "Tasks",
+          hint: `${view.project.name} · ${t.state}`,
+          key: `t-${view.project.id}-${t.task}`,
+          label: t.title || "Task",
+          run: go(
+            taskHref(
+              view.project.id,
+              t.task,
+              t.waiting === undefined ? {} : { v: t.waiting }
+            )
+          ),
+        });
+      }
     }
     return list;
   }, [
@@ -210,13 +221,13 @@ export const CommandPalette = ({
       onOpenChange={(o) => !o && onClose()}
       shouldFilter={false}
       title="Command palette"
-      description="Jump to a project, conversation or action"
+      description="Jump to a project, task or action"
       showCloseButton={false}
     >
       <CommandInput
         value={query}
         onValueChange={setQuery}
-        placeholder="Jump to a project, conversation or action…"
+        placeholder="Jump to a project, task or action…"
       />
       <CommandList>
         <CommandEmpty>No matches</CommandEmpty>

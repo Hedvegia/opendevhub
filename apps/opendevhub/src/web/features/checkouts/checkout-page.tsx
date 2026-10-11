@@ -5,7 +5,7 @@ import {
   GitBranchIcon,
   GitCompareIcon,
   KeyRoundIcon,
-  MessagesSquareIcon,
+  ListTodoIcon,
   PlayIcon,
   PlusIcon,
   ServerIcon,
@@ -68,7 +68,7 @@ import {
   useCheckoutActions,
 } from "./worktrees";
 
-/** Conversations a checkout lists before it offers a filter. */
+/** Tasks a checkout lists before it offers a filter. */
 const FILTER_FROM = 8;
 
 /** Where the worktree came from; the project alone for the main checkout or while the trail loads. */
@@ -280,7 +280,7 @@ export const CheckoutPage = () => {
 
       <TabBar label="Worktree">
         <TabLink to={base} end>
-          <MessagesSquareIcon className="size-4" /> Conversations{" "}
+          <ListTodoIcon className="size-4" /> Tasks{" "}
           <Count n={n.attention} tone="attention" />
           {n.attention === 0 && <Count n={n.running + n.idle} tone="muted" />}
         </TabLink>
@@ -307,7 +307,7 @@ export const CheckoutPage = () => {
 };
 
 /** The tasks whose conversations run in this checkout, each linking to its task, and a way to start another. */
-export const CheckoutConversations = () => {
+export const CheckoutTasks = () => {
   const { view, checkout } = useCheckoutContext();
   const { newTask } = useDash();
   const [query, setQuery] = useState("");
@@ -321,7 +321,7 @@ export const CheckoutConversations = () => {
 
   if (all.length === 0) {
     return canOpen ? (
-      <Empty title="No conversations here yet">
+      <Empty title="No tasks in this checkout yet">
         <p className={muted}>
           Start a conversation in this checkout, or a task for the project.
         </p>
@@ -338,7 +338,7 @@ export const CheckoutConversations = () => {
       <Empty title="Not running">
         <p className={muted}>
           {own ? "Start this worktree's container" : "Start the container"} to
-          see this checkout&apos;s opencode conversations.
+          see this checkout&apos;s tasks.
         </p>
         {!own && <StartStopButton view={view} />}
       </Empty>
@@ -353,14 +353,14 @@ export const CheckoutConversations = () => {
       {all.length > FILTER_FROM && (
         <Input
           className="w-72 max-md:w-full"
-          placeholder="Filter conversations…"
+          placeholder="Filter tasks…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
       )}
       <Group title="Needs you" tasks={attention} tone="attention" />
-      <Group title="Conversations" tasks={rest} />
-      {shown.length === 0 && <p className={muted}>No conversations match.</p>}
+      <Group title="Tasks" tasks={rest} />
+      {shown.length === 0 && <p className={muted}>No tasks match.</p>}
     </div>
   );
 };

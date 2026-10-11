@@ -93,12 +93,12 @@ The New task dialog SHALL always be opened for one project and SHALL NOT offer a
 
 ### Requirement: Secondary worktree pages
 
-The main checkout and every worktree not created by a task variant SHALL keep a standalone page at `/p/:project/main` or `/p/:project/w/:worktree`, with the tabs Conversations, Changes, Terminal and Runtime. The Conversations tab SHALL list the tasks whose sessions run in that checkout, each linking to its task page, and SHALL offer to start a new conversation there. A new conversation SHALL create a manual task and open its task page. The project page's Worktrees section SHALL list only these checkouts.
+The main checkout and every worktree not created by a task variant SHALL keep a standalone page at `/p/:project/main` or `/p/:project/w/:worktree`, with the tabs Tasks, Changes, Terminal and Runtime. The Tasks tab SHALL list the tasks whose sessions run in that checkout, each linking to its task page, and SHALL offer to start a new conversation there. A new conversation SHALL create a manual task and open its task page. The project page's Worktrees section SHALL list only these checkouts.
 
 #### Scenario: Pull request checkout
 
 - **WHEN** the user opens a worktree that checked out pull request #38
-- **THEN** its page shows Conversations, Changes, Terminal and Runtime, and its Conversations tab lists the tasks of the sessions run there
+- **THEN** its page shows Tasks, Changes, Terminal and Runtime, and its Tasks tab lists the tasks of the sessions run there
 
 #### Scenario: New conversation in the main checkout
 

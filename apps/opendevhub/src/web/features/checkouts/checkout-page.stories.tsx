@@ -10,7 +10,7 @@ const meta = preview.meta({
 });
 
 /** A worktree no task created: the tasks whose conversations run there. */
-export const Conversations = meta.story();
+export const Tasks = meta.story();
 
 export const MainCheckout = meta.story({
   parameters: { route: "/p/acme-web/main" },
