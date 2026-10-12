@@ -16,14 +16,101 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-function connect(origin?: string) {
+function connect(origin?: string, terminal?: string) {
+  const params = new URLSearchParams({
+    project: "p",
+    directory: "/workspaces/branch",
+    shell: "zsh",
+  });
+  if (terminal !== undefined) {
+    params.set("terminal", terminal);
+  }
   return new WebSocket(
-    `ws://localhost:${server!.port}/api/terminal?project=p&directory=%2Fworkspaces%2Fbranch&shell=zsh`,
+    `ws://localhost:${server!.port}/api/terminal?${params}`,
     { origin }
   );
 }
 
 describe("terminal routing", () => {
+  it("isolates terminals with the same shell and reconnects to their own sessions", async () => {
+    const createPty = () => {
+      const events = new EventEmitter();
+      return {
+        events,
+        write: vi.fn(),
+        resize: vi.fn(),
+        kill: vi.fn(),
+        onData: (fn: (data: string) => void) => events.on("data", fn),
+        onExit: (fn: () => void) => events.on("exit", fn),
+      };
+    };
+    const firstPty = createPty();
+    const secondPty = createPty();
+    fake.spawn.mockReturnValueOnce(firstPty).mockReturnValueOnce(secondPty);
+    server = await startServer({
+      port: 0,
+      app: new Hono(),
+      resolveTarget: () => {},
+      terminalTarget: () => ({ containerId: "c" }),
+    });
+    const attach = async (terminal: string) => {
+      const ws = connect(`http://localhost:${server!.port}`, terminal);
+      const messages: { type: string; data?: string }[] = [];
+      await new Promise<void>((resolve, reject) => {
+        ws.on("error", reject);
+        ws.on("message", (raw) => {
+          const message = JSON.parse(raw.toString());
+          messages.push(message);
+          if (message.type === "ready") {
+            resolve();
+          }
+        });
+      });
+      return { ws, messages };
+    };
+    const first = await attach("first");
+    const second = await attach("second");
+    expect(fake.spawn).toHaveBeenCalledTimes(2);
+    first.ws.send(JSON.stringify({ type: "input", data: "first command\r" }));
+    second.ws.send(JSON.stringify({ type: "input", data: "second command\r" }));
+    await vi.waitFor(() => {
+      expect(firstPty.write).toHaveBeenCalledExactlyOnceWith("first command\r");
+      expect(secondPty.write).toHaveBeenCalledExactlyOnceWith(
+        "second command\r"
+      );
+    });
+    firstPty.events.emit("data", "first output");
+    secondPty.events.emit("data", "second output");
+    first.ws.close();
+    await new Promise<void>((resolve) => first.ws.on("close", resolve));
+    const reconnected = await attach("first");
+    expect(fake.spawn).toHaveBeenCalledTimes(2);
+    expect(reconnected.messages).toContainEqual({
+      type: "output",
+      data: "first output",
+    });
+    expect(reconnected.messages).not.toContainEqual({
+      type: "output",
+      data: "second output",
+    });
+    await vi.waitFor(() =>
+      expect(second.messages).toContainEqual({
+        type: "output",
+        data: "second output",
+      })
+    );
+    expect(second.messages).not.toContainEqual({
+      type: "output",
+      data: "first output",
+    });
+    await server.close();
+    server = undefined;
+    expect(firstPty.kill).toHaveBeenCalledOnce();
+    expect(secondPty.kill).toHaveBeenCalledOnce();
+    second.ws.terminate();
+    reconnected.ws.terminate();
+  });
+
   it("uses a container PTY, checkout directory and configured user", () => {
     expect(
       terminalCommand(

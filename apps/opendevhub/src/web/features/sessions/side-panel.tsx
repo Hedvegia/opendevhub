@@ -53,7 +53,51 @@ import { turnActivity, turnDuration } from "./session-detail";
 export type PanelId = "turns" | "changes" | "subagents" | "terminal";
 
 const PANEL_KEY = "opendevhub.conversation.panel";
+const PANEL_WIDTH_KEY = "opendevhub.conversation.panelWidth";
+const PANEL_MIN_WIDTH = 240;
+const PANEL_MAX_WIDTH = 960;
+const PANEL_DEFAULT_WIDE_WIDTH = 512;
+const PANEL_DEFAULT_NARROW_WIDTH = 416;
+const PANEL_MIN_MAIN_WIDTH = 320;
+const PANEL_LEFT_SIDEBAR_FALLBACK = 256;
+const PANEL_RAIL_WIDTH = 48;
+const PANEL_RESIZE_STEP = 16;
 const WIDE_QUERY = "(min-width: 1024px)";
+
+const maxPanelWidth = (): number => {
+  const leftSidebarWidth =
+    document
+      .querySelector<HTMLElement>('[data-slot="sidebar-gap"]')
+      ?.getBoundingClientRect().width ?? PANEL_LEFT_SIDEBAR_FALLBACK;
+  return Math.max(
+    PANEL_DEFAULT_WIDE_WIDTH,
+    Math.min(
+      PANEL_MAX_WIDTH,
+      window.innerWidth -
+        PANEL_MIN_MAIN_WIDTH -
+        leftSidebarWidth -
+        PANEL_RAIL_WIDTH
+    )
+  );
+};
+
+const clampPanelWidth = (width: number): number =>
+  Math.max(PANEL_MIN_WIDTH, Math.min(maxPanelWidth(), Math.round(width)));
+
+const readPanelWidth = (): number | undefined => {
+  try {
+    const stored = localStorage.getItem(PANEL_WIDTH_KEY);
+    if (stored === null) {
+      return undefined;
+    }
+    const width = Number(stored);
+    return Number.isFinite(width) && width >= PANEL_MIN_WIDTH
+      ? clampPanelWidth(width)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const isPanelId = (value: string | null): value is PanelId =>
   value === "turns" ||
@@ -123,6 +167,18 @@ export const ConversationSidebar = (props: {
 }) => {
   const wide = useMediaQuery(WIDE_QUERY);
   const { open } = props;
+  const [panelWidth, setPanelWidth] = useState(readPanelWidth);
+  const resizePanel = (width: number, persist = false) => {
+    const nextWidth = clampPanelWidth(width);
+    setPanelWidth(nextWidth);
+    if (persist) {
+      try {
+        localStorage.setItem(PANEL_WIDTH_KEY, String(nextWidth));
+      } catch {
+        // The panel remains resizable when storage is unavailable.
+      }
+    }
+  };
   return (
     <RightSidebar>
       <Sidebar
@@ -130,7 +186,14 @@ export const ConversationSidebar = (props: {
         collapsible="none"
         className="sticky top-0 h-svh w-auto shrink-0 flex-row border-l"
       >
-        {open && wide && <PanelColumn panel={open} onClose={props.onClose} />}
+        {open && wide && (
+          <PanelColumn
+            panel={open}
+            width={panelWidth}
+            onResize={resizePanel}
+            onClose={props.onClose}
+          />
+        )}
         <SidebarContent className="w-12 flex-none border-l first:border-l-0">
           <SidebarGroup className="px-2">
             <SidebarMenu aria-label="Side panels">
@@ -162,19 +225,84 @@ export const ConversationSidebar = (props: {
 };
 
 /** The open panel as a column of the sidebar; Changes and Terminal get more room. */
-const PanelColumn = (props: { panel: OpenPanel; onClose: () => void }) => {
+const PanelColumn = (props: {
+  panel: OpenPanel;
+  width?: number;
+  onResize: (width: number, persist?: boolean) => void;
+  onClose: () => void;
+}) => {
   const { id, hint, children } = props.panel;
   const { label } = PANELS[id];
   return (
     <aside
       aria-label={label}
       className={cn(
-        "flex min-h-0 flex-col",
+        "relative flex min-h-0 shrink-0 flex-col",
         id === "changes" || id === "terminal"
           ? "w-[32rem] xl:w-[44vw]"
           : "w-[26rem] xl:w-[34vw]"
       )}
+      style={props.width === undefined ? undefined : { width: props.width }}
     >
+      <div
+        role="separator"
+        aria-label="Resize right sidebar"
+        aria-orientation="vertical"
+        aria-valuemin={PANEL_MIN_WIDTH}
+        aria-valuemax={maxPanelWidth()}
+        aria-valuenow={
+          props.width ??
+          (id === "changes" || id === "terminal"
+            ? PANEL_DEFAULT_WIDE_WIDTH
+            : PANEL_DEFAULT_NARROW_WIDTH)
+        }
+        aria-valuetext={props.width === undefined ? "Default width" : undefined}
+        tabIndex={0}
+        className="hover:after:bg-sidebar-border focus-visible:after:bg-sidebar-border absolute inset-y-0 left-0 z-20 w-3 -translate-x-1/2 cursor-col-resize touch-none select-none after:absolute after:inset-y-0 after:left-1/2 after:w-px focus-visible:outline-none"
+        onPointerDown={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
+          event.currentTarget.setPointerCapture(event.pointerId);
+          event.preventDefault();
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            const right =
+              event.currentTarget.parentElement?.getBoundingClientRect().right;
+            if (right !== undefined) {
+              props.onResize(right - event.clientX);
+            }
+          }
+        }}
+        onPointerUp={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            const right =
+              event.currentTarget.parentElement?.getBoundingClientRect().right;
+            if (right !== undefined) {
+              props.onResize(right - event.clientX, true);
+            }
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            const width =
+              props.width ??
+              event.currentTarget.parentElement?.getBoundingClientRect()
+                .width ??
+              PANEL_MIN_WIDTH;
+            props.onResize(
+              width +
+                (event.key === "ArrowLeft"
+                  ? PANEL_RESIZE_STEP
+                  : -PANEL_RESIZE_STEP),
+              true
+            );
+          }
+        }}
+      />
       <SidebarHeader className="h-12 flex-row items-center gap-2 border-b py-0 pr-2 pl-4">
         <h3 className="text-sm font-semibold">{label}</h3>
         {hint && (

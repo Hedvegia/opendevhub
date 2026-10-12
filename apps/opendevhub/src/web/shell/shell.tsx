@@ -40,6 +40,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarResizeHandle,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -392,6 +393,7 @@ const AppSidebar = () => {
           </div>
         </div>
       </SidebarFooter>
+      <SidebarResizeHandle />
     </Sidebar>
   );
 };

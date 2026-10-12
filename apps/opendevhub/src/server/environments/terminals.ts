@@ -52,7 +52,7 @@ interface Session {
   timer?: ReturnType<typeof setTimeout>;
 }
 
-/** One persistent shell per checkout and shell choice, with bounded replay on reconnect. */
+/** Persistent shells per checkout, terminal ID and shell, with bounded replay on reconnect. */
 export class Terminals {
   private readonly wss = new WebSocketServer({
     maxPayload: 64 * 1024,
@@ -90,6 +90,7 @@ export class Terminals {
     const project = url.searchParams.get("project") ?? "";
     const directory = url.searchParams.get("directory") ?? "";
     const shell = url.searchParams.get("shell") ?? "bash";
+    const terminal = url.searchParams.get("terminal") ?? "";
     this.wss.handleUpgrade(req, socket, head, async (ws) => {
       const send = (value: unknown) => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -99,7 +100,13 @@ export class Terminals {
       try {
         const target = await this.target(project, directory);
         const command = terminalCommand(target, directory, shell);
-        const key = JSON.stringify([project, directory, shell, target]);
+        const key = JSON.stringify([
+          project,
+          directory,
+          terminal,
+          shell,
+          target,
+        ]);
         let session = this.sessions.get(key);
         if (!session) {
           if (this.sessions.size >= 64) {
