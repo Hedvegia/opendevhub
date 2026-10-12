@@ -32,6 +32,45 @@ function connect(origin?: string, terminal?: string) {
 }
 
 describe("terminal routing", () => {
+  it("kills a deleted terminal session and starts a fresh shell on reconnect", async () => {
+    const createPty = () => ({
+      write: vi.fn(),
+      resize: vi.fn(),
+      kill: vi.fn(),
+      onData: vi.fn(),
+      onExit: vi.fn(),
+    });
+    const firstPty = createPty();
+    const secondPty = createPty();
+    fake.spawn.mockReturnValueOnce(firstPty).mockReturnValueOnce(secondPty);
+    server = await startServer({
+      port: 0,
+      app: new Hono(),
+      resolveTarget: () => {},
+      terminalTarget: () => ({ containerId: "c" }),
+    });
+    const attach = async () => {
+      const ws = connect(`http://localhost:${server!.port}`, "deleted");
+      await new Promise<void>((resolve, reject) => {
+        ws.on("error", reject);
+        ws.on("message", (raw) => {
+          if (JSON.parse(raw.toString()).type === "ready") {
+            resolve();
+          }
+        });
+      });
+      return ws;
+    };
+    const first = await attach();
+    first.send(JSON.stringify({ type: "close" }));
+    await new Promise<void>((resolve) => first.on("close", resolve));
+    expect(firstPty.kill).toHaveBeenCalledOnce();
+
+    const second = await attach();
+    expect(fake.spawn).toHaveBeenCalledTimes(2);
+    second.terminate();
+  });
+
   it("isolates terminals with the same shell and reconnects to their own sessions", async () => {
     const createPty = () => {
       const events = new EventEmitter();

@@ -6,6 +6,7 @@ import {
   PlusIcon,
   RotateCwIcon,
   TerminalIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
@@ -72,13 +73,10 @@ const readTerminals = (storageKey: string): TerminalList => {
         Number.isSafeInteger(entry.number) &&
         entry.number > 0
     );
-    if (terminals.length === 0) {
-      return fallback;
-    }
     const active = terminals.find(
       (entry) => "activeId" in stored && entry.id === stored.activeId
     );
-    return { activeId: (active ?? terminals[0]).id, terminals };
+    return { activeId: (active ?? terminals[0])?.id ?? "", terminals };
   } catch {
     return fallback;
   }
@@ -95,6 +93,7 @@ const TerminalSidebar = (props: {
   const [reloads, setReloads] = useState<Record<string, number>>({});
   const [copyStatus, setCopyStatus] = useState("");
   const terminals = useRef(new Map<string, Terminal>());
+  const connections = useRef(new Map<string, WebSocket>());
 
   useEffect(() => {
     setCopyStatus("");
@@ -125,10 +124,31 @@ const TerminalSidebar = (props: {
         {
           id,
           number:
-            Math.max(...current.terminals.map((entry) => entry.number)) + 1,
+            Math.max(0, ...current.terminals.map((entry) => entry.number)) + 1,
         },
       ],
     }));
+  };
+
+  const closeTerminal = (id: string) => {
+    const connection = connections.current.get(id);
+    if (connection?.readyState === WebSocket.OPEN) {
+      connection.send(JSON.stringify({ type: "close" }));
+    }
+    setList((current) => {
+      const index = current.terminals.findIndex((entry) => entry.id === id);
+      if (index === -1) {
+        return current;
+      }
+      const remaining = current.terminals.filter((entry) => entry.id !== id);
+      return {
+        activeId:
+          current.activeId === id
+            ? ((remaining[index] ?? remaining[index - 1])?.id ?? "")
+            : current.activeId,
+        terminals: remaining,
+      };
+    });
   };
 
   const copyTerminal = async () => {
@@ -174,18 +194,41 @@ const TerminalSidebar = (props: {
           <TabsList
             variant="line"
             aria-label="Terminals"
-            className="flex h-10 justify-start gap-0 p-0"
+            className="flex justify-start gap-0 p-0 group-data-[orientation=horizontal]/tabs:h-10"
           >
-            {list.terminals.map((entry) => (
-              <TabsTrigger
-                key={entry.id}
-                value={entry.id || "default"}
-                className="h-10 flex-none shrink-0 rounded-none px-3 text-xs group-data-[orientation=horizontal]/tabs:after:bottom-0"
-              >
-                <TerminalIcon className="size-4" />
-                {entry.number === 1 ? "Terminal" : `Terminal ${entry.number}`}
-              </TabsTrigger>
-            ))}
+            {list.terminals.map((entry) => {
+              const label =
+                entry.number === 1 ? "Terminal" : `Terminal ${entry.number}`;
+              return (
+                <div
+                  key={entry.id}
+                  className={cn(
+                    "flex h-10 shrink-0 items-center border-b-2",
+                    entry.id === list.activeId
+                      ? "border-foreground"
+                      : "border-transparent"
+                  )}
+                >
+                  <TabsTrigger
+                    value={entry.id || "default"}
+                    className="h-10 flex-none shrink-0 rounded-none pr-1 pl-3 text-xs after:hidden"
+                  >
+                    <TerminalIcon className="size-4" />
+                    {label}
+                  </TabsTrigger>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground size-6 shrink-0"
+                    aria-label={`Delete ${label}`}
+                    title={`Delete ${label}`}
+                    onClick={() => closeTerminal(entry.id)}
+                  >
+                    <XIcon className="size-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
           </TabsList>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -236,6 +279,11 @@ const TerminalSidebar = (props: {
           </span>
         </div>
       </div>
+      {list.terminals.length === 0 && (
+        <div className="text-muted-foreground flex flex-1 items-center justify-center px-6 py-12 text-center text-sm">
+          No terminals open. Use the plus button to create one.
+        </div>
+      )}
       {list.terminals.map((entry) => (
         <TabsContent
           key={entry.id}
@@ -249,6 +297,7 @@ const TerminalSidebar = (props: {
             terminalId={entry.id}
             reload={reloads[entry.id] ?? 0}
             terminals={terminals}
+            connections={connections}
           />
         </TabsContent>
       ))}
@@ -265,6 +314,7 @@ const TerminalPanel = ({
   active,
   reload,
   terminals,
+  connections,
 }: {
   project: string;
   directory: string;
@@ -274,6 +324,7 @@ const TerminalPanel = ({
   active: boolean;
   reload: number;
   terminals: RefObject<Map<string, Terminal>>;
+  connections: RefObject<Map<string, WebSocket>>;
 }) => {
   const storageKey = `terminal-shell:${project}:${directory}${terminalId ? `:${terminalId}` : ""}`;
   const [shell, setShell] = useState(() => {
@@ -312,6 +363,8 @@ const TerminalPanel = ({
     const ws = new WebSocket(
       `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/terminal?${params}`
     );
+    const terminalConnections = connections.current;
+    terminalConnections.set(terminalId, ws);
     let ended = false;
     const send = (msg: unknown) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -367,11 +420,21 @@ const TerminalPanel = ({
       observer.disconnect();
       input.dispose();
       ws.close();
+      terminalConnections.delete(terminalId);
       terminalInstances.delete(terminalId);
       terminal.dispose();
       activate.current = null;
     };
-  }, [project, directory, shell, running, terminalId, reload, terminals]);
+  }, [
+    project,
+    directory,
+    shell,
+    running,
+    terminalId,
+    reload,
+    terminals,
+    connections,
+  ]);
 
   useEffect(() => {
     if (active && running) {

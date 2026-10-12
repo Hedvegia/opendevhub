@@ -171,6 +171,16 @@ export class Terminals {
               msg.rows <= 200
             ) {
               current.pty.resize(msg.cols, msg.rows);
+            } else if (
+              msg.type === "close" &&
+              this.sessions.get(key) === current
+            ) {
+              clearTimeout(current.timer);
+              this.sessions.delete(key);
+              current.pty.kill();
+              for (const client of current.clients) {
+                client.close();
+              }
             }
           } catch {
             ws.close(1008, "Invalid terminal message");
