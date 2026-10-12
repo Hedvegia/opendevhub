@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { RawMessage } from "../../../src/server/opencode/client";
 import {
+  PART_CHARS,
   subagentsOf,
   toSessionTurns,
+  toTranscript,
 } from "../../../src/server/sessions/detail";
 import { rawSession } from "../../helpers/fake-opencode";
 
@@ -118,5 +120,151 @@ describe(subagentsOf, () => {
       ["ses_b", "Subagent", undefined],
       ["ses_a", expect.any(String), 3],
     ]);
+  });
+});
+
+describe(toTranscript, () => {
+  it("lists a user message's attached files by name, leaving out its mentions and the bytes", () => {
+    const [message] = toTranscript([
+      {
+        files: [
+          {
+            mention: { end: 5, start: 0, text: "@a.ts" },
+            name: "a.ts",
+            uri: "file:///w/a.ts",
+          },
+          { name: "shot.png", uri: "data:image/png;base64,aGk=" },
+          { uri: "data:text/plain;base64,aGk=" },
+        ],
+        id: "msg_1",
+        text: "@a.ts and these",
+        time: { created: 10 },
+        type: "user",
+      },
+    ]);
+    expect(message).toStrictEqual({
+      attachments: [
+        { mime: "image/png", name: "shot.png" },
+        { mime: "text/plain", name: "attachment" },
+      ],
+      created: 10,
+      id: "msg_1",
+      role: "user",
+      text: "@a.ts and these",
+    });
+  });
+
+  it("lists user, assistant and compaction messages oldest first, leaving out other kinds", () => {
+    const newestFirst: RawMessage[] = [
+      {
+        id: "msg_5",
+        text: "yes, use CSS variables",
+        time: { created: 50 },
+        type: "user",
+      },
+      { id: "msg_4", time: { created: 40 }, type: "synthetic" },
+      {
+        content: [{ text: "Which approach?", type: "text" }],
+        id: "msg_3",
+        time: { completed: 31, created: 30 },
+        type: "assistant",
+      },
+      { id: "msg_2", time: { created: 20 }, type: "compaction" },
+      {
+        id: "msg_1",
+        text: "add dark mode",
+        time: { created: 10 },
+        type: "user",
+      },
+    ];
+    expect(toTranscript(newestFirst)).toStrictEqual([
+      { created: 10, id: "msg_1", role: "user", text: "add dark mode" },
+      { created: 20, id: "msg_2", role: "compaction" },
+      {
+        completed: 31,
+        created: 30,
+        id: "msg_3",
+        parts: [{ kind: "text", text: "Which approach?" }],
+        role: "assistant",
+      },
+      {
+        created: 50,
+        id: "msg_5",
+        role: "user",
+        text: "yes, use CSS variables",
+      },
+    ]);
+  });
+
+  it("keeps an assistant message's parts in order with each tool call's status and title", () => {
+    const [message] = toTranscript([
+      {
+        agent: "build",
+        content: [
+          { text: "planning", type: "reasoning" },
+          { text: "   ", type: "text" },
+          {
+            name: "bash",
+            state: { status: "error", title: "pnpm test" },
+            type: "tool",
+          },
+          { name: "read", state: { status: "running" }, type: "tool" },
+          { name: "edit", state: { status: "odd" }, type: "tool" },
+          { name: "glob", type: "tool" },
+          { type: "step-start" },
+          { text: "Done.", type: "text" },
+        ],
+        error: { message: "Tool failed" },
+        id: "msg_1",
+        model: { id: "m", providerID: "p" },
+        time: { created: 10 },
+        type: "assistant",
+      },
+    ]);
+    expect(message).toStrictEqual({
+      agent: "build",
+      created: 10,
+      error: "Tool failed",
+      id: "msg_1",
+      model: { id: "m", providerID: "p" },
+      parts: [
+        { kind: "reasoning", text: "planning" },
+        { kind: "tool", name: "bash", status: "error", title: "pnpm test" },
+        { kind: "tool", name: "read", status: "running" },
+        { kind: "tool", name: "edit", status: "pending" },
+        { kind: "tool", name: "glob", status: "pending" },
+        { kind: "text", text: "Done." },
+      ],
+      role: "assistant",
+    });
+  });
+
+  it("cuts long text, reasoning and prompts short", () => {
+    const long = "x".repeat(PART_CHARS + 10);
+    const transcript = toTranscript([
+      {
+        content: [
+          { text: long, type: "text" },
+          { text: long, type: "reasoning" },
+        ],
+        id: "msg_2",
+        type: "assistant",
+      },
+      { id: "msg_1", text: long, type: "user" },
+    ]);
+    const texts = transcript.flatMap((m) => {
+      if (m.role === "user") {
+        return [m.text];
+      }
+      return m.role === "assistant"
+        ? m.parts.map((p) => (p.kind === "tool" ? "" : p.text))
+        : [];
+    });
+    expect(texts.map((t) => t.length)).toStrictEqual([
+      PART_CHARS,
+      PART_CHARS,
+      PART_CHARS,
+    ]);
+    expect(texts.every((t) => t.endsWith("…"))).toBe(true);
   });
 });

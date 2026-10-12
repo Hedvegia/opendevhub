@@ -9,6 +9,7 @@ import {
   JIRA_STATUSES,
 } from "../../shared/jira";
 import { STACK_IDS } from "../../shared/stacks";
+import { ATTACHMENTS_MAX } from "../../shared/types";
 import { parseCleanupItems } from "../git/cleanup";
 import { errorResponse } from "./helpers";
 
@@ -47,6 +48,13 @@ const actionFlag = z
   .transform((value) => value === true)
   .optional();
 const directory = z.object({ directory: text });
+// Provider ids, model ids and variants, as `tasks/request.ts` takes them.
+const modelName = z.string().regex(/^[A-Za-z0-9._:/@-]{1,200}$/u);
+const modelRef = z.object({
+  id: modelName,
+  providerID: modelName,
+  variant: modelName.optional(),
+});
 const composerSend = z.object({
   text: z.string().max(100_000),
   mentions: z
@@ -60,6 +68,17 @@ const composerSend = z.object({
     )
     .max(100)
     .optional(),
+  attachments: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(255),
+        // The base64 of the largest file opencode takes, and its `data:<mime>;base64,` prefix.
+        url: z.string().startsWith("data:").max(28_000_000),
+      })
+    )
+    .max(ATTACHMENTS_MAX)
+    .optional(),
+  model: modelRef.optional(),
 });
 const aiReview = z.object({
   projectId: z.string(),

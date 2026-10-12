@@ -41,6 +41,7 @@ import type {
   PublishInfo,
   ReviewData,
   SessionDetail,
+  TranscriptMessage,
   SessionSummary,
   UsageReport,
 } from "../../shared/types";
@@ -876,6 +877,100 @@ export const turnReviewData = (
   };
 };
 
+const tool = (
+  name: string,
+  title: string,
+  status: "pending" | "running" | "completed" | "error" = "completed"
+) => ({ kind: "tool" as const, name, status, title });
+
+/** The rate-limit worktree's session as a transcript: an explanation, a change with a failed test run, and a newest turn waiting on a permission. */
+const rateLimitTranscript = (
+  model: SessionSummary["model"]
+): TranscriptMessage[] => {
+  const [newest, burst, first] = RATE_LIMIT_PROMPTS;
+  const reply = (
+    id: string,
+    created: number,
+    parts: Extract<TranscriptMessage, { role: "assistant" }>["parts"],
+    completed?: number
+  ): TranscriptMessage => ({
+    agent: "build",
+    created,
+    id,
+    parts,
+    role: "assistant",
+    ...(completed ? { completed } : {}),
+    ...(model ? { model } : {}),
+  });
+  return [
+    { created: first.created, id: first.id, role: "user", text: first.text },
+    reply(
+      "msg_01a",
+      first.created + 5000,
+      [
+        {
+          kind: "reasoning",
+          text: "The user wants to know how requests are counted. Start from the middleware, then the bucket.",
+        },
+        tool("read", "src/server/rate-limit.ts"),
+        tool("grep", "perMinute"),
+        tool("read", "src/server/routes.ts"),
+        {
+          kind: "text",
+          text: "The limiter is a **token bucket per IP**:\n\n1. Each request takes a token from its IP's bucket.\n2. Tokens refill at `perMinute`, spread evenly over the minute.\n3. An empty bucket answers `429 Too Many Requests`.\n\nThe buckets live in a `Map` keyed by IP, so they reset when the server restarts. Want me to add a burst allowance?",
+        },
+      ],
+      first.created + 2 * MINUTE
+    ),
+    {
+      created: burst.created,
+      id: burst.id,
+      role: "user",
+      text: `${burst.text}.\n\nKeep the steady rate at 10 requests a minute, allow bursts of up to 5 more, and make both configurable through the existing limiter options. Add tests for the burst, for running out of it and for the refill.`,
+    },
+    reply("msg_02a", burst.created + 4000, [
+      tool("read", "src/server/rate-limit.ts"),
+      tool("read", "test/rate-limit.test.ts"),
+      tool("edit", "src/server/rate-limit.ts"),
+      tool("edit", "test/rate-limit.test.ts"),
+      tool("bash", "pnpm vitest run rate-limit", "error"),
+    ]),
+    reply("msg_02b", burst.created + 3 * MINUTE, [
+      {
+        kind: "text",
+        text: "The refill test failed: the bucket started empty. Fixing the initial fill.",
+      },
+      tool("edit", "src/server/rate-limit.ts"),
+      tool("bash", "pnpm vitest run rate-limit"),
+      tool("read", "src/server/config.ts"),
+      tool("edit", "src/server/config.ts"),
+      tool("bash", "pnpm typecheck"),
+      tool("bash", "pnpm vitest run"),
+    ]),
+    reply(
+      "msg_02c",
+      burst.created + 5 * MINUTE,
+      [
+        {
+          kind: "text",
+          text: "Added a `burst` option to the token bucket (default 5) next to `perMinute`.\n\n- The bucket now starts full at `perMinute + burst`.\n- Refill stays at `perMinute`.\n- Three tests cover the burst, running out and the refill.\n\n```ts\nconst limiter = rateLimit({ burst: 5, perMinute: 10 });\n```",
+        },
+      ],
+      burst.created + 6 * MINUTE
+    ),
+    { created: newest.created, id: newest.id, role: "user", text: newest.text },
+    reply("msg_03a", newest.created + 4000, [
+      tool("read", "src/server/routes.ts"),
+      tool("edit", "src/server/routes.ts"),
+      {
+        kind: "text",
+        text: "Registered the limiter on POST /login. Running the rate-limit tests next.",
+      },
+      tool("bash", "pnpm vitest run rate-limit", "pending"),
+    ]),
+  ];
+};
+
 /** The rate-limit worktree's session: three turns, the newest waiting on a permission, and one subagent. */
 export const sessionDetail = (sessionId: string): SessionDetail | undefined => {
   // The task variants of billing-api get the same turns, so their Conversation tab has something to show.
@@ -910,6 +1005,7 @@ export const sessionDetail = (sessionId: string): SessionDetail | undefined => {
       output: 8400,
       reasoning: 2600,
     },
+    transcript: rateLimitTranscript(model),
     turns: [
       {
         agent: "build",

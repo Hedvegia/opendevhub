@@ -1713,6 +1713,7 @@ describe("dashboard API", () => {
           updatedAt: 2,
         },
         subagents: [],
+        transcript: [],
         turns: [],
       });
       const res = await app.request(

@@ -47,6 +47,40 @@ describe("chat", () => {
     );
   });
 
+  it("starts on the chosen model with the attached files, in a checkout and in a new worktree", async () => {
+    const s = await started();
+    const model = { id: "gpt-5", providerID: "openai" };
+    const attachments = [
+      { name: "shot.png", url: "data:image/png;base64,aGk=" },
+    ];
+    await s.hub.chat.start(project.id, {
+      target: { kind: "checkout", directory: ws },
+      message: { text: "what's wrong here", attachments, model },
+    });
+    expect(s.client.createSession).toHaveBeenCalledWith(ws, {
+      title: undefined,
+      model,
+    });
+    expect(s.client.prompt).toHaveBeenCalledWith(
+      "ses_new",
+      "what's wrong here",
+      undefined,
+      ws,
+      { files: [{ name: "shot.png", uri: attachments[0].url }] }
+    );
+    s.client.createSession.mockClear();
+    s.client.prompt.mockClear();
+    await s.hub.chat.start(project.id, {
+      target: { kind: "worktree" },
+      message: { text: "fix the layout", attachments, model },
+    });
+    await vi.waitFor(() => expect(s.client.prompt).toHaveBeenCalledOnce());
+    expect(s.client.createSession.mock.calls[0][1]).toMatchObject({ model });
+    expect(s.client.prompt.mock.calls[0][4]).toStrictEqual({
+      files: [{ name: "shot.png", uri: attachments[0].url }],
+    });
+  });
+
   it("refuses a directory outside the project and the hub's commands, starting nothing", async () => {
     const s = await started();
     await expect(

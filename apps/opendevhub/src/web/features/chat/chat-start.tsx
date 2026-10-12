@@ -10,13 +10,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 import type {
   ComposerSendRequest,
   DashboardSnapshot,
 } from "../../../shared/types";
 import { startChat } from "../../api";
-import { Empty, muted } from "../../components/page";
+import { Empty, fillViewport, muted } from "../../components/page";
 import { useDash } from "../../dashboard-context";
 import { useNavigate } from "../../routing";
 import { Logo } from "../../shell/logo";
@@ -202,7 +203,8 @@ export const ChatColumn = (props: {
   <div
     className={
       props.centred === false
-        ? "mx-auto flex w-full max-w-3xl flex-col gap-5"
+        ? // A chat fills the viewport, so its composer sits at the bottom.
+          cn("flex w-full flex-col gap-4", fillViewport)
         : // Fills the viewport below the shell's top padding, eating into its larger bottom padding so the
           // space above and below matches and the content sits in the true middle.
           "mx-auto -mb-8 flex min-h-[calc(100svh-5.25rem)] w-full max-w-3xl flex-col justify-center gap-8 md:-mb-10 md:min-h-[calc(100svh-3rem)]"

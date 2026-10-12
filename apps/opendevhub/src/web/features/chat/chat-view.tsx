@@ -14,8 +14,8 @@ import { chatPath, chatVariant } from "./chat";
 import { ChatColumn } from "./chat-start";
 
 /**
- * One chat: its task's conversation full-width, with a header naming the task, project and checkout and a link to
- * the task page for its changes, terminal and runtime. `?session=` is a conversation `/new` started here; the page
+ * One chat: its task's conversation full-width and full-height, with a header naming the task, project and checkout
+ * and a link to the task page for its changes, terminal and runtime. `?session=` is a conversation `/new` started here; the page
  * moves on to its chat once the snapshot knows its task.
  */
 export const ChatView = () => {
@@ -70,37 +70,47 @@ export const ChatView = () => {
     variant.branch ??
     "New worktree";
 
+  const chips = (
+    <>
+      <Chip>{view.project.name}</Chip>
+      <Chip>{checkoutLabel}</Chip>
+    </>
+  );
+  const openTask = (
+    <Button asChild variant="outline" size="sm">
+      <Link to={taskPath(view.project.id, task.id)}>
+        <span className="max-sm:sr-only">Open task</span> <ArrowUpRightIcon />
+      </Link>
+    </Button>
+  );
+
   return (
     <ChatColumn centred={false}>
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          {/* The conversation names itself once it exists. */}
-          {!session && (
-            <h1 className="text-xl font-semibold tracking-tight break-words">
-              {task.title || "Untitled chat"}
-            </h1>
-          )}
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <Chip>{view.project.name}</Chip>
-            <Chip>{checkoutLabel}</Chip>
-          </div>
-        </div>
-        <Button asChild variant="outline" size="sm">
-          <Link to={taskPath(view.project.id, task.id)}>
-            Open task <ArrowUpRightIcon />
-          </Link>
-        </Button>
-      </header>
       {session && checkout ? (
         <SessionView
           key={session.id}
           view={view}
           checkout={checkout}
           session={session}
+          chips={chips}
+          actions={openTask}
           onStarted={(id) => setParams({ session: id }, { replace: true })}
         />
       ) : (
-        <VariantWaiting view={view} variant={variant} details />
+        <>
+          <header className="flex min-w-0 items-center gap-2 border-b pb-2">
+            <h1 className="min-w-0 truncate text-base font-semibold">
+              {task.title || "Untitled chat"}
+            </h1>
+            <div className="flex min-w-0 items-center gap-1.5 text-xs max-md:hidden">
+              {chips}
+            </div>
+            <div className="ml-auto shrink-0">{openTask}</div>
+          </header>
+          <div className="mx-auto w-full max-w-3xl">
+            <VariantWaiting view={view} variant={variant} details />
+          </div>
+        </>
       )}
     </ChatColumn>
   );

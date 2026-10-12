@@ -43,8 +43,11 @@ export interface RawAssistantContent {
   text?: string;
   /** Set on a tool call. */
   name?: string;
-  /** Set on a tool call: "pending", "running", "completed" or "error". */
-  state?: { status: string };
+  /**
+   * Set on a tool call: its status, "pending", "running", "completed" or "error", and what it did, such as the
+   * command it ran, when opencode gives one.
+   */
+  state?: { status: string; title?: string };
 }
 
 /** The fields of a session message that opendevhub reads. */
@@ -55,6 +58,8 @@ export interface RawMessage {
   time?: { created: number; completed?: number };
   /** A user message's prompt. */
   text?: string;
+  /** A user message's files: its `@` mentions (with a `mention`) and what was attached from the user's machine. */
+  files?: RawFileAttachment[];
   /** The rest are an assistant message's. */
   agent?: string;
   model?: ModelRef;
@@ -276,8 +281,15 @@ export const basicAuth = (password: string): string =>
   `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`;
 
 const REQUEST_TIMEOUT_MS = 5000;
+/** For a prompt or command carrying inline files, which can be megabytes. */
+const UPLOAD_TIMEOUT_MS = 60_000;
 const DIFF_TIMEOUT_MS = 30_000;
 const GENERATE_TIMEOUT_MS = 60_000;
+
+const timeoutOf = (attachments: PromptAttachments): number =>
+  attachments.files?.some((f) => f.uri.startsWith("data:"))
+    ? UPLOAD_TIMEOUT_MS
+    : REQUEST_TIMEOUT_MS;
 
 export class OpencodeClient {
   private readonly ep: OpencodeEndpoint;
@@ -371,9 +383,10 @@ export class OpencodeClient {
     method: "POST" | "DELETE" | "PATCH",
     path: string,
     body?: unknown,
-    directory?: string
+    directory?: string,
+    timeoutMs = REQUEST_TIMEOUT_MS
   ): Promise<void> {
-    const res = await this.request(method, path, body, directory);
+    const res = await this.request(method, path, body, directory, timeoutMs);
     await res.text().catch(() => "");
   }
 
@@ -490,7 +503,8 @@ export class OpencodeClient {
       "POST",
       `/api/session/${encodeURIComponent(sessionId)}/prompt`,
       { text, ...attachments, ...(delivery ? { delivery } : {}) },
-      directory
+      directory,
+      timeoutOf(attachments)
     );
   }
 
@@ -509,6 +523,21 @@ export class OpencodeClient {
       "POST",
       `/api/session/${encodeURIComponent(sessionId)}/command`,
       { name, text, ...opts },
+      directory,
+      timeoutOf(opts)
+    );
+  }
+
+  /** Sets the model the session's next turns use. */
+  switchModel(
+    sessionId: string,
+    model: ModelRef,
+    directory?: string
+  ): Promise<void> {
+    return this.send(
+      "POST",
+      `/api/session/${encodeURIComponent(sessionId)}/model`,
+      { model },
       directory
     );
   }

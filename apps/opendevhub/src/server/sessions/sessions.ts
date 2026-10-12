@@ -6,6 +6,7 @@ import type {
   ComposerSendResult,
   EnvId,
   FormAnswer,
+  ModelRef,
   ModelsInfo,
   PendingItems,
   PermissionDecision,
@@ -33,6 +34,7 @@ import {
   subagentsOf,
   toBreakdown,
   toSessionTurns,
+  toTranscript,
 } from "./detail";
 import {
   attachmentsOf,
@@ -52,6 +54,13 @@ const DECISIONS: readonly string[] = [
 ] satisfies PermissionDecision[];
 
 /** The project's opencode sessions: starting, prompting, inspecting and removing them, and answering what they ask. */
+/** Whether `b` is model `a`; opencode reports its default variant as "default" or not at all. */
+const sameModel = (a: ModelRef, b: ModelRef | undefined): boolean =>
+  b !== undefined &&
+  a.id === b.id &&
+  a.providerID === b.providerID &&
+  (a.variant ?? "default") === (b.variant ?? "default");
+
 export class Sessions {
   private readonly deps: HubDeps;
   private readonly envs: Environments;
@@ -84,7 +93,11 @@ export class Sessions {
     directory: string,
     title?: string,
     prompt?: string,
-    options: { reviewOf?: number; attachments?: PromptAttachments } = {}
+    options: {
+      reviewOf?: number;
+      attachments?: PromptAttachments;
+      model?: ModelRef;
+    } = {}
   ): Promise<string> {
     const project = this.envs.requireProject(id);
     this.envs.checkDirectory(id, directory);
@@ -96,7 +109,7 @@ export class Sessions {
       client,
       directory,
       title,
-      options.reviewOf
+      { model: options.model, reviewOf: options.reviewOf }
     );
     if (prompt?.trim()) {
       await client.prompt(
@@ -135,7 +148,8 @@ export class Sessions {
       env.id,
       client,
       directory,
-      undefined
+      undefined,
+      { model: request.model }
     );
     await (message.command
       ? client.command(
@@ -197,7 +211,7 @@ export class Sessions {
       client,
       directory,
       options.title,
-      options.reviewOf
+      { reviewOf: options.reviewOf }
     );
     this.envs.reconcile(env.id);
     const text = await client.generate(
@@ -219,12 +233,16 @@ export class Sessions {
     client: OpencodeClient,
     directory: string,
     title: string | undefined,
-    reviewOf?: number
+    options: { reviewOf?: number; model?: ModelRef } = {}
   ): Promise<RawSession> {
+    const { reviewOf, model } = options;
     const { tasks, store } = this.deps;
     const release = tasks.claim(envId, directory);
     try {
-      const session = await client.createSession(directory, { title });
+      const session = await client.createSession(directory, {
+        title,
+        ...(model ? { model } : {}),
+      });
       const ws = this.envs.workspaceFolder(project);
       const branch =
         directory === ws
@@ -300,6 +318,7 @@ export class Sessions {
       more: messages.length >= DETAIL_MESSAGES,
       session,
       subagents: subagentsOf(sessionId, all),
+      transcript: toTranscript(messages),
       turns: toSessionTurns(messages),
       ...(raw.agent ? { agent: raw.agent } : {}),
       ...(raw.outcome ? { outcome: raw.outcome } : {}),
@@ -379,9 +398,15 @@ export class Sessions {
         directory,
         undefined,
         text.slice(offset).trim() || undefined,
-        { attachments: attachmentsOf(directory, request, offset) }
+        {
+          attachments: attachmentsOf(directory, request, offset),
+          model: request.model,
+        }
       );
       return { kind: "new", sessionId: started };
+    }
+    if (request.model && !sameModel(request.model, session.model)) {
+      await client.switchModel(sessionId, request.model, directory);
     }
     const message = await resolveMessage(
       () => this.checkoutCommands(id, directory),

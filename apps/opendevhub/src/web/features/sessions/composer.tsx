@@ -3,11 +3,13 @@ import {
   ArrowUpIcon,
   BotIcon,
   FileIcon,
+  PaperclipIcon,
   SendIcon,
   SquareSlashIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { DragEvent, KeyboardEvent, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -28,15 +30,20 @@ import { cn } from "@/lib/utils";
 import type {
   ComposerSendRequest,
   ComposerSendResult,
+  ModelRef,
   ProjectView,
 } from "../../../shared/types";
 import {
   fetchComposerAgents,
   fetchComposerCommands,
+  fetchModels,
   searchComposerFiles,
 } from "../../api";
 import { StatusDot } from "../../components/status";
+import { Tip } from "../../components/tip";
 import { envOfDirectory, envTone } from "../../derive";
+import { addAttachments, formatSize } from "./attachments";
+import type { PendingAttachment } from "./attachments";
 import { caretCoordinates } from "./caret";
 import {
   deleteMentionBefore,
@@ -46,6 +53,7 @@ import {
   triggerAt,
 } from "./composer-text";
 import type { ComposerValue, Trigger } from "./composer-text";
+import { ModelPicker } from "./model-picker";
 
 const FILE_DEBOUNCE_MS = 150;
 const SUGGESTION_LIMIT = 50;
@@ -116,6 +124,15 @@ const commandNote = (c: { hub?: boolean; shadowed?: boolean }) => {
   return c.shadowed ? "hidden by the hub's command" : undefined;
 };
 
+const sameModel = (a: ModelRef | undefined, b: ModelRef | undefined) =>
+  a?.id === b?.id &&
+  a?.providerID === b?.providerID &&
+  (a?.variant ?? "default") === (b?.variant ?? "default");
+
+/** The files a drag or paste carries, if any. */
+const filesOf = (data: DataTransfer | null): File[] =>
+  data ? [...data.files] : [];
+
 /** Where the composer sends: the checkout's own container, else the project's. */
 const targetOf = (view: ProjectView, directory: string) => {
   const env = envOfDirectory(view, directory);
@@ -158,6 +175,8 @@ export const Composer = (props: {
   hero?: boolean;
   /** Under the box, inside the form; with `hero`, the pickers of where the message goes. */
   footer?: ReactNode;
+  /** The model the conversation uses; the picker starts at it, else at the project's default. */
+  model?: ModelRef;
   /** What the box starts with; for stories. */
   initialText?: string;
 }) => {
@@ -180,6 +199,54 @@ export const Composer = (props: {
   const pendingCaret = useRef<number>(undefined);
   const [anchor, setAnchor] = useState({ left: 0, top: 0 });
   const [aria, setAria] = useState<{ list?: string; active?: string }>({});
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [chosenModel, setChosenModel] = useState<ModelRef>();
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const models = useQuery({
+    enabled: target.ready,
+    queryFn: () => fetchModels(projectId),
+    queryKey: ["models", projectId],
+    staleTime: LOOKUP_STALE_MS,
+  });
+  const shownModel = chosenModel ?? props.model ?? models.data?.default;
+  // Only a model the user picked is sent, and only when it isn't already the conversation's.
+  const sentModel =
+    chosenModel && !sameModel(chosenModel, props.model)
+      ? chosenModel
+      : undefined;
+
+  const attach = async (added: File[]) => {
+    if (added.length === 0) {
+      return;
+    }
+    try {
+      setAttachments(await addAttachments(attachments, added));
+      setError(undefined);
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : String(error_));
+    }
+  };
+  const onDragOver = (e: DragEvent) => {
+    if (!target.ready || !e.dataTransfer.types.includes("Files")) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDragging(true);
+  };
+  const onDrop = (e: DragEvent) => {
+    setDragging(false);
+    if (!target.ready) {
+      return;
+    }
+    const dropped = filesOf(e.dataTransfer);
+    if (dropped.length > 0) {
+      e.preventDefault();
+      void attach(dropped);
+    }
+  };
 
   const trigger: Trigger | undefined =
     focused && target.ready ? triggerAt(value, caret) : undefined;
@@ -315,10 +382,23 @@ export const Composer = (props: {
     }
     setBusy(true);
     props
-      .onSend({ mentions: value.mentions, text: value.text })
+      .onSend({
+        mentions: value.mentions,
+        text: value.text,
+        ...(attachments.length > 0
+          ? {
+              attachments: attachments.map((a) => ({
+                name: a.name,
+                url: a.url,
+              })),
+            }
+          : {}),
+        ...(sentModel ? { model: sentModel } : {}),
+      })
       .then(
         (result) => {
           setValue({ mentions: [], text: "" });
+          setAttachments([]);
           setCaret(0);
           setError(undefined);
           if (result) {
@@ -374,6 +454,40 @@ export const Composer = (props: {
     (trigger?.kind === "mention" && (files.isPending || agents.isPending));
   const failure = commands.error ?? agents.error ?? files.error;
 
+  const tools = (
+    <div className="flex min-w-0 items-center gap-0.5">
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          void attach([...(e.target.files ?? [])]);
+          e.target.value = "";
+        }}
+      />
+      <Tip label="Attach files or images">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground size-7"
+          aria-label="Attach files or images"
+          disabled={!target.ready}
+          onClick={() => fileInput.current?.click()}
+        >
+          <PaperclipIcon />
+        </Button>
+      </Tip>
+      <ModelPicker
+        models={models.data}
+        value={shownModel}
+        onChange={setChosenModel}
+        disabled={!target.ready}
+      />
+    </div>
+  );
+
   let placeholder = hero
     ? "Describe the task, or start with a / command…"
     : "Message the agent… / for commands, @ for files and agents";
@@ -410,10 +524,67 @@ export const Composer = (props: {
       )}
       <div
         className={cn(
+          "flex flex-col gap-2 rounded-md transition-shadow",
           hero &&
-            "bg-card focus-within:border-ring/60 rounded-2xl border shadow-sm transition-colors"
+            "bg-card focus-within:border-ring/60 gap-0 rounded-2xl border shadow-sm transition-colors",
+          dragging && "ring-ring/60 ring-2"
         )}
+        onDragOver={onDragOver}
+        onDragLeave={(e) => {
+          // Leaving for one of its own children isn't leaving.
+          const to = e.relatedTarget;
+          if (!(to instanceof Node && e.currentTarget.contains(to))) {
+            setDragging(false);
+          }
+        }}
+        onDrop={onDrop}
       >
+        {attachments.length > 0 && (
+          <ul
+            aria-label="Attached files"
+            className={cn("flex flex-wrap gap-2", hero && "px-4 pt-3")}
+          >
+            {attachments.map((a) => (
+              <li
+                key={a.id}
+                className="bg-muted flex max-w-60 items-center gap-2 rounded-md border py-1 pr-1 pl-1.5 text-xs"
+              >
+                {a.mime.startsWith("image/") ? (
+                  <img
+                    src={a.url}
+                    alt=""
+                    className="size-8 shrink-0 rounded object-cover"
+                  />
+                ) : (
+                  <FileIcon
+                    className="text-muted-foreground size-4 shrink-0"
+                    aria-hidden
+                  />
+                )}
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate font-medium" title={a.name}>
+                    {a.name}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {formatSize(a.size)}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground size-6 shrink-0"
+                  aria-label={`Remove ${a.name}`}
+                  onClick={() =>
+                    setAttachments((held) => held.filter((h) => h.id !== a.id))
+                  }
+                >
+                  <XIcon />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
         <Popover
           open={open}
           onOpenChange={(next) => {
@@ -456,6 +627,17 @@ export const Composer = (props: {
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               onKeyDown={onKeyDown}
+              onPaste={(e) => {
+                const pasted = filesOf(e.clipboardData);
+                if (pasted.length === 0) {
+                  return;
+                }
+                // Copying from some apps carries the text as an image too; paste the text then.
+                if (!e.clipboardData.getData("text/plain")) {
+                  e.preventDefault();
+                  void attach(pasted);
+                }
+              }}
             />
             <PopoverAnchor asChild>
               <span
@@ -531,7 +713,8 @@ export const Composer = (props: {
         </Popover>
         {hero && (
           <div className="flex items-center justify-between gap-3 px-3 pb-3">
-            <span className="text-muted-foreground px-1 text-xs max-sm:hidden">
+            {tools}
+            <span className="text-muted-foreground px-1 text-xs max-lg:hidden">
               / for commands · @ for files and agents · Ctrl+Enter to send
             </span>
             <Button
@@ -555,6 +738,7 @@ export const Composer = (props: {
       {error && <p className="text-destructive text-sm">{error}</p>}
       {!hero && (
         <div className="flex items-center justify-end gap-2">
+          <div className="mr-auto min-w-0">{tools}</div>
           <span
             className={cn(
               "text-muted-foreground text-xs max-sm:hidden",

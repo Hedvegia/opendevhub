@@ -47,6 +47,7 @@ import type {
   WorktreeRoot,
   EnvWorktree,
   PendingItems,
+  ModelRef,
   Project,
   SessionSummary,
   UpdateResult,
@@ -636,6 +637,9 @@ export function setup(
         "feat: do things"
     ),
     interrupt: vi.fn(async (_sid: string, _dir?: string) => {}),
+    switchModel: vi.fn(
+      async (_sid: string, _model: ModelRef, _dir?: string) => {}
+    ),
     sessions: vi.fn(async (): Promise<RawSession[]> => []),
     messages: vi.fn(
       async (_sid: string, _limit: number): Promise<RawMessage[]> => []

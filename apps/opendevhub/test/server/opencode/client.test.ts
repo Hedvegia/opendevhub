@@ -342,6 +342,14 @@ describe(OpencodeClient, () => {
     expect(fake.state.interrupts).toStrictEqual(["ses_1"]);
   });
 
+  it("switches a session's model", async () => {
+    const model = { id: "gpt-5", providerID: "openai", variant: "high" };
+    await client.switchModel("ses_1", model, "/w/x");
+    expect(fake.state.modelSwitches).toStrictEqual([
+      { body: { model }, sessionId: "ses_1" },
+    ]);
+  });
+
   it("sends prompts, queued when asked, and generates text from a session", async () => {
     await client.prompt("ses_1", "fix it", "queue", "/w/x");
     await client.prompt("ses_2", "hello");

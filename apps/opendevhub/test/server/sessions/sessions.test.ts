@@ -9,6 +9,10 @@ import { InvalidRequestError } from "../../../src/server/git/worktrees";
 import { OpencodeHttpError } from "../../../src/server/opencode/client";
 import { FILE_SEARCH_LIMIT } from "../../../src/server/sessions/sessions";
 import {
+  ATTACHMENT_MAX_BYTES,
+  ATTACHMENTS_MAX,
+} from "../../../src/shared/types";
+import {
   project,
   running,
   setup,
@@ -472,6 +476,93 @@ describe("composer", () => {
       {}
     );
     expect(client.command).not.toHaveBeenCalled();
+  });
+
+  it("switches the conversation's model before sending, unless it already uses it", async () => {
+    const { hub, client, store } = await started();
+    const model = { id: "gpt-5", providerID: "openai", variant: "high" };
+    await hub.sessions.sendMessage(project.id, "ses_1", { text: "hi", model });
+    expect(client.switchModel).toHaveBeenCalledWith("ses_1", model, ws);
+    expect(client.switchModel.mock.invocationCallOrder[0]).toBeLessThan(
+      client.prompt.mock.invocationCallOrder[0]
+    );
+    store.setSessions(project.id, [
+      {
+        id: "ses_1",
+        projectId: project.id,
+        title: "Chat",
+        directory: ws,
+        updatedAt: 2,
+        status: "idle",
+        model,
+      },
+    ]);
+    await hub.sessions.sendMessage(project.id, "ses_1", {
+      text: "again",
+      model,
+    });
+    expect(client.switchModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts /new on the chosen model", async () => {
+    const { hub, client } = await started();
+    const model = { id: "gpt-5", providerID: "openai" };
+    await hub.sessions.sendMessage(project.id, "ses_1", {
+      text: "/new go",
+      model,
+    });
+    expect(client.createSession).toHaveBeenCalledWith(ws, {
+      title: undefined,
+      model,
+    });
+    expect(client.switchModel).not.toHaveBeenCalled();
+  });
+
+  it("sends attached files as data: URL attachments after the mentions", async () => {
+    const { hub, client } = await started();
+    const url = `data:image/png;base64,${Buffer.from("png bytes").toString("base64")}`;
+    await hub.sessions.sendMessage(project.id, "ses_1", {
+      text: "what is @a.ts",
+      mentions: [{ kind: "file", start: 8, end: 13, name: "a.ts" }],
+      attachments: [{ name: "shot.png", url }],
+    });
+    expect(client.prompt).toHaveBeenCalledWith(
+      "ses_1",
+      "what is @a.ts",
+      undefined,
+      ws,
+      {
+        files: [
+          {
+            uri: "file:///workspaces/demo/a.ts",
+            name: "a.ts",
+            mention: { start: 8, end: 13, text: "@a.ts" },
+          },
+          { name: "shot.png", uri: url },
+        ],
+      }
+    );
+  });
+
+  it("refuses an attachment that isn't base64, is too big, or one too many", async () => {
+    const { hub, client } = await started();
+    const send = (attachments: { name: string; url: string }[]) =>
+      hub.sessions.sendMessage(project.id, "ses_1", {
+        text: "hi",
+        attachments,
+      });
+    await expect(
+      send([{ name: "a.txt", url: "data:text/plain,hello" }])
+    ).rejects.toThrow(InvalidRequestError);
+    const big = "A".repeat(Math.ceil((ATTACHMENT_MAX_BYTES + 3) / 3) * 4);
+    await expect(
+      send([{ name: "big.bin", url: `data:;base64,${big}` }])
+    ).rejects.toThrow(/larger than 20 MB/u);
+    const small = { name: "a.txt", url: "data:text/plain;base64,aGk=" };
+    await expect(
+      send(Array.from({ length: ATTACHMENTS_MAX + 1 }, () => small))
+    ).rejects.toThrow(InvalidRequestError);
+    expect(client.prompt).not.toHaveBeenCalled();
   });
 
   it("refuses an empty message, a mention that doesn't match the text, and one outside the checkout", async () => {

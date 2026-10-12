@@ -2,14 +2,26 @@ import type {
   SessionTurn,
   SubagentSummary,
   TokenBreakdown,
+  TranscriptAttachment,
+  TranscriptMessage,
+  TranscriptPart,
 } from "../../shared/types";
-import type { RawMessage, RawSession, RawTokens } from "../opencode/client";
+import type {
+  RawAssistantContent,
+  RawFileAttachment,
+  RawMessage,
+  RawSession,
+  RawTokens,
+} from "../opencode/client";
 import { rollUp, tokenTotal } from "./status";
 
 /** How many of a session's newest messages its page reads, the most opencode returns at once; older turns are left out. */
 export const DETAIL_MESSAGES = 200;
 const PROMPT_CHARS = 2000;
 const REPLY_CHARS = 1200;
+/** The most of a transcript's text or reasoning part the detail carries. */
+export const PART_CHARS = 20_000;
+const TOOL_STATUSES = new Set(["pending", "running", "completed", "error"]);
 
 const cut = (text: string, max: number): string => {
   const trimmed = text.trim();
@@ -95,6 +107,85 @@ export const toSessionTurns = (newestFirst: RawMessage[]): SessionTurn[] => {
   }
   return turns;
 };
+
+const toPart = (c: RawAssistantContent): TranscriptPart | undefined => {
+  if ((c.type === "text" || c.type === "reasoning") && c.text?.trim()) {
+    return { kind: c.type, text: cut(c.text, PART_CHARS) };
+  }
+  if (c.type === "tool" && c.name) {
+    const status = c.state?.status ?? "pending";
+    return {
+      kind: "tool",
+      name: c.name,
+      status: TOOL_STATUSES.has(status)
+        ? (status as Extract<TranscriptPart, { kind: "tool" }>["status"])
+        : "pending",
+      ...(c.state?.title ? { title: c.state.title } : {}),
+    };
+  }
+  return undefined;
+};
+
+const DATA_MIME = /^data:(?<mime>[^,;]+)/u;
+
+/** A user message's files other than its `@` mentions, by name; their bytes are left out. */
+const attachmentsOf = (files: RawFileAttachment[]): TranscriptAttachment[] =>
+  files
+    .filter((f) => !f.mention)
+    .map((f) => {
+      const mime = DATA_MIME.exec(f.uri)?.groups?.mime;
+      const name =
+        f.name ??
+        (f.uri.startsWith("data:")
+          ? "attachment"
+          : (f.uri.split("/").findLast(Boolean) ?? "file"));
+      return { name, ...(mime ? { mime } : {}) };
+    });
+
+const toTranscriptMessage = (m: RawMessage): TranscriptMessage | undefined => {
+  const created = m.time?.created ?? 0;
+  if (m.type === "user") {
+    const attachments = attachmentsOf(m.files ?? []);
+    return {
+      created,
+      id: m.id,
+      role: "user",
+      text: cut(m.text ?? "", PART_CHARS),
+      ...(attachments.length > 0 ? { attachments } : {}),
+    };
+  }
+  if (m.type === "compaction") {
+    return { created, id: m.id, role: "compaction" };
+  }
+  if (m.type !== "assistant") {
+    return undefined;
+  }
+  const parts = (m.content ?? [])
+    .map(toPart)
+    .filter((p): p is TranscriptPart => p !== undefined);
+  const error = m.error?.message;
+  return {
+    created,
+    id: m.id,
+    parts,
+    role: "assistant",
+    ...(m.time?.completed ? { completed: m.time.completed } : {}),
+    ...(error ? { error } : {}),
+    ...(m.agent ? { agent: m.agent } : {}),
+    ...(m.model ? { model: m.model } : {}),
+  };
+};
+
+/**
+ * A session's transcript, oldest first, from its messages, newest first. User, assistant and compaction messages
+ * are kept; other kinds, such as synthetic ones, are left out. A prompt and each text or reasoning part are cut
+ * short when long.
+ */
+export const toTranscript = (newestFirst: RawMessage[]): TranscriptMessage[] =>
+  newestFirst
+    .toReversed()
+    .map(toTranscriptMessage)
+    .filter((m): m is TranscriptMessage => m !== undefined);
 
 /** The session's direct subagents, newest first, each with its own subagents' cost and tokens added in. */
 export const subagentsOf = (

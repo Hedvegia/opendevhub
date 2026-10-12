@@ -57,7 +57,7 @@ export const TaskConversation = () => {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       {others.length > 0 && (
         <Threads
           threads={others}

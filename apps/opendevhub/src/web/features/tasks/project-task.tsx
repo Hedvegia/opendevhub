@@ -40,6 +40,7 @@ import { EnvBadge } from "../../components/env-badge";
 import {
   Chip,
   Empty,
+  fillViewport,
   muted,
   Section,
   Segmented,
@@ -248,7 +249,13 @@ export const ProjectTask = () => {
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div
+      className={cn(
+        "flex flex-col gap-4",
+        // The conversation fills the rest of the viewport, so its composer sits at the bottom.
+        current === "conversation" && fillViewport
+      )}
+    >
       <ProvenanceBreadcrumb
         key={variant?.n}
         type={variant ? "variant" : "task"}

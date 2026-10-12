@@ -443,9 +443,25 @@ export interface ComposerMention {
   name: string;
 }
 
+/** A file added to a message from the user's machine, inlined as a base64 `data:` URL. */
+export interface ComposerAttachment {
+  name: string;
+  /** `data:<mime>;base64,<bytes>`. */
+  url: string;
+}
+
+/** The most bytes one attachment may have; opencode refuses a larger one. */
+export const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+export const ATTACHMENTS_MAX = 10;
+/** The most bytes a message's attachments may have together. */
+export const ATTACHMENTS_TOTAL_BYTES = 50 * 1024 * 1024;
+
 export interface ComposerSendRequest {
   text: string;
   mentions?: ComposerMention[];
+  attachments?: ComposerAttachment[];
+  /** The model the message and the turns after it use; omitted keeps the conversation's. */
+  model?: ModelRef;
 }
 
 /** What sending did: `sessionId` is the conversation `/new` started. */
@@ -663,6 +679,49 @@ export interface SessionTurn {
   model?: ModelRef;
 }
 
+/** One piece of an assistant message in a transcript. */
+export type TranscriptPart =
+  | { kind: "text"; text: string }
+  | { kind: "reasoning"; text: string }
+  | {
+      kind: "tool";
+      name: string;
+      /** What the call did, such as the command it ran, when opencode gives one. */
+      title?: string;
+      status: "pending" | "running" | "completed" | "error";
+    };
+
+/** A file a user message carried; the bytes stay with opencode. */
+export interface TranscriptAttachment {
+  name: string;
+  mime?: string;
+}
+
+/** One message of a session's transcript. */
+export type TranscriptMessage =
+  | {
+      id: string;
+      role: "user";
+      created: number;
+      text: string;
+      /** Files added to it from the user's machine; `@` mentions stay in the text. */
+      attachments?: TranscriptAttachment[];
+    }
+  | {
+      id: string;
+      role: "assistant";
+      created: number;
+      /** Missing while the agent is still at it. */
+      completed?: number;
+      parts: TranscriptPart[];
+      /** Why it failed, when it did. */
+      error?: string;
+      agent?: string;
+      model?: ModelRef;
+    }
+  /** The conversation was compacted here. */
+  | { id: string; role: "compaction"; created: number };
+
 /** A subagent (child session) of a session. */
 export interface SubagentSummary {
   id: string;
@@ -687,6 +746,8 @@ export interface SessionDetail {
   subagents: SubagentSummary[];
   /** Its turns, newest first. */
   turns: SessionTurn[];
+  /** Its messages, oldest first. */
+  transcript: TranscriptMessage[];
   /** It has older turns than those listed. */
   more: boolean;
 }

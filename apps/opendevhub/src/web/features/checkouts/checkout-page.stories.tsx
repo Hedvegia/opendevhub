@@ -21,8 +21,17 @@ export const Changes = meta.story({
   parameters: { route: "/p/acme-web/main/review" },
 });
 
-/** One conversation: its usage, its turns (the newest with its changes open) and its subagents. */
+/** One conversation: its transcript with the composer pinned to the bottom, and the usage button in its header. */
 export const Conversation = meta.story({
+  parameters: { route: "/p/acme-web/t/tsk_rate" },
+});
+
+/** The Turns panel beside the transcript, the newest turn with its changes open. */
+export const ConversationTurns = meta.story({
+  beforeEach: () => {
+    localStorage.setItem("opendevhub.conversation.panel", "turns");
+    return () => localStorage.removeItem("opendevhub.conversation.panel");
+  },
   parameters: { route: "/p/acme-web/t/tsk_rate" },
 });
 

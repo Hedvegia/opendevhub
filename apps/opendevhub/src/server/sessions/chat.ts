@@ -35,6 +35,7 @@ export class Chat {
         message,
         prompt: message.text,
         where: "worktree",
+        ...(message.model ? { variants: [{ model: message.model }] } : {}),
       });
       return { task };
     }

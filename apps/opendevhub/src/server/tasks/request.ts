@@ -1,7 +1,9 @@
 import { JIRA_KEY } from "../../shared/jira";
 import type { JiraTaskSource } from "../../shared/jira";
 import { MAX_VARIANTS } from "../../shared/tasks";
+import { ATTACHMENTS_MAX } from "../../shared/types";
 import type {
+  ComposerAttachment,
   ComposerMention,
   ComposerSendRequest,
   ModelRef,
@@ -22,7 +24,7 @@ const NAME = /^[A-Za-z0-9._:/@-]{1,200}$/u;
 const str = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined;
 
-const parseModel = (value: unknown, n: number): ModelRef | undefined => {
+const parseModel = (value: unknown, what: string): ModelRef | undefined => {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -38,7 +40,7 @@ const parseModel = (value: unknown, n: number): ModelRef | undefined => {
     (variant !== undefined && !NAME.test(variant))
   ) {
     throw new InvalidRequestError(
-      `variant ${n}: model needs an id and a providerID`
+      `${what}: model needs an id and a providerID`
     );
   }
   return { id, providerID, ...(variant ? { variant } : {}) };
@@ -49,7 +51,7 @@ const parseVariant = (value: unknown, n: number): TaskVariantSpec => {
     throw new InvalidRequestError(`variant ${n} must be an object`);
   }
   const o = value as Record<string, unknown>;
-  const model = parseModel(o.model, n);
+  const model = parseModel(o.model, `variant ${n}`);
   const agent = str(o.agent)?.trim();
   if (
     o.agent !== undefined &&
@@ -82,6 +84,20 @@ const parseMention = (value: unknown): ComposerMention => {
   return { end: end as number, kind, name, start: start as number };
 };
 
+/** An uploaded file's shape; `attachmentsOf` checks its `data:` URL when the message is resolved. */
+const parseAttachment = (value: unknown): ComposerAttachment => {
+  const o = (value && typeof value === "object" ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  const name = str(o.name);
+  const url = str(o.url);
+  if (!name || name.length > 255 || !url?.startsWith("data:")) {
+    throw new InvalidRequestError("invalid attachment in the message");
+  }
+  return { name, url };
+};
+
 /** A composer message as a task's first turn; the hub's own commands need a conversation already. */
 export const parseFirstMessage = (value: unknown): ComposerSendRequest => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -105,7 +121,20 @@ export const parseFirstMessage = (value: unknown): ComposerSendRequest => {
     );
   }
   const mentions = raw.map(parseMention);
-  return { text, ...(mentions.length > 0 ? { mentions } : {}) };
+  const files = o.attachments ?? [];
+  if (!Array.isArray(files) || files.length > ATTACHMENTS_MAX) {
+    throw new InvalidRequestError(
+      `attachments must be a list of at most ${ATTACHMENTS_MAX}`
+    );
+  }
+  const attachments = files.map(parseAttachment);
+  const model = parseModel(o.model, "the message");
+  return {
+    text,
+    ...(mentions.length > 0 ? { mentions } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
+    ...(model ? { model } : {}),
+  };
 };
 
 /** Copy only the ticket snapshot fields; never accept credentials or remote HTML. */

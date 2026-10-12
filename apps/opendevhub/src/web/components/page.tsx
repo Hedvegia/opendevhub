@@ -182,6 +182,13 @@ export const Note = (props: {
 
 export const muted = "text-sm text-muted-foreground";
 
+/**
+ * Fills the viewport below the shell's top padding, eating into its larger bottom padding; for a page whose bottom
+ * is pinned, such as a conversation's composer.
+ */
+export const fillViewport =
+  "-mb-8 h-[calc(100svh-5.25rem)] md:-mb-10 md:h-[calc(100svh-3rem)]";
+
 /** Hands @pierre/diffs (which renders in shadow DOM) the dashboard's monospace font. */
 export const diffFont =
   "[--diffs-font-family:var(--font-mono)] [--diffs-font-size:12px] [--diffs-header-font-family:var(--font-mono)]";
