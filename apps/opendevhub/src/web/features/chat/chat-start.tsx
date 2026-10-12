@@ -203,7 +203,9 @@ export const ChatColumn = (props: {
     className={
       props.centred === false
         ? "mx-auto flex w-full max-w-3xl flex-col gap-5"
-        : "mx-auto flex min-h-[70vh] w-full max-w-3xl flex-col justify-center gap-8"
+        : // Fills the viewport below the shell's top padding, eating into its larger bottom padding so the
+          // space above and below matches and the content sits in the true middle.
+          "mx-auto -mb-8 flex min-h-[calc(100svh-5.25rem)] w-full max-w-3xl flex-col justify-center gap-8 md:-mb-10 md:min-h-[calc(100svh-3rem)]"
     }
   >
     {props.children}
