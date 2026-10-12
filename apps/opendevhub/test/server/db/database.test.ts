@@ -45,6 +45,7 @@ describe("openDatabase", () => {
       "branches",
       "environments",
       "events",
+      "forgejo_filter_presets",
       "projects",
       "pull_requests",
       "reviews",

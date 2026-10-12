@@ -24,6 +24,27 @@ export interface ForgejoPullQuery {
   page?: number;
 }
 
+/** A pull request inbox view as a filter preset keeps it: the inbox, the state and every filter. */
+export interface ForgejoPresetFilters {
+  inbox: ForgejoInbox;
+  state: ForgejoPullFilter;
+  q?: string;
+  repository?: string;
+  org?: string;
+  team?: string;
+  authors?: string[];
+}
+
+export interface ForgejoFilterPreset {
+  id: number;
+  name: string;
+  filters: ForgejoPresetFilters;
+}
+
+export interface ForgejoFilterPresets {
+  presets: ForgejoFilterPreset[];
+}
+
 export interface ForgejoOrganizations {
   orgs: string[];
 }

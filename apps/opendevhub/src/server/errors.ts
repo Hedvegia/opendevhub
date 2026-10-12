@@ -20,6 +20,14 @@ export class NotFoundError extends Error {
   }
 }
 
+/** The request collides with existing state, e.g. a name that is already taken. */
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConflictError";
+  }
+}
+
 /** The permission request or form was already answered or cancelled, e.g. in the opencode tab. */
 export class AlreadyAnsweredError extends Error {
   constructor() {

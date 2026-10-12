@@ -8,7 +8,9 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { InvalidNodeError, InvalidRootError } from "../../src/server/config";
 import { createDashboardApp } from "../../src/server/dashboard-api";
 import type { DashboardHub, PushPort } from "../../src/server/dashboard-api";
+import { openDatabase } from "../../src/server/db/database";
 import { EventStore } from "../../src/server/db/events";
+import { ForgejoPresetStore } from "../../src/server/db/forgejo-presets";
 import { ProvenanceStore } from "../../src/server/db/provenance";
 import { CommandError } from "../../src/server/environments/containers";
 import { EditorUnavailableError } from "../../src/server/environments/editors";
@@ -2348,6 +2350,86 @@ describe("node endpoints", () => {
   it("answers 412 when nodes aren't available", async () => {
     const { app } = setup();
     expect((await post(app, { ssh: "tim@box" })).status).toBe(412);
+  });
+});
+
+describe("forgejo preset endpoints", () => {
+  const withPresets = () => {
+    const base = setup();
+    return createDashboardApp({
+      store: base.store,
+      hub: base.hub,
+      onboarding: base.onboarding,
+      push: base.push,
+      cleanup: base.cleanup,
+      checks: base.checks,
+      forgejoPresets: new ForgejoPresetStore(openDatabase(":memory:")),
+    });
+  };
+  const send = (
+    app: ReturnType<typeof createDashboardApp>,
+    method: string,
+    url: string,
+    body: unknown
+  ) =>
+    app.request(url, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const filters = { inbox: "review", state: "open", authors: ["alex"] };
+
+  it("saves, lists, updates and deletes presets", async () => {
+    const app = withPresets();
+    const created = await send(app, "POST", "/api/forgejo/presets", {
+      name: "  Alex  ",
+      filters,
+    });
+    await expect(created.json()).resolves.toStrictEqual({
+      filters,
+      id: 1,
+      name: "Alex",
+    });
+    const renamed = await send(app, "PUT", "/api/forgejo/presets/1", {
+      name: "Alex's",
+    });
+    expect(renamed.status).toBe(200);
+    const list = await app.request("/api/forgejo/presets");
+    await expect(list.json()).resolves.toStrictEqual({
+      presets: [{ filters, id: 1, name: "Alex's" }],
+    });
+    expect(
+      (await app.request("/api/forgejo/presets/1", { method: "DELETE" })).status
+    ).toBe(200);
+    expect(
+      (await app.request("/api/forgejo/presets/1", { method: "DELETE" })).status
+    ).toBe(404);
+  });
+
+  it("answers 409 for a taken name and 400 for bad filters", async () => {
+    const app = withPresets();
+    await send(app, "POST", "/api/forgejo/presets", { name: "A", filters });
+    expect(
+      (await send(app, "POST", "/api/forgejo/presets", { name: "a", filters }))
+        .status
+    ).toBe(409);
+    expect(
+      (
+        await send(app, "POST", "/api/forgejo/presets", {
+          name: "B",
+          filters: { ...filters, authors: ["not a login"] },
+        })
+      ).status
+    ).toBe(400);
+    expect(
+      (await send(app, "POST", "/api/forgejo/presets", { name: " ", filters }))
+        .status
+    ).toBe(400);
+  });
+
+  it("answers 412 when presets aren't available", async () => {
+    const { app } = setup();
+    expect((await app.request("/api/forgejo/presets")).status).toBe(412);
   });
 });
 

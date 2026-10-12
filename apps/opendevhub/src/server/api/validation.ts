@@ -82,7 +82,26 @@ const variants = z.array(
   })
 );
 
+const presetFilters = z.object({
+  inbox: z.enum(["authored", "review-requested", "assigned", "review"]),
+  state: z.enum(["all", "open", "closed"]),
+  q: z.string().max(200).optional(),
+  repository: z.string().max(200).optional(),
+  org: z.string().max(200).optional(),
+  team: z.string().max(200).optional(),
+  authors: z
+    .array(z.string().regex(/^[\w.-]{1,40}$/u))
+    .max(20)
+    .optional(),
+});
+const presetName = z.string().trim().min(1).max(80);
+
 export const bodies = {
+  forgejoPreset: z.object({ name: presetName, filters: presetFilters }),
+  forgejoPresetUpdate: z.object({
+    name: presetName.optional(),
+    filters: presetFilters.optional(),
+  }),
   integration: z.object({
     enabled: z.boolean(),
     url: text,

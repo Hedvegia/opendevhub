@@ -3,13 +3,14 @@ import type { Context } from "hono";
 
 import type {
   AiReviewResult,
+  ForgejoFilterPresets,
   ForgejoPullDetails,
   ForgejoPullRequest,
 } from "../../shared/forgejo";
 import type { StoredAiReview } from "../../shared/types";
 import type { DashboardDeps } from "../dashboard-api";
 import { USER } from "../db/events";
-import { UnavailableError } from "../errors";
+import { NotFoundError, UnavailableError } from "../errors";
 import { InvalidRequestError } from "../git/worktrees";
 import {
   AI_REVIEW_TIMEOUT_MS,
@@ -20,8 +21,17 @@ import {
   parseAiReview,
 } from "../integrations/ai-review";
 import { ForgejoError } from "../integrations/forgejo";
-import { errorStatus, imageResponse, json, param, str } from "./helpers";
+import { errorStatus, imageResponse, json, ok, param, str } from "./helpers";
 import { bodies, queries, validateJson, validateQuery } from "./validation";
+
+/** A preset id from the path; an id that isn't one matches no preset. */
+const presetId = (id: string): number => {
+  const n = Number(id);
+  if (!Number.isSafeInteger(n) || n < 1) {
+    throw new NotFoundError(id, "filter preset");
+  }
+  return n;
+};
 
 /** What the forge says about a pull request, as a snapshot for its row. */
 const pullFacts = (pull: ForgejoPullRequest) => ({
@@ -64,6 +74,12 @@ export const createForgejoRoutes = (deps: DashboardDeps) => {
       throw new UnavailableError("Forgejo is not available");
     }
     return deps.forgejo;
+  };
+  const requirePresets = () => {
+    if (!deps.forgejoPresets) {
+      throw new UnavailableError("Filter presets are not available");
+    }
+    return deps.forgejoPresets;
   };
   const pullAt = async (c: Context, commitId: unknown) => {
     const details = await requireForgejo().details(
@@ -114,6 +130,28 @@ export const createForgejoRoutes = (deps: DashboardDeps) => {
         refresh(() => inbox.pulls.map(pullFacts));
         return inbox;
       })
+    )
+    .get("/api/forgejo/presets", (c) =>
+      json(c, (): ForgejoFilterPresets => ({
+        presets: requirePresets().list(),
+      }))
+    )
+    .post("/api/forgejo/presets", validateJson(bodies.forgejoPreset), (c) =>
+      json(c, () => {
+        const b = c.req.valid("json");
+        return requirePresets().create(b.name, b.filters);
+      })
+    )
+    .put(
+      "/api/forgejo/presets/:id",
+      validateJson(bodies.forgejoPresetUpdate),
+      (c) =>
+        json(c, (id) =>
+          requirePresets().update(presetId(id), c.req.valid("json"))
+        )
+    )
+    .delete("/api/forgejo/presets/:id", (c) =>
+      ok(c, (id) => requirePresets().remove(presetId(id)))
     )
     .get("/api/forgejo/orgs", (c) =>
       json(c, () => {

@@ -7,6 +7,7 @@ import { CommandError } from "../environments/containers";
 import { EditorUnavailableError } from "../environments/editors";
 import {
   AlreadyAnsweredError,
+  ConflictError,
   BusyError,
   NotFoundError,
   UnavailableError,
@@ -46,6 +47,7 @@ export const errorStatus = (
   if (
     err instanceof BusyError ||
     err instanceof AlreadyAnsweredError ||
+    err instanceof ConflictError ||
     err instanceof DevcontainerExistsError
   ) {
     return 409;

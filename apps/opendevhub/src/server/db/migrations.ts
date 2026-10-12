@@ -164,6 +164,14 @@ CREATE TABLE events (
 CREATE INDEX events_project ON events (project_id, id);
 CREATE INDEX events_object  ON events (object_type, object_id, id);
 CREATE INDEX events_task    ON events (task_id, id) WHERE task_id IS NOT NULL;
+
+CREATE TABLE forgejo_filter_presets (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  filters    TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `,
 ];
 

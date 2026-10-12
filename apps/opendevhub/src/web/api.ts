@@ -2,6 +2,7 @@ import type { ActivityFilter, ObjectType } from "../shared/activity";
 import type {
   ForgejoReviewInput,
   ForgejoPullFilter,
+  ForgejoPresetFilters,
   ForgejoPullQuery,
   ForgejoSettingsInput,
 } from "../shared/forgejo";
@@ -94,6 +95,39 @@ export const fetchForgejoTeams = (org: string, signal?: AbortSignal) =>
     ),
     "Forgejo request"
   );
+
+export const fetchForgejoPresets = (signal?: AbortSignal) =>
+  read(
+    api.forgejo.presets.$get(undefined, {
+      init: { cache: "no-store", signal },
+    }),
+    "Filter presets"
+  );
+
+export const createForgejoPreset = (
+  name: string,
+  filters: ForgejoPresetFilters
+) =>
+  read(api.forgejo.presets.$post({ json: { filters, name } }), "Save preset");
+
+export const updateForgejoPreset = (
+  id: number,
+  changes: { name?: string; filters?: ForgejoPresetFilters }
+) =>
+  read(
+    api.forgejo.presets[":id"].$put({
+      json: changes,
+      param: { id: String(id) },
+    }),
+    "Update preset"
+  );
+
+export const removeForgejoPreset = async (id: number) => {
+  await complete(
+    api.forgejo.presets[":id"].$delete({ param: { id: String(id) } }),
+    "Delete preset"
+  );
+};
 
 export const fetchForgejoDetails = (
   owner: string,

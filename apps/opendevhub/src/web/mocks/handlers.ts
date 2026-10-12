@@ -2,7 +2,12 @@
 import { delay, http, HttpResponse, sse } from "msw";
 import type { AnyHandler } from "msw";
 
-import type { AiReviewResult, ForgejoSettings } from "../../shared/forgejo";
+import type {
+  AiReviewResult,
+  ForgejoFilterPreset,
+  ForgejoPresetFilters,
+  ForgejoSettings,
+} from "../../shared/forgejo";
 import type { GitSetup } from "../../shared/git-setup";
 import type { JiraSettings } from "../../shared/jira";
 import type { DashboardSnapshot } from "../../shared/types";
@@ -88,6 +93,13 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
     git = gitSetup,
     latency = 0,
   } = options;
+  let presets: ForgejoFilterPreset[] = [
+    {
+      filters: { inbox: "review-requested", state: "open" },
+      id: 1,
+      name: "Waiting on me",
+    },
+  ];
   const wait = async () => {
     if (latency > 0) {
       await delay(latency);
@@ -117,6 +129,30 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
     }),
 
     // Forgejo
+    http.get("/api/forgejo/presets", () => HttpResponse.json({ presets })),
+    http.post("/api/forgejo/presets", async ({ request }) => {
+      const input = (await request.json()) as Omit<ForgejoFilterPreset, "id">;
+      const preset = {
+        ...input,
+        id: Math.max(0, ...presets.map((p) => p.id)) + 1,
+      };
+      presets = [...presets, preset];
+      return HttpResponse.json(preset);
+    }),
+    http.put("/api/forgejo/presets/:id", async ({ params, request }) => {
+      const changes = (await request.json()) as {
+        name?: string;
+        filters?: ForgejoPresetFilters;
+      };
+      presets = presets.map((p) =>
+        String(p.id) === params.id ? { ...p, ...changes } : p
+      );
+      return HttpResponse.json(presets.find((p) => String(p.id) === params.id));
+    }),
+    http.delete("/api/forgejo/presets/:id", ({ params }) => {
+      presets = presets.filter((p) => String(p.id) !== params.id);
+      return HttpResponse.json({ ok: true });
+    }),
     http.get("/api/forgejo/orgs", () =>
       HttpResponse.json({ orgs: ["acme", "acme-labs"] })
     ),

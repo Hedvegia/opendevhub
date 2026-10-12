@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import type {
   ForgejoInbox,
   ForgejoPullDetails,
+  ForgejoPresetFilters,
   ForgejoPullFilter,
   ForgejoPulls,
 } from "../../../shared/forgejo";
@@ -111,6 +112,7 @@ import type {
 import { ActiveFilters, ForgejoFilters, parseAuthors } from "./forgejo-filters";
 import type { ActiveFilter, InboxFilters } from "./forgejo-filters";
 import { ForgejoHandoff } from "./forgejo-handoff";
+import { ForgejoPresets, presetSearch } from "./forgejo-presets";
 import {
   ForgejoReviewDialog,
   ForgejoWorktreeDialog,
@@ -865,15 +867,21 @@ export const ForgejoPage = () => {
     return () => clearTimeout(timer);
     // oxlint-disable-next-line react/exhaustive-effect-dependencies react-hooks/exhaustive-deps
   }, [queryInput, repoInput, q, repository, filters.toString(), setSearch]);
-  const listSearch = new URLSearchParams({
+  const view: ForgejoPresetFilters = {
+    authors,
     inbox,
+    org,
+    q,
+    repository,
     state,
-    ...(q ? { q } : {}),
-    ...(repository ? { repository } : {}),
-    ...(org ? { org } : {}),
-    ...(team ? { team } : {}),
-    ...(authors.length ? { authors: authors.join(",") } : {}),
-  }).toString();
+    team,
+  };
+  const listSearch = presetSearch(view);
+  const applyPreset = (preset: ForgejoPresetFilters) => {
+    setQueryInput(preset.q ?? "");
+    setRepoInput(preset.repository ?? "");
+    setSearch(new URLSearchParams(presetSearch(preset)), { replace: true });
+  };
   useEffect(() => {
     saveForgejoPreference("inbox", listSearch);
   }, [listSearch]);
@@ -981,6 +989,7 @@ export const ForgejoPage = () => {
               onAuthors={(next) => change("authors", next.join(","))}
               onClear={clearFilters}
             />
+            <ForgejoPresets current={view} onApply={applyPreset} />
           </div>
         </div>
         <ActiveFilters
