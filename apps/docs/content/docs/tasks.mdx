@@ -4,9 +4,13 @@ description: Start agent work from a prompt, and compare models on the same prom
 icon: ListChecks
 ---
 
-**New task** starts agent work from a prompt, without opening the opencode tab. It's on the Overview and project pages and in `⌘K`, or press `n`.
+**New task** starts agent work from a prompt. Open it from a project overview, the command palette (`Ctrl/⌘ K`), or **Start as task** in [New chat](/docs/chats). The **Tasks** page lists tasks across projects and filters them by state and project.
 
 By default a task creates a [worktree](/docs/worktrees) on a branch named after the prompt's first line (`-2`, `-3`… when the name is taken), starts a session there and sends the prompt. **Main checkout** runs it in the project folder instead. **Environment: Own container** runs it in its [own container](/docs/worktrees#own-containers).
+
+Choose an agent and model for each variant. You can save a task as a draft and start it later. If the checkout has OpenSpec available, **Spec first** asks the agent to propose the change before implementing it. The task page shows the proposal, specs, design and tasks as they progress.
+
+When the proposal is ready, comment on its text or requirements and send the comments to the agent for an update. Approve the change to start implementation. After its tasks are complete, archive the change from the task page. A proposed change can also be implemented in separate model variants for comparison.
 
 ![The New task dialog with a prompt, a new worktree in the shared container, and two models to compare](./images/new-task.webp)
 
@@ -20,16 +24,16 @@ By default a task creates a [worktree](/docs/worktrees) on a branch named after 
 
 ## Where tasks are stored
 
-A task is stored in its sessions' opencode metadata (`metadata.opendevhub`), so it survives restarts of opendevhub and of the container.
+A task and its variants are stored in opendevhub's local SQLite database. Conversations remain in opencode's data volume, so tasks and their sessions survive dashboard and container restarts. Task pages also connect the originating ticket, branch, checkout, pull requests and AI reviews when those links exist.
 
-## A session's page
+## Conversation and changes
 
-Click a session's title to open its page. It shows the session's cost and tokens (its subagents included, with its own tokens split by kind), how full its context window is, and its subagents. Its turns are listed newest first: each prompt with how long the agent took, what the turn cost, its tool calls and the agent's last reply. Expand **Changes** to see what a turn changed, from the prompt until the agent went idle, whatever was committed in between; while the turn runs it compares with the working copy. Comment on a line with the **+** in the gutter and send the comments to the session. The box above the turns sends the session another prompt, queued behind its current turn while it works.
+Open a task and select **Conversation** to see the agent's messages, tool activity, cost, tokens and subagents. The composer sends another prompt to that session, queued behind its current turn if it is still working. **Changes** and **Terminal** are available on the task and checkout pages; the conversation can also show checkout changes in its side panel.
 
 ## Review and publish
 
-Each checkout has a **Review** tab that shows the changes. Its toolbar stays at the top while you scroll: the branch, which changes are shown, how far ahead and behind the base it is, and whether it has uncommitted changes. **Uncommitted** (the default) shows the checkout's `git diff`, new files included. Switch to the base (for example **main**) to see everything since the branch left it, committed or not; click the base again to pick another. Each checkout remembers its choice, and when nothing is uncommitted but the branch has commits, the review offers to compare with the base. By default a diff shows only the changed lines with a few lines around them; click an "unmodified lines" bar to expand it, or switch to the full file. You can also show the old and new versions side by side, and hide the changed-files tree. These choices are remembered.
+Each checkout has a **Changes** tab that shows the diff. Its toolbar stays at the top while you scroll: the branch, which changes are shown, how far ahead and behind the base it is, and whether it has uncommitted changes. **Uncommitted** (the default) shows the checkout's `git diff`, new files included. Switch to the base (for example **main**) to see everything since the branch left it, committed or not; click the base again to pick another. Each checkout remembers its choice, and when nothing is uncommitted but the branch has commits, the review offers to compare with the base. By default a diff shows only the changed lines with a few lines around them; click an "unmodified lines" bar to expand it, or switch to the full file. You can also show the old and new versions side by side, and hide the changed-files tree. These choices are remembered. Modified images can be compared with **2-up**, **Swipe**, **Onion skin**, or **Difference**; the chosen mode is remembered.
 
 Comment on a line with the **+** in the diff's gutter; the comments button collects them, takes general comments, and sends them all to a session. The **Git** menu commits, updates from the base, merges into the base, and [publishes](/docs/publish) the branch as a pull request; an action that can't run says why.
 
-![The Review tab of a task worktree: its checks, the changed files and the diff, with commit, merge and publish under Git](./images/review.webp)
+![A task worktree's changes, checks and diff, with commit, merge and publish under Git](./images/review.webp)

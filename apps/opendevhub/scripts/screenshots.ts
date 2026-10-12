@@ -37,7 +37,7 @@ const shots: Shot[] = [
     story: "pages-overview--default",
   },
   {
-    height: 980,
+    clip: "div:has(> div > h2:text-is('Worktrees'))",
     name: "worktrees",
     ready: "text=New worktree",
     story: "pages-project--overview",
@@ -49,6 +49,7 @@ const shots: Shot[] = [
     story: "pages-project--task-compare",
   },
   {
+    height: 1100,
     name: "review",
     ready: "text=MAX_BURST",
     story: "pages-project--task-changes",
@@ -68,7 +69,7 @@ const shots: Shot[] = [
   {
     height: 520,
     name: "jira-tickets",
-    ready: "text=1–4 of 4",
+    ready: "text=Login endpoint needs burst protection",
     story: "pages-jira--tickets",
   },
   {
@@ -78,10 +79,10 @@ const shots: Shot[] = [
     story: "pages-jira--ticket",
   },
   {
-    height: 580,
+    height: 820,
     name: "nodes",
     ready: "text=Connection timed out",
-    story: "pages-nodes--default",
+    story: "shell-settings--remote-instances",
   },
   {
     clip: "[role=dialog]",
@@ -193,18 +194,26 @@ const capture = async (page: Page, url: string, shot: Shot): Promise<void> => {
   });
   await page.waitForTimeout(SETTLE_MS);
 
-  const box = shot.clip
-    ? await page.locator(shot.clip).first().boundingBox()
-    : { ...viewport, x: 0, y: 0 };
+  const target = shot.clip ? page.locator(shot.clip).first() : undefined;
+  await target?.scrollIntoViewIfNeeded();
+  const box = target ? await target.boundingBox() : { ...viewport, x: 0, y: 0 };
   if (!box) {
     throw new Error(`${shot.name}: ${shot.clip} is not visible`);
   }
+  const offset = target
+    ? await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }))
+    : { x: 0, y: 0 };
 
   // Playwright only writes PNG and JPEG; Chromium itself can encode WebP.
   const cdp = await page.context().newCDPSession(page);
   const { data } = await cdp.send("Page.captureScreenshot", {
     // The clip is in CSS pixels; its scale sets the output's pixel density.
-    clip: { ...box, scale: PIXEL_RATIO },
+    clip: {
+      ...box,
+      x: box.x + offset.x,
+      y: box.y + offset.y,
+      scale: PIXEL_RATIO,
+    },
     format: "webp",
     quality: WEBP_QUALITY,
   });

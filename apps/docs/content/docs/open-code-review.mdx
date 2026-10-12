@@ -1,0 +1,19 @@
+---
+title: Open Code Review
+description: Review Forgejo pull requests file by file with suggested code changes.
+icon: ScanSearch
+---
+
+Open Code Review is another option in a Forgejo pull request's **AI review** menu. It reviews the head commit file by file in a local checkout and puts findings and suggested code in the pull request diff. It does not change the checkout or submit a review for you.
+
+## Set up a provider
+
+Open **Settings → Open Code Review** and configure the default provider, protocol, model and API key. Test the connection, then save. If you already have `~/.opencodereview/config.json`, **Import from ~/.opencodereview** can fill in the form; save to keep those settings. Set review limits there for all projects.
+
+A project can use its own provider under the project's gear menu, **Open Code Review**. That project setting can use the default provider or override it. The API key is held in your operating system's credential store and is not returned to the browser. opendevhub bundles Open Code Review and installs it in the selected checkout's environment when needed.
+
+## Run and use a review
+
+On a Forgejo pull request, choose **AI review → Open Code Review**. Select an existing checkout of the PR or create a worktree at its head commit, then start the review. The selected project must have a configured provider. The review can continue after you leave or reload the page; its stored result appears in earlier AI reviews.
+
+Findings appear on diff lines when they can be placed there. In **Review** mode, accept a finding into your draft review, edit it, or dismiss it. In **Address feedback** mode, add a finding to an agent handoff. The review also reports files it skipped and findings that cannot be placed on a diff line. See [Forgejo](/docs/forgejo) for submitting your review and handing feedback to an agent.

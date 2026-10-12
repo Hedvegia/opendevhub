@@ -1,9 +1,10 @@
 ---
 title: Cleanup
 description: Remove merged branches with their worktrees, stale sessions, and containers and images opendevhub no longer needs.
+icon: Eraser
 ---
 
-**Cleanup** in the sidebar scans every project and lists what can go, with the reason:
+Open **Settings → Cleanup** to scan every project and see what can go, with the reason:
 
 - **Branches & worktrees.** Local branches merged into their base (the base recorded when opendevhub created the branch, else the remote's default branch), checked. Branches whose upstream was deleted on the remote, which is what a squash merge on GitHub or Forgejo leaves, unchecked: "gone" can also mean deleted without merging. A branch's worktree and the worktree's own container go with it. A worktree with uncommitted changes is listed unchecked, with a warning.
 - **Sessions**: task variants you discarded with "Pick this one", and sessions whose worktree was removed, checked. Sessions not touched in 30 days (counting their subagents), unchecked. A session that's running or waiting on you is never listed. A session is deleted in opencode with its subagents; what it cost stays in Usage.

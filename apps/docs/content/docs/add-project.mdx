@@ -4,7 +4,7 @@ description: Set up a devcontainer for a git repo that doesn't have one.
 icon: FolderPlus
 ---
 
-The **+** next to Projects in the sidebar (or **Add project…** in `⌘K`) lists the git repos under your roots that have no devcontainer. Pick one and opendevhub:
+Choose **Add project** from the project picker at the top of the sidebar, **Settings → Projects**, or `Ctrl/⌘ K`. The dialog lists git repos under your project folders that have no devcontainer. Pick one and opendevhub:
 
 1. writes `.devcontainer/devcontainer.json` with a base image for the repo's stack,
 2. adds the opencode v2 installer (`curl -fsSL https://opencode.ai/v2/install | bash`) as `postCreateCommand`,

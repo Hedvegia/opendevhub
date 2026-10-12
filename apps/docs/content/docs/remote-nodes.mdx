@@ -6,15 +6,15 @@ icon: Server
 
 Other machines can run task environments, reached over ssh. This is a preview.
 
-Add a node on the **Nodes** page, or from the command line, then restart opendevhub:
+Add a node in **Settings → Remote instances**, or from the command line, then restart opendevhub:
 
 ```bash
 opendevhub nodes add tim@workstation --label Workstation
 ```
 
-The Nodes page shows whether each node is reachable and ready, and how much CPU and memory it has free.
+**Remote instances** shows whether each machine is reachable and ready, and how much CPU and memory it has free.
 
-![The Nodes page: this machine and a build box online, an old laptop unreachable over ssh, and the form to add a node](./images/nodes.webp)
+![Remote instances settings: this machine and a build box online, an old laptop unreachable over ssh, and the form to add an instance](./images/nodes.webp)
 
 ## Run a task on a node
 
