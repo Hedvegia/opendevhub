@@ -21,25 +21,19 @@ import { cn } from "@/lib/utils";
 
 import type { Usage, UsageReport } from "../../../shared/types";
 import { fetchUsage } from "../../api";
-import {
-  Empty,
-  muted,
-  Page,
-  PageHeader,
-  Segmented,
-} from "../../components/page";
+import { Empty, muted, Page, Segmented } from "../../components/page";
 import { useDash } from "../../dashboard-context";
-import { useSearchParams } from "../../routing";
+import { SettingsHeader } from "../settings/settings-layout";
 import { formatCost, formatTokens } from "../tasks/tasks";
 import { UsageChart } from "./lazy-usage-chart";
 import { dayLabel, projectName, share, shiftDay } from "./usage";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/u;
 
-export const UsagePage = () => {
+/** What the agents spent, as a Settings section; the day shown is kept while the dialog is open. */
+export const UsageSettings = () => {
   const { snapshot } = useDash();
-  const [params, setParams] = useSearchParams();
-  const asked = params.get("day");
+  const [asked, setAsked] = useState<string>();
   const [view, setView] = useState<"chart" | "table">("chart");
   const [chosenMetric, setMetric] = useState<"cost" | "tokens">();
   const live = snapshot?.usage;
@@ -70,7 +64,7 @@ export const UsagePage = () => {
     return null;
   }
   const header = (
-    <PageHeader
+    <SettingsHeader
       title="Usage"
       description="What the agents spent, from opendevhub's ledger. Days follow this machine's clock."
     />
@@ -100,19 +94,7 @@ export const UsagePage = () => {
   const today = report.days.at(-1)?.day ?? report.day;
   // Models that report no price (e.g. on a subscription) leave cost at zero; tokens are the useful measure then.
   const metric = chosenMetric ?? (report.total.cost > 0 ? "cost" : "tokens");
-  const setDay = (day: string) =>
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (day === today) {
-          next.delete("day");
-        } else {
-          next.set("day", day);
-        }
-        return next;
-      },
-      { replace: true }
-    );
+  const setDay = (day: string) => setAsked(day === today ? undefined : day);
 
   return (
     <Page className={cn(error && "opacity-60")}>

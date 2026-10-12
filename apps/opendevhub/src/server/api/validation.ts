@@ -157,6 +157,21 @@ export const bodies = {
   projectHostPorts: z.object({
     ports: z.array(z.number().int().min(1).max(65_535)).max(100),
   }),
+  projectLinks: z.object({
+    forgejoRepository: z
+      .string()
+      .regex(
+        /^[\w.-]{1,100}\/[\w.-]{1,100}$/u,
+        "Enter a repository as owner/name."
+      )
+      .optional(),
+    jiraBoard: z
+      .object({
+        id: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        name: z.string().min(1).max(200),
+      })
+      .optional(),
+  }),
   sshTest: z.object({ host: z.string().min(1) }),
   onboarding: z.object({ path: text, stack: z.enum(STACK_IDS) }),
   cleanup: z

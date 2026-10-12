@@ -10,7 +10,7 @@ import type {
 } from "../../shared/forgejo";
 import type { GitSetup } from "../../shared/git-setup";
 import type { JiraSettings } from "../../shared/jira";
-import type { DashboardSnapshot } from "../../shared/types";
+import type { DashboardSnapshot, ProjectLinks } from "../../shared/types";
 import {
   activityPage,
   provenanceOf,
@@ -100,6 +100,11 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
       name: "Waiting on me",
     },
   ];
+  const projectLinks = new Map<string, ProjectLinks>();
+  const defaultLinks: ProjectLinks = {
+    forgejoRepository: "acme/web",
+    jiraBoard: { id: 1, name: "ACME Sprint Board" },
+  };
   const wait = async () => {
     if (latency > 0) {
       await delay(latency);
@@ -394,6 +399,14 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
         strategy: "branch",
       })
     ),
+    http.get("/api/projects/:id/links", ({ params }) =>
+      HttpResponse.json(projectLinks.get(String(params.id)) ?? defaultLinks)
+    ),
+    http.post("/api/projects/:id/links", async ({ params, request }) => {
+      const links = (await request.json()) as ProjectLinks;
+      projectLinks.set(String(params.id), links);
+      return HttpResponse.json(links);
+    }),
     http.get("/api/projects/:id/checks", () => HttpResponse.json(checksView)),
     http.get("/api/projects/:id/spec", () => HttpResponse.json(specView)),
     http.post("/api/projects/:id/spec/revise", () =>

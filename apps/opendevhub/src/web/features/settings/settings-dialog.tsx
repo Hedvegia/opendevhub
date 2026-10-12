@@ -1,7 +1,9 @@
 import {
   ActivityIcon,
   BellIcon,
+  CircleDollarSignIcon,
   CommandIcon,
+  EraserIcon,
   FolderGit2Icon,
   GitBranchIcon,
   GitPullRequestIcon,
@@ -38,8 +40,10 @@ import { useDash } from "../../dashboard-context";
 import { matches } from "../../derive";
 import { useNavigate, useSearchParams } from "../../routing";
 import { ActivitySettings } from "../activity/activity-settings";
+import { CleanupSettings } from "../cleanup/cleanup-settings";
 import { nodesNeedingAttention } from "../nodes/nodes";
 import { RemoteInstancesSettings } from "../nodes/remote-instances";
+import { UsageSettings } from "../usage/usage-settings";
 import { GeneralSettings } from "./general-settings";
 import { GitSettings } from "./git-settings";
 import {
@@ -102,12 +106,28 @@ const SECTIONS: SectionDef[] = [
     render: () => <ActivitySettings />,
   },
   {
+    group: "app",
+    icon: CircleDollarSignIcon,
+    id: "usage",
+    keywords: "cost spend tokens money ledger",
+    label: "Usage",
+    render: () => <UsageSettings />,
+  },
+  {
     group: "workspace",
     icon: FolderGit2Icon,
     id: "projects",
-    keywords: "rename name checks",
+    keywords: "rename name checks jira board forgejo repository link",
     label: "Projects",
     render: () => <ProjectSettings />,
+  },
+  {
+    group: "workspace",
+    icon: EraserIcon,
+    id: "cleanup",
+    keywords: "branches worktrees containers images prune remove disk space",
+    label: "Cleanup",
+    render: () => <CleanupSettings />,
   },
   {
     group: "workspace",

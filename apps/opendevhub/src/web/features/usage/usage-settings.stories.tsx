@@ -5,8 +5,8 @@ import { mockApi } from "../../mocks/story";
 
 const meta = preview.meta({
   component: App,
-  parameters: { route: "/usage" },
-  title: "Pages/Usage",
+  parameters: { route: "/?settings=usage" },
+  title: "Settings/Usage",
 });
 
 /** Thirty days of spend with today selected. */

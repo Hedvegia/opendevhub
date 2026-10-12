@@ -5,8 +5,8 @@ import { mockApi } from "../../mocks/story";
 
 const meta = preview.meta({
   component: App,
-  parameters: { route: "/cleanup" },
-  title: "Pages/Cleanup",
+  parameters: { route: "/?settings=cleanup" },
+  title: "Settings/Cleanup",
 });
 
 /** Merged branches, an orphaned container, a superseded image and a discarded session. */

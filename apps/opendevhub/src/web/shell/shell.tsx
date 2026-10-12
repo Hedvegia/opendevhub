@@ -3,8 +3,6 @@ import {
   BellIcon,
   CheckIcon,
   ChevronsUpDownIcon,
-  CircleDollarSignIcon,
-  EraserIcon,
   FolderGit2Icon,
   GitPullRequestIcon,
   LayoutGridIcon,
@@ -76,10 +74,11 @@ import {
   useSettingsHref,
 } from "../features/settings/settings-link";
 import { NewTaskDialog } from "../features/tasks/new-task-dialog";
-import { formatCost, newTaskShortcut } from "../features/tasks/tasks";
+import { newTaskShortcut } from "../features/tasks/tasks";
 import { Link, useIsActive, useNavigate, useSearchParams } from "../routing";
 import { CommandPalette } from "./command-palette";
 import { CurrentProjectProvider, useCurrentProject } from "./current-project";
+import { LinkedWork } from "./linked-work";
 import { Logo } from "./logo";
 import { RightSidebarHost } from "./right-sidebar";
 
@@ -107,7 +106,7 @@ const NavItem = (props: {
 
 /** The project picker: the project the sidebar lists chats of, and the pages about every project. */
 const ProjectPicker = () => {
-  const { openAddProject, forgejo, jira } = useDash();
+  const { openAddProject } = useDash();
   const { view, projects, choose } = useCurrentProject();
   const navigate = useNavigate();
   const tone = view ? projectTone(view) : "off";
@@ -164,32 +163,15 @@ const ProjectPicker = () => {
             <DropdownMenuItem onSelect={openAddProject}>
               <PlusIcon /> Add project
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
             {view && (
-              <DropdownMenuItem asChild>
-                <Link to={`/p/${encodeURIComponent(view.project.id)}`}>
-                  <FolderGit2Icon /> Project overview
-                </Link>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem asChild>
-              <Link to="/">
-                <LayoutGridIcon /> All projects
-              </Link>
-            </DropdownMenuItem>
-            {forgejo?.enabled && (
-              <DropdownMenuItem asChild>
-                <Link to="/forgejo">
-                  <GitPullRequestIcon /> Pull requests
-                </Link>
-              </DropdownMenuItem>
-            )}
-            {jira?.enabled && (
-              <DropdownMenuItem asChild>
-                <Link to="/jira">
-                  <TicketIcon /> Tickets
-                </Link>
-              </DropdownMenuItem>
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to={`/p/${encodeURIComponent(view.project.id)}`}>
+                    <FolderGit2Icon /> Project overview
+                  </Link>
+                </DropdownMenuItem>
+              </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -302,7 +284,8 @@ const FooterButton = (props: {
 );
 
 const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
-  const { snapshot, connected, permission, requestPermission } = useDash();
+  const { snapshot, connected, permission, requestPermission, forgejo, jira } =
+    useDash();
   const { view } = useCurrentProject();
   const { setOpenMobile } = useSidebar();
   const [params] = useSearchParams();
@@ -353,7 +336,10 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
 
       <SidebarContent>
         {view ? (
-          <ProjectChats view={view} />
+          <>
+            <ProjectChats view={view} />
+            <LinkedWork view={view} />
+          </>
         ) : (
           <p className="text-muted-foreground px-4 py-2 text-sm">
             Add a project to start chatting.
@@ -376,23 +362,30 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
             <SettingsIcon />
           </FooterButton>
           <FooterButton
-            label={
-              snapshot.usage
-                ? `Usage — ${formatCost(snapshot.usage.today.cost)} today`
-                : "Usage"
-            }
-            to="/usage"
-            active={location.pathname === "/usage"}
+            label="Dashboard"
+            to="/"
+            active={location.pathname === "/"}
           >
-            <CircleDollarSignIcon />
+            <LayoutGridIcon />
           </FooterButton>
-          <FooterButton
-            label="Cleanup"
-            to="/cleanup"
-            active={location.pathname === "/cleanup"}
-          >
-            <EraserIcon />
-          </FooterButton>
+          {forgejo?.enabled && (
+            <FooterButton
+              label="Pull requests"
+              to="/forgejo"
+              active={location.pathname.startsWith("/forgejo")}
+            >
+              <GitPullRequestIcon />
+            </FooterButton>
+          )}
+          {jira?.enabled && (
+            <FooterButton
+              label="Tickets"
+              to="/jira"
+              active={location.pathname.startsWith("/jira")}
+            >
+              <TicketIcon />
+            </FooterButton>
+          )}
           {permission === "default" && (
             <FooterButton
               label="Enable notifications"

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { Hono } from "hono";
 
+import type { ProjectLinks } from "../shared/types";
 import { createActivityRoutes } from "./api/activity";
 import { createCoreRoutes } from "./api/core";
 import { createForgejoRoutes } from "./api/forgejo";
@@ -126,6 +127,11 @@ export interface DashboardDeps {
   projectHostPorts?: {
     get: (id: string) => number[];
     save: (id: string, ports: number[]) => Promise<void>;
+  };
+  /** The Jira board and Forgejo repository each project is linked to. */
+  projectLinks?: {
+    get: (id: string) => ProjectLinks;
+    save: (id: string, links: ProjectLinks) => void;
   };
   /** This machine's git identity and ssh keys; absent in tests that don't need it. */
   gitSetup?: Pick<GitSetupProbe, "view" | "test">;

@@ -87,8 +87,12 @@ export const CommandPalette = ({
         ...(jira?.enabled
           ? [{ key: "nav-tickets", label: "Tickets", run: go("/jira") }]
           : []),
-        { key: "nav-usage", label: "Usage", run: go("/usage") },
-        { key: "nav-cleanup", label: "Cleanup", run: go("/cleanup") },
+        { key: "nav-usage", label: "Usage", run: go(settingsHref("usage")) },
+        {
+          key: "nav-cleanup",
+          label: "Cleanup",
+          run: go(settingsHref("cleanup")),
+        },
         { key: "nav-settings", label: "Settings", run: go(settingsHref()) },
       ].map((item): Item => ({ group: "Go to", ...item })),
       ...[
@@ -96,7 +100,9 @@ export const CommandPalette = ({
         ["notifications", "Notifications"],
         ["shortcuts", "Shortcuts"],
         ["activity", "Activity"],
+        ["usage", "Usage"],
         ["projects", "Projects"],
+        ["cleanup", "Cleanup"],
         ["remote-instances", "Remote instances"],
         ["git", "Git"],
         ["integrations", "Integrations"],

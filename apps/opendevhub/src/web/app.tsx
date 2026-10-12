@@ -21,7 +21,6 @@ import {
   legacyPath,
   tasksPathFromSessions,
 } from "./features/checkouts/checkouts";
-import { CleanupPage } from "./features/cleanup/cleanup-page";
 import { ForgejoPage, ForgejoPullPage } from "./features/forgejo/forgejo-page";
 import { JiraPage, JiraTicketPage } from "./features/jira/jira-page";
 import { Overview } from "./features/projects/overview";
@@ -40,7 +39,6 @@ import {
 } from "./features/tasks/task-checkout-tabs";
 import { TaskConversation } from "./features/tasks/task-conversation";
 import { TasksPage } from "./features/tasks/tasks-page";
-import { UsagePage } from "./features/usage/usage-page";
 import { parseSearch, stringifySearch } from "./routing";
 import { NotFound } from "./shell/not-found";
 import { Shell } from "./shell/shell";
@@ -60,7 +58,9 @@ const LazyTerminal = () => (
 /** Pages that became a settings section, by their old path. */
 const OLD_SECTION_PATHS: Record<string, string> = {
   activity: "activity",
+  cleanup: "cleanup",
   nodes: "remote-instances",
+  usage: "usage",
 };
 
 const OLD_RUNTIME_TAB = /\/(?:ports|logs)$/u;
@@ -177,10 +177,15 @@ const routeTree = rootRoute.addChildren([
       getParentRoute: () => shellRoute,
       path: "sessions",
     }),
-    page("usage", UsagePage),
-    page("cleanup", CleanupPage),
-    // Settings opens as a dialog over the current page; these keep old links working, as does the old Activity page.
-    ...["settings", "settings/$section", "nodes", "activity"].map((path) =>
+    // Settings opens as a dialog over the current page; these keep old links working, as do the old Activity, Usage and Cleanup pages.
+    ...[
+      "settings",
+      "settings/$section",
+      "nodes",
+      "activity",
+      "usage",
+      "cleanup",
+    ].map((path) =>
       createRoute({
         beforeLoad: ({ location, params }) => {
           const section =

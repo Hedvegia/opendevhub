@@ -24,6 +24,13 @@ export interface Project {
   devcontainerPath: string;
 }
 
+/** The Jira board and Forgejo repository a project's tickets and pull requests come from. */
+export interface ProjectLinks {
+  jiraBoard?: { id: number; name: string };
+  /** `owner/name` on the Forgejo instance. */
+  forgejoRepository?: string;
+}
+
 export type ContainerState =
   | "stopped"
   | "starting"

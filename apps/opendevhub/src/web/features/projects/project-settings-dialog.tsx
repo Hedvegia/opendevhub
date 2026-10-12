@@ -13,6 +13,7 @@ import {
 import type { ProjectView } from "../../../shared/types";
 import { Tip } from "../../components/tip";
 import { ChecksSettings } from "../checks/checks-settings";
+import { LinksSettings } from "./links-settings";
 import { HostPortsSettings, PortsSettings } from "./ports-settings";
 
 /** A gear in the project's header that opens its settings. */
@@ -40,6 +41,7 @@ export const ProjectSettingsButton = ({ view }: { view: ProjectView }) => {
           {/* Mounted per opening, so the settings are fetched fresh. */}
           {open && (
             <div className="flex flex-col gap-6">
+              <LinksSettings projectId={view.project.id} />
               <PortsSettings projectId={view.project.id} />
               <HostPortsSettings projectId={view.project.id} />
               <ChecksSettings projectId={view.project.id} />

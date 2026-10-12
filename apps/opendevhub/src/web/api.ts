@@ -24,6 +24,7 @@ import type {
   LogEvent,
   MakeTaskRequest,
   PermissionDecision,
+  ProjectLinks,
   PublishRequest,
   ReviewMode,
   NewTaskBody,
@@ -841,6 +842,22 @@ export const saveProjectHostPorts = (projectId: string, ports: number[]) =>
       param: projectParam(projectId),
     }),
     "save project host ports"
+  );
+
+export const fetchProjectLinks = (projectId: string, signal?: AbortSignal) =>
+  read(
+    project.links.$get(
+      { param: projectParam(projectId) },
+      { init: { signal } }
+    ),
+    "project links"
+  );
+
+/** Links the project to a Jira board and a Forgejo repository; a link left out is removed. */
+export const saveProjectLinks = (projectId: string, links: ProjectLinks) =>
+  read(
+    project.links.$post({ json: links, param: projectParam(projectId) }),
+    "save project links"
   );
 
 export const fetchGitSetup = () =>

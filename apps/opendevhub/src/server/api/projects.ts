@@ -97,6 +97,23 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
           return { ports: deps.projectHostPorts.get(id) };
         })
     )
+    .get("/api/projects/:id/links", (c) =>
+      json(c, (id) => {
+        if (!deps.projectLinks) {
+          throw new UnavailableError("Project links are not available");
+        }
+        return deps.projectLinks.get(id);
+      })
+    )
+    .post("/api/projects/:id/links", validateJson(bodies.projectLinks), (c) =>
+      json(c, (id) => {
+        if (!deps.projectLinks) {
+          throw new UnavailableError("Project links are not available");
+        }
+        deps.projectLinks.save(id, c.req.valid("json"));
+        return deps.projectLinks.get(id);
+      })
+    )
     .post("/api/projects/:id/rebuild", (c) =>
       action(c, () => actions["rebuild"](param(c, "id")))
     )

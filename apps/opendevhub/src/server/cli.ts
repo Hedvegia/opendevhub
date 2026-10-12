@@ -66,6 +66,7 @@ import { OpencodeClient } from "./opencode/client";
 import { OpencodeRuntime } from "./opencode/runtime";
 import { preflight } from "./preflight";
 import { scanRoots } from "./projects/discovery";
+import { projectLinkSettings } from "./projects/links";
 import { Onboarding } from "./projects/onboarding";
 import { projectPortSettings } from "./projects/ports";
 import { StateStore } from "./projects/state";
@@ -425,6 +426,10 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
       projectSettings.update(project.path, { name: name.trim() || undefined });
       await hub.environments.rescan();
     },
+    ...projectLinkSettings({
+      project: (id) => store.project(id),
+      settings: projectSettings,
+    }),
     ...projectPortSettings({
       project: (id) => store.project(id),
       refreshPorts: (id) => hub.environments.refreshPorts(id),

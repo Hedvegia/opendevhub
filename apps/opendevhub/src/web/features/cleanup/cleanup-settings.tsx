@@ -19,18 +19,11 @@ import type {
   CleanupPlan,
 } from "../../../shared/types";
 import { applyCleanup, fetchCleanup, postAction } from "../../api";
-import {
-  Chip,
-  Empty,
-  muted,
-  Note,
-  Page,
-  PageHeader,
-  Section,
-} from "../../components/page";
+import { Chip, Empty, muted, Note, Page, Section } from "../../components/page";
 import { useDash } from "../../dashboard-context";
 import { relativeTime } from "../../derive";
 import { formatMemory } from "../../lib/resources";
+import { SettingsHeader } from "../settings/settings-layout";
 import {
   branchGroups,
   initialSelection,
@@ -84,7 +77,8 @@ const Row = (props: {
   </label>
 );
 
-export const CleanupPage = () => {
+/** Merged branches, stale conversations and unused containers to remove, as a Settings section. */
+export const CleanupSettings = () => {
   const { report } = useDash();
   const [plan, setPlan] = useState<CleanupPlan>();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -149,11 +143,11 @@ export const CleanupPage = () => {
   };
 
   const header = (
-    <PageHeader
+    <SettingsHeader
       title="Cleanup"
       description="Merged branches with their worktrees, stale conversations, containers opendevhub no longer needs, and unused images. Nothing is removed until you confirm."
-      actions={
-        <>
+      action={
+        <div className="flex flex-wrap items-center gap-2">
           {plan && (
             // oxlint-disable-next-line react/purity
             <span className={muted}>{ago(plan.scannedAt, Date.now())}</span>
@@ -171,7 +165,7 @@ export const CleanupPage = () => {
           >
             {applying ? "Cleaning up…" : "Clean up selected"}
           </Button>
-        </>
+        </div>
       }
     />
   );

@@ -116,13 +116,13 @@ export const Overview = () => {
                 running
               </span>
               {snapshot.usage && (
-                <Link
-                  to="/usage"
+                <SettingsLink
+                  section="usage"
                   className="hover:text-foreground underline-offset-4 hover:underline"
                   title={formatUsage(snapshot.usage.today)}
                 >
                   {formatCost(snapshot.usage.today.cost)} spent today
-                </Link>
+                </SettingsLink>
               )}
             </p>
           )}
