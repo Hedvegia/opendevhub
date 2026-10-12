@@ -1,3 +1,4 @@
+import { GitBranchIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -20,18 +21,16 @@ import { startChat } from "../../api";
 import { Empty, fillViewport, muted } from "../../components/page";
 import { useDash } from "../../dashboard-context";
 import { useNavigate } from "../../routing";
+import { useCurrentProject } from "../../shell/current-project";
 import { Logo } from "../../shell/logo";
 import { Composer } from "../sessions/composer";
 import {
   WORKTREES_UNAVAILABLE,
   canCreateWorktree,
   chatPath,
-  chatProjects,
   chatTarget,
   checkoutChoices,
-  defaultChatProject,
   defaultCheckoutChoice,
-  readLastProject,
   rememberProject,
 } from "./chat";
 
@@ -57,7 +56,7 @@ const lists = (snapshot: DashboardSnapshot | undefined, w: Waiting) =>
 export const ChatStart = () => {
   const { snapshot, openAddProject } = useDash();
   const navigate = useNavigate();
-  const [projectId, setProjectId] = useState<string>();
+  const { view } = useCurrentProject();
   const [choice, setChoice] = useState<string>();
   const waiting = useRef<Waiting>(undefined);
   const latest = useRef(snapshot);
@@ -79,10 +78,6 @@ export const ChatStart = () => {
       </ChatColumn>
     );
   }
-  const projects = chatProjects(snapshot);
-  const view =
-    projects.find((v) => v.project.id === projectId) ??
-    defaultChatProject(projects, readLastProject());
   if (!view) {
     return (
       <ChatColumn>
@@ -128,7 +123,7 @@ export const ChatStart = () => {
   };
 
   const ghost =
-    "text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-transparent dark:hover:bg-accent h-8 w-auto max-w-[50%] gap-1 border-0 bg-transparent px-2 shadow-none";
+    "text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-transparent dark:hover:bg-accent h-7 w-auto max-w-[60%] gap-1 border-0 bg-transparent px-2 text-xs shadow-none";
 
   return (
     <ChatColumn>
@@ -147,30 +142,19 @@ export const ChatStart = () => {
         onSend={send}
         footer={
           <div className="flex flex-col gap-1 px-1">
-            <div className="flex items-center justify-between gap-2">
-              <Select
-                value={id}
-                onValueChange={(next) => {
-                  setProjectId(next);
-                  setChoice(undefined);
-                }}
-              >
-                <SelectTrigger aria-label="Project" className={ghost}>
+            <div className="text-muted-foreground flex items-center gap-1 text-xs">
+              <span className="px-2">
+                In{" "}
+                <span className="text-foreground font-medium">
+                  {view.project.name}
+                </span>
+              </span>
+              <Select value={selected} onValueChange={setChoice}>
+                <SelectTrigger aria-label="Checkout" className={ghost}>
+                  <GitBranchIcon />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent position="popper" align="start">
-                  {projects.map((v) => (
-                    <SelectItem key={v.project.id} value={v.project.id}>
-                      {v.project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selected} onValueChange={setChoice}>
-                <SelectTrigger aria-label="Checkout" className={ghost}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper" align="end">
                   {choices.map((c) => (
                     <SelectItem
                       key={c.value}

@@ -350,6 +350,13 @@ describe(OpencodeClient, () => {
     ]);
   });
 
+  it("switches a session's agent", async () => {
+    await client.switchAgent("ses_1", "plan", "/w/x");
+    expect(fake.state.agentSwitches).toStrictEqual([
+      { body: { agent: "plan" }, sessionId: "ses_1" },
+    ]);
+  });
+
   it("sends prompts, queued when asked, and generates text from a session", async () => {
     await client.prompt("ses_1", "fix it", "queue", "/w/x");
     await client.prompt("ses_2", "hello");

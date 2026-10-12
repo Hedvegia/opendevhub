@@ -79,6 +79,7 @@ const composerSend = z.object({
     .max(ATTACHMENTS_MAX)
     .optional(),
   model: modelRef.optional(),
+  agent: modelName.optional(),
 });
 const aiReview = z.object({
   projectId: z.string(),

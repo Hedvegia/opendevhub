@@ -509,6 +509,33 @@ describe("composer", () => {
     expect(client.switchModel).toHaveBeenCalledTimes(1);
   });
 
+  it("switches the conversation's agent before sending when one is chosen", async () => {
+    const { hub, client } = await started();
+    await hub.sessions.sendMessage(project.id, "ses_1", {
+      text: "hi",
+      agent: "plan",
+    });
+    expect(client.switchAgent).toHaveBeenCalledWith("ses_1", "plan", ws);
+    expect(client.switchAgent.mock.invocationCallOrder[0]).toBeLessThan(
+      client.prompt.mock.invocationCallOrder[0]
+    );
+    await hub.sessions.sendMessage(project.id, "ses_1", { text: "again" });
+    expect(client.switchAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts /new on the chosen agent", async () => {
+    const { hub, client } = await started();
+    await hub.sessions.sendMessage(project.id, "ses_1", {
+      text: "/new go",
+      agent: "plan",
+    });
+    expect(client.createSession).toHaveBeenCalledWith(ws, {
+      title: undefined,
+      agent: "plan",
+    });
+    expect(client.switchAgent).not.toHaveBeenCalled();
+  });
+
   it("starts /new on the chosen model", async () => {
     const { hub, client } = await started();
     const model = { id: "gpt-5", providerID: "openai" };

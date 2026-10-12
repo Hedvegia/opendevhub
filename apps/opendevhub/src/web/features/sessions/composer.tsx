@@ -3,8 +3,8 @@ import {
   ArrowUpIcon,
   BotIcon,
   FileIcon,
+  ListEndIcon,
   PaperclipIcon,
-  SendIcon,
   SquareSlashIcon,
   XIcon,
 } from "lucide-react";
@@ -42,6 +42,7 @@ import {
 import { StatusDot } from "../../components/status";
 import { Tip } from "../../components/tip";
 import { envOfDirectory, envTone } from "../../derive";
+import { AgentPicker } from "./agent-picker";
 import { addAttachments, formatSize } from "./attachments";
 import type { PendingAttachment } from "./attachments";
 import { caretCoordinates } from "./caret";
@@ -150,15 +151,15 @@ const targetOf = (view: ProjectView, directory: string) => {
 };
 
 /**
- * The message box of a conversation and of Chat's start page: `/` suggests commands at the start of the message,
- * `@` suggests files and agents, and the line above it names the project, checkout and environment it sends to.
- * The caller sends what it holds.
+ * The message box of a conversation and of Chat's start page: a card with the text on top and a toolbar under it
+ * (attach, agent, model, send). `/` suggests commands at the start of the message and `@` suggests files and
+ * agents. The caller sends what it holds.
  */
 export const Composer = (props: {
   view: ProjectView;
   /** The checkout whose commands, files and agents it suggests; for a new worktree, the main checkout. */
   directory: string;
-  /** The checkout the line above names. */
+  /** The checkout it sends to, named when its environment isn't running. */
   checkoutLabel: string;
   /** A turn is running: a message is queued behind it. */
   running: boolean;
@@ -171,12 +172,14 @@ export const Composer = (props: {
   /** What a send did, as a sentence. */
   onSent?: (notice: string) => void;
   autoFocus?: boolean;
-  /** A large box in a card with the send button inside, without the line above; for Chat's start page. */
+  /** A taller box; for Chat's start page. */
   hero?: boolean;
-  /** Under the box, inside the form; with `hero`, the pickers of where the message goes. */
+  /** Under the box, inside the form; on Chat's start page, the picker of where the message goes. */
   footer?: ReactNode;
   /** The model the conversation uses; the picker starts at it, else at the project's default. */
   model?: ModelRef;
+  /** The agent the conversation uses; the picker starts at it, else at opencode's default. */
+  agent?: string;
   /** What the box starts with; for stories. */
   initialText?: string;
 }) => {
@@ -201,6 +204,7 @@ export const Composer = (props: {
   const [aria, setAria] = useState<{ list?: string; active?: string }>({});
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [chosenModel, setChosenModel] = useState<ModelRef>();
+  const [chosenAgent, setChosenAgent] = useState<string>();
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -216,6 +220,9 @@ export const Composer = (props: {
     chosenModel && !sameModel(chosenModel, props.model)
       ? chosenModel
       : undefined;
+  const shownAgent = chosenAgent ?? props.agent;
+  const sentAgent =
+    chosenAgent && chosenAgent !== props.agent ? chosenAgent : undefined;
 
   const attach = async (added: File[]) => {
     if (added.length === 0) {
@@ -394,6 +401,7 @@ export const Composer = (props: {
             }
           : {}),
         ...(sentModel ? { model: sentModel } : {}),
+        ...(sentAgent ? { agent: sentAgent } : {}),
       })
       .then(
         (result) => {
@@ -454,42 +462,9 @@ export const Composer = (props: {
     (trigger?.kind === "mention" && (files.isPending || agents.isPending));
   const failure = commands.error ?? agents.error ?? files.error;
 
-  const tools = (
-    <div className="flex min-w-0 items-center gap-0.5">
-      <input
-        ref={fileInput}
-        type="file"
-        multiple
-        hidden
-        onChange={(e) => {
-          void attach([...(e.target.files ?? [])]);
-          e.target.value = "";
-        }}
-      />
-      <Tip label="Attach files or images">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground size-7"
-          aria-label="Attach files or images"
-          disabled={!target.ready}
-          onClick={() => fileInput.current?.click()}
-        >
-          <PaperclipIcon />
-        </Button>
-      </Tip>
-      <ModelPicker
-        models={models.data}
-        value={shownModel}
-        onChange={setChosenModel}
-        disabled={!target.ready}
-      />
-    </div>
-  );
-
+  const canSend = !busy && !!value.text.trim() && target.ready;
   let placeholder = hero
-    ? "Describe the task, or start with a / command…"
+    ? "Describe the task… / for commands, @ for files and agents"
     : "Message the agent… / for commands, @ for files and agents";
   if (!target.ready) {
     placeholder = "Message the agent…";
@@ -499,34 +474,15 @@ export const Composer = (props: {
 
   return (
     <form
-      className={cn("flex flex-col", hero ? "gap-3" : "gap-2")}
+      className="flex flex-col gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         send();
       }}
     >
-      {!hero && (
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-          <span>To</span>
-          <span className="text-foreground font-medium">
-            {view.project.name}
-          </span>
-          <span aria-hidden>/</span>
-          <span className="text-foreground font-medium">
-            {props.checkoutLabel}
-          </span>
-          <span aria-hidden>·</span>
-          <span className="inline-flex items-center gap-1">
-            <StatusDot tone={target.tone} />
-            {target.label}
-          </span>
-        </div>
-      )}
       <div
         className={cn(
-          "flex flex-col gap-2 rounded-md transition-shadow",
-          hero &&
-            "bg-card focus-within:border-ring/60 gap-0 rounded-2xl border shadow-sm transition-colors",
+          "bg-card focus-within:border-ring/60 flex flex-col rounded-xl border shadow-sm transition-colors",
           dragging && "ring-ring/60 ring-2"
         )}
         onDragOver={onDragOver}
@@ -542,7 +498,7 @@ export const Composer = (props: {
         {attachments.length > 0 && (
           <ul
             aria-label="Attached files"
-            className={cn("flex flex-wrap gap-2", hero && "px-4 pt-3")}
+            className="flex flex-wrap gap-2 px-3 pt-3"
           >
             {attachments.map((a) => (
               <li
@@ -610,8 +566,8 @@ export const Composer = (props: {
               disabled={!target.ready}
               placeholder={placeholder}
               className={cn(
-                hero &&
-                  "min-h-24 resize-none rounded-2xl border-0 bg-transparent px-4 pt-4 text-base shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
+                "max-h-[40svh] resize-none rounded-xl border-0 bg-transparent px-3.5 pt-3 shadow-none focus-visible:ring-0 dark:bg-transparent",
+                hero ? "min-h-24 text-base md:text-base" : "min-h-14"
               )}
               value={value.text}
               onChange={(e) => {
@@ -711,23 +667,70 @@ export const Composer = (props: {
             </Command>
           </PopoverContent>
         </Popover>
-        {hero && (
-          <div className="flex items-center justify-between gap-3 px-3 pb-3">
-            {tools}
-            <span className="text-muted-foreground px-1 text-xs max-lg:hidden">
-              / for commands · @ for files and agents · Ctrl+Enter to send
-            </span>
+        <div className="flex min-w-0 items-center gap-1 px-2 pb-2">
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              void attach([...(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
+          <Tip label="Attach files or images">
             <Button
-              type="submit"
+              type="button"
+              variant="ghost"
               size="icon"
-              className="ml-auto rounded-full"
-              aria-label="Send"
-              disabled={busy || !value.text.trim() || !target.ready}
+              className="text-muted-foreground size-7"
+              aria-label="Attach files or images"
+              disabled={!target.ready}
+              onClick={() => fileInput.current?.click()}
             >
-              <ArrowUpIcon />
+              <PaperclipIcon />
             </Button>
+          </Tip>
+          {!target.ready && (
+            <span className="text-muted-foreground inline-flex min-w-0 items-center gap-1.5 px-1 text-xs">
+              <StatusDot tone={target.tone} />
+              <span className="truncate">
+                {props.checkoutLabel} · {target.label}
+              </span>
+            </span>
+          )}
+          <div className="ml-auto flex min-w-0 items-center gap-0.5">
+            <AgentPicker
+              agents={models.data?.agents}
+              value={shownAgent}
+              onChange={setChosenAgent}
+              disabled={!target.ready}
+            />
+            <ModelPicker
+              models={models.data}
+              value={shownModel}
+              onChange={setChosenModel}
+              disabled={!target.ready}
+            />
+            <Tip
+              label={
+                running
+                  ? "Queue behind the current turn (Ctrl+Enter)"
+                  : "Send (Ctrl+Enter)"
+              }
+            >
+              <Button
+                type="submit"
+                size="icon"
+                className="ml-1 size-8 rounded-full"
+                aria-label={running ? "Queue" : "Send"}
+                disabled={!canSend}
+              >
+                {running ? <ListEndIcon /> : <ArrowUpIcon />}
+              </Button>
+            </Tip>
           </div>
-        )}
+        </div>
       </div>
       {props.footer}
       {!target.ready && (
@@ -736,26 +739,6 @@ export const Composer = (props: {
         </p>
       )}
       {error && <p className="text-destructive text-sm">{error}</p>}
-      {!hero && (
-        <div className="flex items-center justify-end gap-2">
-          <div className="mr-auto min-w-0">{tools}</div>
-          <span
-            className={cn(
-              "text-muted-foreground text-xs max-sm:hidden",
-              !target.ready && "invisible"
-            )}
-          >
-            Ctrl+Enter to send
-          </span>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={busy || !value.text.trim() || !target.ready}
-          >
-            <SendIcon /> {running ? "Queue" : "Send"}
-          </Button>
-        </div>
-      )}
     </form>
   );
 };

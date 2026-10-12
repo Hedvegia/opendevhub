@@ -1,16 +1,19 @@
 import { Outlet, useLocation } from "@tanstack/react-router";
 import {
   BellIcon,
+  CheckIcon,
+  ChevronsUpDownIcon,
   CircleDollarSignIcon,
   EraserIcon,
+  FolderGit2Icon,
   GitPullRequestIcon,
   LayoutGridIcon,
-  MessageSquareIcon,
-  ListIcon,
-  TicketIcon,
+  ListTodoIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  SquarePenIcon,
+  TicketIcon,
   XIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -18,6 +21,14 @@ import type { ReactNode } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Kbd } from "@/components/ui/kbd";
 import {
   Sidebar,
@@ -27,15 +38,11 @@ import {
   SidebarGroupAction,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarInput,
   SidebarInset,
   SidebarMenu,
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
@@ -47,27 +54,20 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-import type { DashboardSnapshot, ProjectView } from "../../shared/types";
+import type { ProjectView } from "../../shared/types";
 import { Count, StatusDot, TONE_LABEL } from "../components/status";
 import { useDash } from "../dashboard-context";
+import { attentionCounts, projectTone } from "../derive";
 import {
-  attentionCounts,
-  matches,
-  projectCounts,
-  projectTone,
-} from "../derive";
-import {
+  SIDEBAR_CHATS,
+  chatActivity,
   chatNeedsYou,
   chatPath,
   chatTone,
-  recentChats,
+  shortAgo,
+  sidebarChats,
 } from "../features/chat/chat";
-import {
-  checkoutCounts,
-  checkoutPath,
-  checkouts,
-  checkoutTone,
-} from "../features/checkouts/checkouts";
+import { projectTasks } from "../features/checkouts/checkouts";
 import { nodesNeedingAttention } from "../features/nodes/nodes";
 import { AddProjectDialog } from "../features/projects/add-project-dialog";
 import { SettingsDialog } from "../features/settings/settings-dialog";
@@ -76,142 +76,235 @@ import {
   useSettingsHref,
 } from "../features/settings/settings-link";
 import { NewTaskDialog } from "../features/tasks/new-task-dialog";
-import {
-  formatCost,
-  newTaskShortcut,
-  projectIdFromPath,
-} from "../features/tasks/tasks";
-import { formatUsage } from "../features/usage/usage";
-import { Link, useIsActive, useSearchParams } from "../routing";
+import { formatCost, newTaskShortcut } from "../features/tasks/tasks";
+import { Link, useIsActive, useNavigate, useSearchParams } from "../routing";
 import { CommandPalette } from "./command-palette";
+import { CurrentProjectProvider, useCurrentProject } from "./current-project";
 import { Logo } from "./logo";
 import { RightSidebarHost } from "./right-sidebar";
-
-const FILTER_THRESHOLD = 8;
 
 const NavItem = (props: {
   to: string;
   end?: boolean;
   /** Overrides whether the route makes the item active. */
   active?: boolean;
-  onClick?: () => void;
-  title?: string;
   children: ReactNode;
   badge?: ReactNode;
-  sub?: ReactNode;
 }) => {
   const routeActive = useIsActive(props.to, props.end);
   const active = props.active ?? routeActive;
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={active} title={props.title}>
-        <Link
-          to={props.to}
-          activeOptions={{ exact: props.end }}
-          onClick={props.onClick}
-        >
+      <SidebarMenuButton asChild isActive={active}>
+        <Link to={props.to} activeOptions={{ exact: props.end }}>
           {props.children}
         </Link>
       </SidebarMenuButton>
       {props.badge && <SidebarMenuBadge>{props.badge}</SidebarMenuBadge>}
-      {props.sub}
     </SidebarMenuItem>
   );
 };
 
-/** The project's checkouts, shown under it in the sidebar while it is open or needs you. */
-const CheckoutItems = ({ view }: { view: ProjectView }) => {
-  const location = useLocation();
+/** The project picker: the project the sidebar lists chats of, and the pages about every project. */
+const ProjectPicker = () => {
+  const { openAddProject, forgejo, jira } = useDash();
+  const { view, projects, choose } = useCurrentProject();
+  const navigate = useNavigate();
+  const tone = view ? projectTone(view) : "off";
+
   return (
-    <SidebarMenuSub>
-      {checkouts(view).map((c) => {
-        const to = checkoutPath(view.project.id, c.target);
-        const active =
-          location.pathname === to || location.pathname.startsWith(`${to}/`);
-        const n = checkoutCounts(view, c.directory);
-        const tone = checkoutTone(view, c.directory);
-        return (
-          <SidebarMenuSubItem key={c.directory}>
-            <SidebarMenuSubButton
-              asChild
-              isActive={active}
-              title={`${c.label} — ${TONE_LABEL[tone]}`}
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent"
+              title={
+                view ? `${view.project.name} — ${TONE_LABEL[tone]}` : undefined
+              }
             >
-              <Link to={to}>
-                <StatusDot tone={tone} />
-                <span className="min-w-0 flex-1 truncate">{c.label}</span>
-                {n.attention > 0 ? (
-                  <Count n={n.attention} tone="attention" />
-                ) : (
-                  <Count n={n.running} tone="muted" />
-                )}
+              <span className="bg-primary text-primary-foreground grid size-8 shrink-0 place-content-center rounded-md">
+                <Logo size={16} />
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                <span className="text-muted-foreground text-xs">Project</span>
+                <span className="flex min-w-0 items-center gap-1.5 font-semibold">
+                  <span className="truncate">
+                    {view?.project.name ?? "No project"}
+                  </span>
+                  {view && <StatusDot tone={tone} />}
+                </span>
+              </span>
+              <ChevronsUpDownIcon className="text-muted-foreground ml-auto" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
+          >
+            <DropdownMenuLabel className="text-muted-foreground text-xs">
+              Projects
+            </DropdownMenuLabel>
+            {projects.map((v) => (
+              <DropdownMenuItem
+                key={v.project.id}
+                onSelect={() => {
+                  choose(v.project.id);
+                  void navigate("/chat");
+                }}
+              >
+                <StatusDot tone={projectTone(v)} />
+                <span className="min-w-0 flex-1 truncate">
+                  {v.project.name}
+                </span>
+                {v.project.id === view?.project.id && <CheckIcon />}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem onSelect={openAddProject}>
+              <PlusIcon /> Add project
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {view && (
+              <DropdownMenuItem asChild>
+                <Link to={`/p/${encodeURIComponent(view.project.id)}`}>
+                  <FolderGit2Icon /> Project overview
+                </Link>
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem asChild>
+              <Link to="/">
+                <LayoutGridIcon /> All projects
               </Link>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
-        );
-      })}
-    </SidebarMenuSub>
+            </DropdownMenuItem>
+            {forgejo?.enabled && (
+              <DropdownMenuItem asChild>
+                <Link to="/forgejo">
+                  <GitPullRequestIcon /> Pull requests
+                </Link>
+              </DropdownMenuItem>
+            )}
+            {jira?.enabled && (
+              <DropdownMenuItem asChild>
+                <Link to="/jira">
+                  <TicketIcon /> Tickets
+                </Link>
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 };
 
-/** The most recently active chats across projects, under Chat, marked when one waits on the user. */
-const RecentChats = ({ snapshot }: { snapshot: DashboardSnapshot }) => {
+/** The current project's chats, most recently active first, marked when one waits on the user. */
+const ProjectChats = ({ view }: { view: ProjectView }) => {
   const location = useLocation();
-  const chats = recentChats(snapshot);
-  if (chats.length === 0) {
-    return null;
-  }
+  const chats = sidebarChats(view);
+  const shown = chats.slice(0, SIDEBAR_CHATS);
   return (
-    <SidebarMenuSub>
-      {chats.map(({ chat, projectId, projectName }) => {
-        const to = chatPath(projectId, chat.id);
-        const needsYou = chatNeedsYou(chat);
-        return (
-          <SidebarMenuSubItem key={chat.id}>
-            <SidebarMenuSubButton
-              asChild
-              isActive={location.pathname === to}
-              title={`${chat.title || "Untitled chat"} — ${projectName}${needsYou ? " — needs you" : ""}`}
-            >
-              <Link to={to}>
-                <StatusDot
-                  tone={needsYou ? "attention" : chatTone(chat)}
-                  label={needsYou ? "Needs you" : undefined}
-                />
-                <span className="min-w-0 flex-1 truncate">
-                  {chat.title || "Untitled chat"}
-                </span>
-                <span className="text-muted-foreground max-w-20 shrink-0 truncate text-xs">
-                  {projectName}
+    <SidebarGroup>
+      <SidebarGroupLabel className="justify-between pr-8">
+        <span>Chats</span>
+        <span>{chats.length}</span>
+      </SidebarGroupLabel>
+      <SidebarGroupAction title="New chat" aria-label="New chat" asChild>
+        <Link to="/chat">
+          <PlusIcon />
+        </Link>
+      </SidebarGroupAction>
+      <SidebarMenu>
+        {shown.map((chat) => {
+          const to = chatPath(view.project.id, chat.id);
+          const needsYou = chatNeedsYou(chat);
+          const title = chat.title || "Untitled chat";
+          return (
+            <SidebarMenuItem key={chat.id}>
+              <SidebarMenuButton
+                asChild
+                isActive={location.pathname === to}
+                title={`${title}${chat.branch ? ` — ${chat.branch}` : ""}${needsYou ? " — needs you" : ""}`}
+              >
+                <Link to={to}>
+                  <StatusDot
+                    tone={needsYou ? "attention" : chatTone(chat)}
+                    label={needsYou ? "Needs you" : undefined}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{title}</span>
+                  <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                    {shortAgo(chatActivity(chat))}
+                  </span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          );
+        })}
+        {chats.length === 0 && (
+          <p className="text-muted-foreground px-2 py-1 text-sm">
+            No chats in this project yet.
+          </p>
+        )}
+        {chats.length > shown.length && (
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild size="sm">
+              <Link
+                to={`/chats?project=${encodeURIComponent(view.project.id)}`}
+              >
+                <span className="text-muted-foreground text-xs">
+                  Show all {chats.length}
                 </span>
               </Link>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
-        );
-      })}
-      <SidebarMenuSubItem>
-        <SidebarMenuSubButton asChild isActive={location.pathname === "/chats"}>
-          <Link to="/chats">
-            <span className="text-muted-foreground text-xs">Show all</span>
-          </Link>
-        </SidebarMenuSubButton>
-      </SidebarMenuSubItem>
-    </SidebarMenuSub>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+      </SidebarMenu>
+    </SidebarGroup>
   );
 };
+
+/** One icon button in the sidebar's footer, with a tooltip and an optional dot. */
+const FooterButton = (props: {
+  label: string;
+  to?: string;
+  onClick?: () => void;
+  dot?: boolean;
+  active?: boolean;
+  children: ReactNode;
+}) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        asChild={props.to !== undefined}
+        variant="ghost"
+        size="icon-sm"
+        aria-label={props.label}
+        className={cn(
+          "text-muted-foreground relative",
+          props.active && "bg-sidebar-accent text-sidebar-accent-foreground"
+        )}
+        onClick={props.onClick}
+      >
+        {props.to === undefined ? (
+          props.children
+        ) : (
+          <Link to={props.to}>
+            {props.children}
+            {props.dot && (
+              <span className="bg-attention absolute top-1 right-1 size-1.5 rounded-full" />
+            )}
+          </Link>
+        )}
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent side="top">{props.label}</TooltipContent>
+  </Tooltip>
+);
 
 const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
-  const {
-    snapshot,
-    connected,
-    permission,
-    requestPermission,
-    openAddProject,
-    forgejo,
-    jira,
-  } = useDash();
+  const { snapshot, connected, permission, requestPermission } = useDash();
+  const { view } = useCurrentProject();
   const { setOpenMobile } = useSidebar();
-  const [filter, setFilter] = useState("");
   const [params] = useSearchParams();
   const settingsHref = useSettingsHref();
   const location = useLocation();
@@ -222,186 +315,96 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
   if (!snapshot) {
     return null;
   }
-  // Tasks counts the conversations of tasks; chats are marked under Chat.
-  const counts = attentionCounts({
-    ...snapshot,
-    projects: snapshot.projects.map((v) => ({
-      ...v,
-      sessions: v.sessions.filter((s) => s.task),
-    })),
-  });
-  const projects = [...snapshot.projects]
-    .toSorted((a, b) => a.project.name.localeCompare(b.project.name))
-    .filter((v) => matches(filter, v.project.name, v.project.path));
-  const current = projectIdFromPath(location.pathname);
+  const tasksWaiting = view
+    ? projectTasks(view).filter((t) => t.attention).length
+    : 0;
+  const tasksTo = view
+    ? `/tasks?project=${encodeURIComponent(view.project.id)}`
+    : "/tasks";
+  const remotes = nodesNeedingAttention(snapshot.nodes);
   const isMac =
     typeof navigator !== "undefined" && /mac/iu.test(navigator.platform);
 
   return (
     <Sidebar>
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 pt-1 pb-2 font-semibold tracking-tight">
-          <Logo /> opendevhub
-        </div>
-        <Button
-          variant="outline"
-          className="text-muted-foreground justify-start shadow-none"
-          onClick={onSearch}
-        >
-          <SearchIcon /> <span className="flex-1 text-left">Jump to…</span>
-          <Kbd>{isMac ? "⌘" : "Ctrl"} K</Kbd>
-        </Button>
+        <ProjectPicker />
+        <SidebarMenu>
+          <NavItem to="/chat" end>
+            <SquarePenIcon /> New chat
+          </NavItem>
+          <NavItem
+            to={tasksTo}
+            active={location.pathname === "/tasks"}
+            badge={
+              tasksWaiting > 0 && <Count n={tasksWaiting} tone="attention" />
+            }
+          >
+            <ListTodoIcon /> Tasks
+          </NavItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={onSearch}>
+              <SearchIcon /> <span className="flex-1">Jump to…</span>
+              <Kbd>{isMac ? "⌘" : "Ctrl"} K</Kbd>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarMenu>
-            <NavItem to="/" end>
-              <LayoutGridIcon /> Overview
-            </NavItem>
-            <NavItem to="/chat" sub={<RecentChats snapshot={snapshot} />}>
-              <MessageSquareIcon /> Chat
-            </NavItem>
-            <NavItem
-              to="/tasks"
-              badge={
-                counts.attention > 0 && (
-                  <Count n={counts.attention} tone="attention" />
-                )
-              }
-            >
-              <ListIcon /> Tasks
-            </NavItem>
-            {forgejo?.enabled && (
-              <NavItem to="/forgejo">
-                <GitPullRequestIcon /> Pull requests
-              </NavItem>
-            )}
-            {jira?.enabled && (
-              <NavItem to="/jira">
-                <TicketIcon /> Tickets
-              </NavItem>
-            )}
-          </SidebarMenu>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="justify-between pr-8">
-            <span>Projects</span>
-            <span>{snapshot.projects.length}</span>
-          </SidebarGroupLabel>
-          <SidebarGroupAction
-            title="Add project"
-            aria-label="Add project"
-            onClick={openAddProject}
-          >
-            <PlusIcon />
-          </SidebarGroupAction>
-          {snapshot.projects.length > FILTER_THRESHOLD && (
-            <SidebarInput
-              className="mb-2"
-              placeholder="Filter projects"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            />
-          )}
-          <SidebarMenu>
-            {projects.map((view) => {
-              const c = projectCounts(view);
-              const tone = projectTone(view);
-              const expanded = view.project.id === current || c.attention > 0;
-              return (
-                <NavItem
-                  key={view.project.id}
-                  end
-                  to={`/p/${encodeURIComponent(view.project.id)}`}
-                  title={`${view.project.name} — ${TONE_LABEL[tone]}`}
-                  sub={expanded && <CheckoutItems view={view} />}
-                  badge={
-                    c.attention > 0 ? (
-                      <Count n={c.attention} tone="attention" />
-                    ) : (
-                      c.running > 0 && <Count n={c.running} tone="muted" />
-                    )
-                  }
-                >
-                  <StatusDot tone={tone} className="mx-1" />
-                  <span className="truncate">{view.project.name}</span>
-                </NavItem>
-              );
-            })}
-            {projects.length === 0 && (
-              <p className="text-muted-foreground px-2 py-1 text-sm">
-                {filter ? "No match" : "No projects found"}
-              </p>
-            )}
-          </SidebarMenu>
-        </SidebarGroup>
-        <SidebarGroup className="mt-auto">
-          <SidebarGroupLabel>This machine</SidebarGroupLabel>
-          <SidebarMenu>
-            <NavItem
-              to="/usage"
-              title={
-                snapshot.usage
-                  ? `Spent today: ${formatUsage(snapshot.usage.today)}`
-                  : "Usage"
-              }
-              badge={
-                snapshot.usage && (
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {formatCost(snapshot.usage.today.cost)}
-                  </span>
-                )
-              }
-            >
-              <CircleDollarSignIcon /> Usage
-            </NavItem>
-            <NavItem to="/cleanup">
-              <EraserIcon /> Cleanup
-            </NavItem>
-            <NavItem
-              to={settingsHref()}
-              active={params.has(SETTINGS_PARAM)}
-              onClick={() => setOpenMobile(false)}
-              title={
-                nodesNeedingAttention(snapshot.nodes) > 0
-                  ? "Settings — a remote instance needs attention"
-                  : "Settings"
-              }
-              badge={
-                nodesNeedingAttention(snapshot.nodes) > 0 && (
-                  <Count
-                    n={nodesNeedingAttention(snapshot.nodes)}
-                    tone="attention"
-                  />
-                )
-              }
-            >
-              <SettingsIcon /> Settings
-            </NavItem>
-          </SidebarMenu>
-        </SidebarGroup>
+        {view ? (
+          <ProjectChats view={view} />
+        ) : (
+          <p className="text-muted-foreground px-4 py-2 text-sm">
+            Add a project to start chatting.
+          </p>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
+          <FooterButton
+            label={
+              remotes > 0
+                ? "Settings — a remote instance needs attention"
+                : "Settings"
+            }
+            to={settingsHref()}
+            active={params.has(SETTINGS_PARAM)}
+            dot={remotes > 0}
+          >
+            <SettingsIcon />
+          </FooterButton>
+          <FooterButton
+            label={
+              snapshot.usage
+                ? `Usage — ${formatCost(snapshot.usage.today.cost)} today`
+                : "Usage"
+            }
+            to="/usage"
+            active={location.pathname === "/usage"}
+          >
+            <CircleDollarSignIcon />
+          </FooterButton>
+          <FooterButton
+            label="Cleanup"
+            to="/cleanup"
+            active={location.pathname === "/cleanup"}
+          >
+            <EraserIcon />
+          </FooterButton>
           {permission === "default" && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Enable notifications"
-                  onClick={() => void requestPermission()}
-                >
-                  <BellIcon />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Enable notifications</TooltipContent>
-            </Tooltip>
+            <FooterButton
+              label="Enable notifications"
+              onClick={() => void requestPermission()}
+            >
+              <BellIcon />
+            </FooterButton>
           )}
-          <div className="text-muted-foreground ml-auto flex items-center gap-2 px-2 text-xs">
+          <div
+            className="text-muted-foreground ml-auto flex items-center gap-2 px-2 text-xs"
+            title={connected ? "Connected to opendevhub" : "Reconnecting…"}
+          >
             <span
               className={cn(
                 "size-2 rounded-full",
@@ -528,20 +531,22 @@ export const Shell = () => {
 
   return (
     <SidebarProvider>
-      <AppSidebar onSearch={() => setPalette(true)} />
-      <RightSidebarHost>
-        <SidebarInset className="min-w-0">
-          <MobileBar onSearch={() => setPalette(true)} />
-          <Banners />
-          <div className="px-4 pt-4 pb-12 md:px-8 md:pt-6 md:pb-16">
-            <Outlet />
-          </div>
-        </SidebarInset>
-      </RightSidebarHost>
-      <CommandPalette open={palette} onClose={() => setPalette(false)} />
-      <NewTaskDialog />
-      <AddProjectDialog />
-      <SettingsDialog />
+      <CurrentProjectProvider>
+        <AppSidebar onSearch={() => setPalette(true)} />
+        <RightSidebarHost>
+          <SidebarInset className="min-w-0">
+            <MobileBar onSearch={() => setPalette(true)} />
+            <Banners />
+            <div className="px-4 pt-4 pb-12 md:px-8 md:pt-6 md:pb-16">
+              <Outlet />
+            </div>
+          </SidebarInset>
+        </RightSidebarHost>
+        <CommandPalette open={palette} onClose={() => setPalette(false)} />
+        <NewTaskDialog />
+        <AddProjectDialog />
+        <SettingsDialog />
+      </CurrentProjectProvider>
     </SidebarProvider>
   );
 };

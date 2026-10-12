@@ -46,7 +46,7 @@ const meta = preview.meta({
   title: "Components/Composer",
 });
 
-/** Ready to send: the line above names the project, the checkout and its container. */
+/** Ready to send: the box, with attach, agent, model and send under it. */
 export const Idle = meta.story();
 
 /** `/` at the start of the message lists the hub's commands, then the checkout's opencode commands. */

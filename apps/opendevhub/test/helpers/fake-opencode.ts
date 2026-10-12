@@ -63,6 +63,7 @@ export interface FakeState {
   interrupts: string[];
   /** Every `POST /api/session/:id/model` body. */
   modelSwitches: { sessionId: string; body: unknown }[];
+  agentSwitches: { sessionId: string; body: unknown }[];
   /** Session ids `DELETE /api/session/:id` removed. */
   deleted: string[];
   /** Each session's messages, oldest first; user messages carry `text` and `time`. */
@@ -95,6 +96,7 @@ export async function startFakeOpencode(
     patches: [],
     interrupts: [],
     modelSwitches: [],
+    agentSwitches: [],
     deleted: [],
     ...init,
   };
@@ -363,16 +365,20 @@ export async function startFakeOpencode(
           state.interrupts.push(decodeURIComponent(interrupt[1]));
           return json(true);
         }
-        const switchModel = url.pathname.match(
-          /^\/api\/session\/([^/]+)\/model$/u
+        const switchTo = url.pathname.match(
+          /^\/api\/session\/([^/]+)\/(model|agent)$/u
         );
-        if (switchModel && req.method === "POST") {
+        if (switchTo && req.method === "POST") {
           let raw = "";
           req.on("data", (c: Buffer) => (raw += c.toString("utf-8")));
           req.on("end", () => {
-            state.modelSwitches.push({
+            const switches =
+              switchTo[2] === "model"
+                ? state.modelSwitches
+                : state.agentSwitches;
+            switches.push({
               body: JSON.parse(raw),
-              sessionId: decodeURIComponent(switchModel[1]),
+              sessionId: decodeURIComponent(switchTo[1]),
             });
             res.writeHead(204);
             res.end();

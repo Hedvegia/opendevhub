@@ -21,8 +21,12 @@ export const WORKTREES_UNAVAILABLE =
 /** A chat's own page: its conversation full-width. */
 export const chatPath = chatHref;
 
-/** How many chats the sidebar lists under Chat. */
-export const RECENT_CHATS = 10;
+/** How many of the project's chats the sidebar lists before "Show all". */
+export const SIDEBAR_CHATS = 20;
+
+const MINUTE_MS = 60_000;
+const HOUR_MINUTES = 60;
+const DAY_HOURS = 24;
 
 /** A task id, as old chat links carried in place of the chat's. */
 export const isTaskId = (id: string): boolean => id.startsWith("tsk_");
@@ -76,11 +80,24 @@ export const allChats = (
     )
     .toSorted((a, b) => chatActivity(b.chat) - chatActivity(a.chat));
 
-/** The chats the sidebar lists: the most recently active, across projects. */
-export const recentChats = (
-  snapshot: DashboardSnapshot,
-  limit = RECENT_CHATS
-): ListedChat[] => allChats(snapshot).slice(0, limit);
+/** The project's chats the sidebar lists: not archived, most recently active first. */
+export const sidebarChats = (view: ProjectView): ChatView[] =>
+  view.chats
+    .filter((c) => !c.archived)
+    .toSorted((a, b) => chatActivity(b) - chatActivity(a));
+
+/** How long ago, as the sidebar shows it: "now", "5m", "3h", "2d". */
+export const shortAgo = (ts: number, now = Date.now()): string => {
+  const minutes = Math.floor(Math.max(0, now - ts) / MINUTE_MS);
+  if (minutes < 1) {
+    return "now";
+  }
+  if (minutes < HOUR_MINUTES) {
+    return `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / HOUR_MINUTES);
+  return hours < DAY_HOURS ? `${hours}h` : `${Math.floor(hours / DAY_HOURS)}d`;
+};
 
 /** A project's chats run in one checkout, most recently active first. */
 export const checkoutChats = (

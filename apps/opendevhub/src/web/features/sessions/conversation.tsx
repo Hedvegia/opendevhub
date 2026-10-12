@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 import { modelShortName } from "../../../shared/tasks";
 import type {
@@ -35,6 +36,9 @@ import type { OpenPanel, PanelId } from "./side-panel";
 import { Transcript } from "./transcript";
 import { UsagePopover } from "./usage-popover";
 import { useStickToBottom } from "./use-stick-to-bottom";
+
+/** The transcript's and the composer's width: as wide as reads well. */
+const COLUMN = "w-full max-w-4xl";
 
 /** How long a send's notice stays under the transcript. */
 const NOTICE_MS = 5000;
@@ -137,7 +141,6 @@ export const Conversation = (props: {
           </div>
           <div className="text-muted-foreground flex min-w-0 items-center gap-1.5 overflow-hidden text-xs max-md:hidden">
             {session.model && <Chip>{modelShortName(session.model)}</Chip>}
-            {detail?.agent && <Chip>{detail.agent}</Chip>}
             {task &&
               (task.to ? (
                 <Chip
@@ -175,10 +178,7 @@ export const Conversation = (props: {
 
         <div className="relative min-h-48 flex-1">
           <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
-            <div
-              ref={contentRef}
-              className="mx-auto w-full max-w-3xl px-1 py-5"
-            >
+            <div ref={contentRef} className={cn("mx-auto px-1 py-5", COLUMN)}>
               {props.error && (
                 <Alert variant="destructive">
                   <AlertDescription>{props.error}</AlertDescription>
@@ -213,7 +213,9 @@ export const Conversation = (props: {
           )}
         </div>
 
-        <footer className="mx-auto flex w-full max-w-3xl shrink-0 flex-col gap-3 pt-2">
+        <footer
+          className={cn("mx-auto flex shrink-0 flex-col gap-3 pt-2", COLUMN)}
+        >
           {session.pending && (
             <div className="max-h-[45svh] overflow-y-auto">
               <PendingStack session={session} view={view} />
@@ -230,6 +232,7 @@ export const Conversation = (props: {
             checkoutLabel={checkout.worktree?.branch ?? checkout.label}
             running={running}
             model={session.model}
+            agent={detail?.agent ?? detail?.turns[0]?.agent}
             hubCommands
             onSend={props.onSend}
             onSent={(sent) => {

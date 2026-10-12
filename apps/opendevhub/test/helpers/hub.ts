@@ -641,6 +641,9 @@ export function setup(
     switchModel: vi.fn(
       async (_sid: string, _model: ModelRef, _dir?: string) => {}
     ),
+    switchAgent: vi.fn(
+      async (_sid: string, _agent: string, _dir?: string) => {}
+    ),
     sessions: vi.fn(async (): Promise<RawSession[]> => []),
     messages: vi.fn(
       async (_sid: string, _limit: number): Promise<RawMessage[]> => []

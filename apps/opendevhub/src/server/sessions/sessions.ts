@@ -97,6 +97,7 @@ export class Sessions {
       reviewOf?: number;
       attachments?: PromptAttachments;
       model?: ModelRef;
+      agent?: string;
     } = {}
   ): Promise<{ sessionId: string; chat?: string }> {
     const project = this.envs.requireProject(id);
@@ -109,7 +110,7 @@ export class Sessions {
       client,
       directory,
       title,
-      { model: options.model, reviewOf: options.reviewOf }
+      { agent: options.agent, model: options.model, reviewOf: options.reviewOf }
     );
     if (prompt?.trim()) {
       await client.prompt(
@@ -149,7 +150,7 @@ export class Sessions {
       client,
       directory,
       undefined,
-      { model: request.model }
+      { agent: request.agent, model: request.model }
     );
     await (message.command
       ? client.command(
@@ -237,15 +238,21 @@ export class Sessions {
     client: OpencodeClient,
     directory: string,
     title: string | undefined,
-    options: { reviewOf?: number; model?: ModelRef; internal?: boolean } = {}
+    options: {
+      reviewOf?: number;
+      model?: ModelRef;
+      agent?: string;
+      internal?: boolean;
+    } = {}
   ): Promise<{ session: RawSession; chat?: string }> {
-    const { reviewOf, model, internal } = options;
+    const { reviewOf, model, agent, internal } = options;
     const { tasks, chats } = this.deps;
     const release = tasks.claim(envId, directory);
     try {
       const session = await client.createSession(directory, {
         title,
         ...(model ? { model } : {}),
+        ...(agent ? { agent } : {}),
       });
       const createdAt =
         (session.time as RawSession["time"] | undefined)?.created ??
@@ -438,6 +445,7 @@ export class Sessions {
         undefined,
         text.slice(offset).trim() || undefined,
         {
+          agent: request.agent,
           attachments: attachmentsOf(directory, request, offset),
           model: request.model,
         }
@@ -450,6 +458,9 @@ export class Sessions {
     }
     if (request.model && !sameModel(request.model, session.model)) {
       await client.switchModel(sessionId, request.model, directory);
+    }
+    if (request.agent) {
+      await client.switchAgent(sessionId, request.agent, directory);
     }
     const message = await resolveMessage(
       () => this.checkoutCommands(id, directory),

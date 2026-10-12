@@ -465,6 +465,8 @@ export interface ComposerSendRequest {
   attachments?: ComposerAttachment[];
   /** The model the message and the turns after it use; omitted keeps the conversation's. */
   model?: ModelRef;
+  /** The primary agent the message and the turns after it use; omitted keeps the conversation's. */
+  agent?: string;
 }
 
 /** What sending did: `sessionId` is the conversation `/new` started, and `chat` its chat. */

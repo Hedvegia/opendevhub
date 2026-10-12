@@ -529,6 +529,20 @@ export class OpencodeClient {
   }
 
   /** Sets the model the session's next turns use. */
+  /** Switches the primary agent the session's next turns use. */
+  switchAgent(
+    sessionId: string,
+    agent: string,
+    directory?: string
+  ): Promise<void> {
+    return this.send(
+      "POST",
+      `/api/session/${encodeURIComponent(sessionId)}/agent`,
+      { agent },
+      directory
+    );
+  }
+
   switchModel(
     sessionId: string,
     model: ModelRef,

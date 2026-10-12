@@ -96,7 +96,10 @@ export class Chat {
           {
             sessionTitle: title,
             sink: this.chatSink(chat.id),
-            spec: message.model ? { model: message.model } : {},
+            spec: {
+              ...(message.model ? { model: message.model } : {}),
+              ...(message.agent ? { agent: message.agent } : {}),
+            },
           },
         ],
         title,
