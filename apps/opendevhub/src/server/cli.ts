@@ -24,7 +24,7 @@ import { CheckoutStore } from "./db/checkouts";
 import { openStateDatabase } from "./db/database";
 import { EnvironmentStore } from "./db/environments";
 import { EventStore } from "./db/events";
-import { ForgejoPresetStore } from "./db/forgejo-presets";
+import { ForgejoPresetStore, JiraPresetStore } from "./db/filter-presets";
 import { LinkStore } from "./db/links";
 import { ProjectStore } from "./db/projects";
 import { ProvenanceStore } from "./db/provenance";
@@ -441,6 +441,7 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
     }),
     forgejo: new Forgejo(new FileForgejoSettings(dir)),
     forgejoPresets: new ForgejoPresetStore(db),
+    jiraPresets: new JiraPresetStore(db),
     jira: new Jira(new FileJiraSettings(dir)),
     links,
     activity: events,

@@ -6,6 +6,7 @@ import {
   JIRA_SORTS,
   JIRA_STATUS_CATEGORIES,
   JIRA_STATUSES,
+  validJql,
 } from "../../shared/jira";
 import type {
   JiraBoard,
@@ -119,14 +120,35 @@ const validQuery = (query: JiraTicketQuery): boolean =>
   (query.scope === "filter"
     ? isId(query.filter)
     : query.filter === undefined) &&
+  (query.jql === undefined ||
+    (typeof query.jql === "string" && validJql(query.jql))) &&
   (query.project === undefined ||
     (typeof query.project === "string" &&
       query.project.length <= 100 &&
       JIRA_PROJECT_KEY.test(query.project)));
 
-/** The JQL for a query; text is escaped for both Lucene and JQL, never accepted as JQL. */
+/** Where raw JQL's ordering starts; a match inside a quoted value is rare enough to accept. */
+const ORDER_BY = /\border\s+by\b/iu;
+
+/** Splits raw JQL into its condition and its `ORDER BY` fields, either of which may be empty. */
+export const splitJql = (jql: string): { where: string; order: string } => {
+  const match = ORDER_BY.exec(jql);
+  if (!match) {
+    return { order: "", where: jql.trim() };
+  }
+  return {
+    order: jql.slice(match.index + match[0].length).trim(),
+    where: jql.slice(0, match.index).trim(),
+  };
+};
+
+/**
+ * The JQL for a query; search text is escaped for both Lucene and JQL, never accepted as JQL. The view's raw JQL is
+ * added as written, in parentheses, and its `ORDER BY` wins over the sort.
+ */
 export const ticketJql = (query: JiraTicketQuery): string => {
   const term = query.search.trim();
+  const raw = splitJql(query.jql ?? "");
   if (JIRA_KEY.test(term.toUpperCase())) {
     // An exact key finds the ticket wherever it lives.
     return `key = ${JSON.stringify(term.toUpperCase())}`;
@@ -137,13 +159,14 @@ export const ticketJql = (query: JiraTicketQuery): string => {
       : SCOPE_JQL[query.scope],
     query.scope === "board" && query.sprint ? "sprint in openSprints()" : "",
     query.project ? `project = ${JSON.stringify(query.project)}` : "",
+    raw.where ? `(${raw.where})` : "",
     STATUS_JQL[query.status],
     term
       ? `text ~ ${JSON.stringify(`"${term.replaceAll(/[+\-&|!(){}[\]^"~*?:\\/]/gu, "\\$&")}"`)}`
       : "",
   ].filter(Boolean);
   const where = clauses.join(" AND ");
-  return `${where ? `${where} ` : ""}ORDER BY ${ORDER_JQL[query.sort]}`;
+  return `${where ? `${where} ` : ""}ORDER BY ${raw.order || ORDER_JQL[query.sort]}`;
 };
 
 /** Jira Server/Data Center REST v2 with a personal access token (Bearer authentication). */

@@ -3,10 +3,13 @@ import { z } from "zod";
 
 import { MAX_ACTIVITY_PAGE_SIZE, OBJECT_TYPES } from "../../shared/activity";
 import {
+  JIRA_JQL_MAX,
   JIRA_KEY,
+  JIRA_PROJECT_KEY,
   JIRA_SCOPES,
   JIRA_SORTS,
   JIRA_STATUSES,
+  normalizeJql,
 } from "../../shared/jira";
 import { STACK_IDS } from "../../shared/stacks";
 import { ATTACHMENTS_MAX } from "../../shared/types";
@@ -116,11 +119,42 @@ const presetFilters = z.object({
 });
 const presetName = z.string().trim().min(1).max(80);
 
+/** Raw JQL, kept on one line; it is passed to Jira as written. */
+const jql = z.string().max(JIRA_JQL_MAX).transform(normalizeJql);
+
+const id = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
+
+/** A Tickets page view: a board or filter goes with its own scope only. */
+const jiraPresetFilters = z
+  .object({
+    scope: z.enum(JIRA_SCOPES),
+    board: id.optional(),
+    sprint: z.boolean().optional(),
+    filter: id.optional(),
+    project: z.string().max(100).regex(JIRA_PROJECT_KEY).optional(),
+    status: z.enum(JIRA_STATUSES),
+    sort: z.enum(JIRA_SORTS),
+    search: z.string().max(500),
+    jql: jql.optional(),
+  })
+  .refine(
+    (f) =>
+      (f.scope === "board") === (f.board !== undefined) &&
+      (f.scope === "filter") === (f.filter !== undefined) &&
+      (!f.sprint || f.scope === "board"),
+    "The view's board, filter or sprint does not fit its scope."
+  );
+
 export const bodies = {
   forgejoPreset: z.object({ name: presetName, filters: presetFilters }),
   forgejoPresetUpdate: z.object({
     name: presetName.optional(),
     filters: presetFilters.optional(),
+  }),
+  jiraPreset: z.object({ name: presetName, filters: jiraPresetFilters }),
+  jiraPresetUpdate: z.object({
+    name: presetName.optional(),
+    filters: jiraPresetFilters.optional(),
   }),
   integration: z.object({
     enabled: z.boolean(),
@@ -167,10 +201,11 @@ export const bodies = {
       .optional(),
     jiraBoard: z
       .object({
-        id: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        id,
         name: z.string().min(1).max(200),
       })
       .optional(),
+    jiraJql: jql.optional(),
   }),
   sshTest: z.object({ host: z.string().min(1) }),
   onboarding: z.object({ path: text, stack: z.enum(STACK_IDS) }),
@@ -336,6 +371,7 @@ export const queries = {
     status: z.enum(JIRA_STATUSES).optional(),
     sort: z.enum(JIRA_SORTS).optional(),
     search: text,
+    jql: z.string().max(JIRA_JQL_MAX).optional(),
     startAt: text,
   }),
   usage: z.object({ day: text }),

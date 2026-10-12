@@ -1,3 +1,4 @@
+import { normalizeJql, validJql } from "../../shared/jira";
 import type { Project, ProjectLinks } from "../../shared/types";
 import type { ProjectSettingsStore } from "../config";
 import type { DashboardDeps } from "../dashboard-api";
@@ -14,8 +15,9 @@ const REPOSITORY = /^[\w.-]+\/[\w.-]+$/u;
 export const readProjectLinks = (
   entry: Record<string, unknown>
 ): ProjectLinks => {
-  const { jiraBoard, forgejoRepository } = entry as {
+  const { jiraBoard, jiraJql, forgejoRepository } = entry as {
     jiraBoard?: { id?: unknown; name?: unknown };
+    jiraJql?: unknown;
     forgejoRepository?: unknown;
   };
   const board =
@@ -25,12 +27,14 @@ export const readProjectLinks = (
     typeof jiraBoard.name === "string"
       ? { id: jiraBoard.id as number, name: jiraBoard.name }
       : undefined;
+  const jql = typeof jiraJql === "string" ? normalizeJql(jiraJql) : "";
   const repository =
     typeof forgejoRepository === "string" && REPOSITORY.test(forgejoRepository)
       ? forgejoRepository
       : undefined;
   return {
     ...(board ? { jiraBoard: board } : {}),
+    ...(jql && validJql(jql) ? { jiraJql: jql } : {}),
     ...(repository ? { forgejoRepository: repository } : {}),
   };
 };
@@ -49,13 +53,14 @@ export const projectLinkSettings = (
   return {
     projectLinks: {
       get: (id) => readProjectLinks(deps.settings.get(pathOf(id))),
-      // Saving replaces both links, so a link left out is removed.
+      // Saving replaces every link, so a link left out is removed.
       save: (id, links) =>
         deps.settings.update(pathOf(id), {
           forgejoRepository: links.forgejoRepository,
           jiraBoard: links.jiraBoard
             ? { id: links.jiraBoard.id, name: links.jiraBoard.name }
             : undefined,
+          jiraJql: links.jiraJql ? normalizeJql(links.jiraJql) : undefined,
         }),
     },
   };

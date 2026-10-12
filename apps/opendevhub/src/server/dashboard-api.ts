@@ -12,7 +12,7 @@ import { createJiraRoutes } from "./api/jira";
 import { createLinksRoutes } from "./api/links";
 import { createProjectsRoutes } from "./api/projects";
 import type { EventStore } from "./db/events";
-import type { ForgejoPresetStore } from "./db/forgejo-presets";
+import type { ForgejoPresetStore, JiraPresetStore } from "./db/filter-presets";
 import type { LinkStore } from "./db/links";
 import type { ProvenanceStore } from "./db/provenance";
 import type { Checks } from "./environments/checks";
@@ -171,6 +171,8 @@ export interface DashboardDeps {
     ForgejoPresetStore,
     "list" | "create" | "update" | "remove"
   >;
+  /** Saved Tickets page views; absent in tests that don't need them. */
+  jiraPresets?: Pick<JiraPresetStore, "list" | "create" | "update" | "remove">;
   jira?: Pick<
     Jira,
     "view" | "save" | "tickets" | "ticket" | "catalog" | "columns"

@@ -27,6 +27,8 @@ export interface Project {
 /** The Jira board and Forgejo repository a project's tickets and pull requests come from. */
 export interface ProjectLinks {
   jiraBoard?: { id: number; name: string };
+  /** Raw JQL that picks the project's tickets, on the board when there is one. */
+  jiraJql?: string;
   /** `owner/name` on the Forgejo instance. */
   forgejoRepository?: string;
 }

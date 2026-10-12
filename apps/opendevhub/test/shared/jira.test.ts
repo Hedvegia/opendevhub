@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { jiraKanban } from "../../src/shared/jira";
+import {
+  jiraKanban,
+  jiraQueryParams,
+  parseJiraQuery,
+} from "../../src/shared/jira";
 import type { JiraTicketSummary } from "../../src/shared/jira";
 
 const ticket = (
@@ -73,5 +77,26 @@ describe("jiraKanban", () => {
       ["Doing", []],
       ["Done", ["A-1"]],
     ]);
+  });
+});
+
+describe(parseJiraQuery, () => {
+  it("reads raw JQL from the URL on one line and writes it back", () => {
+    const query = parseJiraQuery(
+      new URLSearchParams({ jql: "  labels = api\n  AND priority = High " })
+    );
+    expect(query?.jql).toBe("labels = api AND priority = High");
+    expect(jiraQueryParams({ jql: "labels = api" }).get("jql")).toBe(
+      "labels = api"
+    );
+    expect(
+      parseJiraQuery(new URLSearchParams({ jql: "" }))?.jql
+    ).toBeUndefined();
+  });
+
+  it("refuses JQL over the length limit", () => {
+    expect(
+      parseJiraQuery(new URLSearchParams({ jql: "x".repeat(2001) }))
+    ).toBeUndefined();
   });
 });

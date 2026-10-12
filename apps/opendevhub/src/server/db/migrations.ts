@@ -220,6 +220,15 @@ UPDATE reviews SET task_id = NULL WHERE task_id IN (SELECT id FROM tasks WHERE k
 DELETE FROM variants WHERE task_id IN (SELECT id FROM tasks WHERE kind = 'manual');
 DELETE FROM tasks WHERE kind = 'manual';
 `,
+  `
+CREATE TABLE jira_filter_presets (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  filters    TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+`,
 ];
 
 export class NewerDatabaseError extends Error {

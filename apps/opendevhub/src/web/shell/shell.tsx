@@ -6,7 +6,6 @@ import {
   FolderGit2Icon,
   GitPullRequestIcon,
   LayoutGridIcon,
-  ListTodoIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
@@ -27,7 +26,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Kbd } from "@/components/ui/kbd";
 import {
   Sidebar,
   SidebarContent,
@@ -65,9 +63,13 @@ import {
   shortAgo,
   sidebarChats,
 } from "../features/chat/chat";
-import { projectTasks } from "../features/checkouts/checkouts";
 import { nodesNeedingAttention } from "../features/nodes/nodes";
 import { AddProjectDialog } from "../features/projects/add-project-dialog";
+import {
+  projectPullsHref,
+  projectTicketsHref,
+  useProjectLinks,
+} from "../features/projects/links-settings";
 import { SettingsDialog } from "../features/settings/settings-dialog";
 import {
   SETTINGS_PARAM,
@@ -104,7 +106,7 @@ const NavItem = (props: {
   );
 };
 
-/** The project picker: the project the sidebar lists chats of, and the pages about every project. */
+/** The project picker: the project the sidebar lists chats of. */
 const ProjectPicker = () => {
   const { openAddProject } = useDash();
   const { view, projects, choose } = useCurrentProject();
@@ -160,19 +162,10 @@ const ProjectPicker = () => {
                 {v.project.id === view?.project.id && <CheckIcon />}
               </DropdownMenuItem>
             ))}
+            <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={openAddProject}>
               <PlusIcon /> Add project
             </DropdownMenuItem>
-            {view && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link to={`/p/${encodeURIComponent(view.project.id)}`}>
-                    <FolderGit2Icon /> Project overview
-                  </Link>
-                </DropdownMenuItem>
-              </>
-            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
@@ -283,9 +276,40 @@ const FooterButton = (props: {
   </Tooltip>
 );
 
-const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
-  const { snapshot, connected, permission, requestPermission, forgejo, jira } =
-    useDash();
+/** The current project's pages: its overview, and its pull requests and tickets when Forgejo or Jira is on. */
+const ProjectNav = ({ view }: { view: ProjectView }) => {
+  const { forgejo, jira } = useDash();
+  const location = useLocation();
+  const links = useProjectLinks(view.project.id).data;
+  const repository = links?.forgejoRepository;
+  const ticketsLinked = !!(links?.jiraBoard || links?.jiraJql);
+  return (
+    <>
+      <NavItem to={`/p/${encodeURIComponent(view.project.id)}`}>
+        <FolderGit2Icon /> Overview
+      </NavItem>
+      {forgejo?.enabled && (
+        <NavItem
+          to={repository ? projectPullsHref(repository) : "/forgejo"}
+          active={location.pathname === "/forgejo"}
+        >
+          <GitPullRequestIcon /> Pull requests
+        </NavItem>
+      )}
+      {jira?.enabled && (
+        <NavItem
+          to={links && ticketsLinked ? projectTicketsHref(links) : "/jira"}
+          active={location.pathname === "/jira"}
+        >
+          <TicketIcon /> Tickets
+        </NavItem>
+      )}
+    </>
+  );
+};
+
+const AppSidebar = () => {
+  const { snapshot, connected, permission, requestPermission } = useDash();
   const { view } = useCurrentProject();
   const { setOpenMobile } = useSidebar();
   const [params] = useSearchParams();
@@ -298,15 +322,7 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
   if (!snapshot) {
     return null;
   }
-  const tasksWaiting = view
-    ? projectTasks(view).filter((t) => t.attention).length
-    : 0;
-  const tasksTo = view
-    ? `/tasks?project=${encodeURIComponent(view.project.id)}`
-    : "/tasks";
   const remotes = nodesNeedingAttention(snapshot.nodes);
-  const isMac =
-    typeof navigator !== "undefined" && /mac/iu.test(navigator.platform);
 
   return (
     <Sidebar>
@@ -316,21 +332,7 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
           <NavItem to="/chat" end>
             <SquarePenIcon /> New chat
           </NavItem>
-          <NavItem
-            to={tasksTo}
-            active={location.pathname === "/tasks"}
-            badge={
-              tasksWaiting > 0 && <Count n={tasksWaiting} tone="attention" />
-            }
-          >
-            <ListTodoIcon /> Tasks
-          </NavItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={onSearch}>
-              <SearchIcon /> <span className="flex-1">Jump to…</span>
-              <Kbd>{isMac ? "⌘" : "Ctrl"} K</Kbd>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+          {view && <ProjectNav view={view} />}
         </SidebarMenu>
       </SidebarHeader>
 
@@ -368,24 +370,6 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
           >
             <LayoutGridIcon />
           </FooterButton>
-          {forgejo?.enabled && (
-            <FooterButton
-              label="Pull requests"
-              to="/forgejo"
-              active={location.pathname.startsWith("/forgejo")}
-            >
-              <GitPullRequestIcon />
-            </FooterButton>
-          )}
-          {jira?.enabled && (
-            <FooterButton
-              label="Tickets"
-              to="/jira"
-              active={location.pathname.startsWith("/jira")}
-            >
-              <TicketIcon />
-            </FooterButton>
-          )}
           {permission === "default" && (
             <FooterButton
               label="Enable notifications"
@@ -525,7 +509,7 @@ export const Shell = () => {
   return (
     <SidebarProvider>
       <CurrentProjectProvider>
-        <AppSidebar onSearch={() => setPalette(true)} />
+        <AppSidebar />
         <RightSidebarHost>
           <SidebarInset className="min-w-0">
             <MobileBar onSearch={() => setPalette(true)} />

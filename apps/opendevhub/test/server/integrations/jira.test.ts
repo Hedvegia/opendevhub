@@ -9,8 +9,11 @@ import {
   FileJiraSettings,
   Jira,
   jiraUrl,
+  splitJql,
+  ticketJql,
 } from "../../../src/server/integrations/jira";
 import { CredentialStoreError } from "../../../src/server/integrations/secrets";
+import { JIRA_DEFAULT_QUERY } from "../../../src/shared/jira";
 import { MemorySecretStore } from "../../helpers/secrets";
 
 let dir: string;
@@ -247,6 +250,42 @@ describe("Jira Server/Data Center API", () => {
       "sprint in openSprints() ORDER BY Rank ASC"
     );
     expect(call(1).pathname).toBe("/jira/rest/api/2/search");
+  });
+
+  it("adds raw JQL in parentheses and lets its ORDER BY replace the sort", () => {
+    expect(
+      ticketJql({
+        ...JIRA_DEFAULT_QUERY,
+        jql: "labels = backend OR component = API",
+        status: "open",
+      })
+    ).toBe(
+      "assignee = currentUser() AND (labels = backend OR component = API) AND statusCategory != done ORDER BY updated DESC"
+    );
+    expect(
+      ticketJql({
+        ...JIRA_DEFAULT_QUERY,
+        jql: "fixVersion = 2.0 order by duedate ASC",
+        scope: "all",
+      })
+    ).toBe("(fixVersion = 2.0) ORDER BY duedate ASC");
+    expect(splitJql("ORDER BY created")).toStrictEqual({
+      order: "created",
+      where: "",
+    });
+  });
+
+  it("refuses JQL with control characters or over the length limit", async () => {
+    await settings.save(configured);
+    const fetcher = vi.fn<typeof fetch>();
+    const jira = new Jira(settings, fetcher);
+    await expect(jira.tickets({ jql: "a\u0000b" })).rejects.toThrow(
+      "Invalid Jira search"
+    );
+    await expect(jira.tickets({ jql: "x".repeat(2001) })).rejects.toThrow(
+      "Invalid Jira search"
+    );
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("loads boards across pages, favourite filters and projects, skipping malformed entries", async () => {

@@ -9,7 +9,7 @@ import type {
   ForgejoSettings,
 } from "../../shared/forgejo";
 import type { GitSetup } from "../../shared/git-setup";
-import type { JiraSettings } from "../../shared/jira";
+import type { JiraFilterPreset, JiraSettings } from "../../shared/jira";
 import type { DashboardSnapshot, ProjectLinks } from "../../shared/types";
 import {
   activityPage,
@@ -98,6 +98,20 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
       filters: { inbox: "review-requested", state: "open" },
       id: 1,
       name: "Waiting on me",
+    },
+  ];
+  let jiraPresets: JiraFilterPreset[] = [
+    {
+      filters: {
+        jql: "labels = backend",
+        scope: "board",
+        board: 1,
+        search: "",
+        sort: "rank",
+        status: "open",
+      },
+      id: 1,
+      name: "Backend on the board",
     },
   ];
   const projectLinks = new Map<string, ProjectLinks>();
@@ -253,6 +267,31 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
     ),
 
     // Jira
+    http.get("/api/jira/presets", () =>
+      HttpResponse.json({ presets: jiraPresets })
+    ),
+    http.post("/api/jira/presets", async ({ request }) => {
+      const input = (await request.json()) as Omit<JiraFilterPreset, "id">;
+      const preset = {
+        ...input,
+        id: Math.max(0, ...jiraPresets.map((p) => p.id)) + 1,
+      };
+      jiraPresets = [...jiraPresets, preset];
+      return HttpResponse.json(preset);
+    }),
+    http.put("/api/jira/presets/:id", async ({ params, request }) => {
+      const changes = (await request.json()) as Partial<JiraFilterPreset>;
+      jiraPresets = jiraPresets.map((p) =>
+        String(p.id) === params.id ? { ...p, ...changes } : p
+      );
+      return HttpResponse.json(
+        jiraPresets.find((p) => String(p.id) === params.id)
+      );
+    }),
+    http.delete("/api/jira/presets/:id", ({ params }) => {
+      jiraPresets = jiraPresets.filter((p) => String(p.id) !== params.id);
+      return HttpResponse.json({ ok: true });
+    }),
     http.get("/api/jira/tickets", async ({ request }) => {
       await wait();
       const params = new URL(request.url).searchParams;

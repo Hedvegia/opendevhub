@@ -54,6 +54,17 @@ describe(projectLinkSettings, () => {
     expect(entry()).toStrictEqual({ forgejoRepository: "me/app" });
   });
 
+  it("keeps a JQL link on one line", () => {
+    const { projectLinks, entry } = setup();
+    projectLinks.save(project.id, {
+      jiraJql: " labels = app\n AND type = Bug ",
+    });
+    expect(entry()).toStrictEqual({ jiraJql: "labels = app AND type = Bug" });
+    expect(projectLinks.get(project.id)).toStrictEqual({
+      jiraJql: "labels = app AND type = Bug",
+    });
+  });
+
   it("throws for an unknown project", () => {
     const { projectLinks } = setup();
     expect(() => projectLinks.get("nope")).toThrow(NotFoundError);

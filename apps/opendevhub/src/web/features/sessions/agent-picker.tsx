@@ -17,8 +17,8 @@ const ghost =
   "text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-transparent dark:hover:bg-accent h-7 gap-1 border-0 bg-transparent px-2 text-xs shadow-none";
 
 /**
- * The primary agent a message goes to, such as build or plan. `value` is what's shown: the conversation's agent
- * until the user picks one; without either, opencode's default agent, which the hub can't name.
+ * The primary agent a message goes to, such as build or plan. `value` is what's shown: the user's pick, else the
+ * conversation's agent, else the first agent opencode lists.
  */
 export const AgentPicker = (props: {
   agents: AgentOption[] | undefined;

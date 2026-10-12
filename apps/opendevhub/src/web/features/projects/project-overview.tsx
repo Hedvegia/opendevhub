@@ -1,21 +1,34 @@
 import { GitBranchIcon, InfoIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import type { ProjectView } from "../../../shared/types";
 import { archiveTask, refreshWorktrees } from "../../api";
 import { CopyButton } from "../../components/copy-button";
 import { EnvBadge } from "../../components/env-badge";
-import { Chip, Note, PageHeader, Section } from "../../components/page";
+import {
+  Chip,
+  muted,
+  Note,
+  PageHeader,
+  Section,
+  Segmented,
+} from "../../components/page";
 import { ResourceStat } from "../../components/resource-stat";
 import { STATE_LABEL, StatusDot, TONE_LABEL } from "../../components/status";
 import { Tip } from "../../components/tip";
 import { useDash } from "../../dashboard-context";
-import { envOfDirectory, projectTone, workspaceFolderOf } from "../../derive";
+import {
+  envOfDirectory,
+  matches,
+  projectTone,
+  workspaceFolderOf,
+} from "../../derive";
 import { checkoutResources } from "../../lib/resources";
 import { Link, Navigate, useSearchParams } from "../../routing";
 import { ActivityButton } from "../activity/activity-button";
@@ -25,11 +38,12 @@ import {
   checkoutCounts,
   checkoutPath,
   checkoutTone,
+  matchesTaskFilter,
   projectTasks,
   sessionPath,
   standaloneCheckouts,
 } from "../checkouts/checkouts";
-import type { Checkout, ProjectTask } from "../checkouts/checkouts";
+import type { Checkout, ProjectTask, TaskFilter } from "../checkouts/checkouts";
 import { OpenInMenu } from "../checkouts/open-in-menu";
 import { WorktreeCreator } from "../checkouts/worktree-creator";
 import {
@@ -76,12 +90,6 @@ export const ProjectOverview = () => {
     return <Navigate replace to={destination} />;
   }
 
-  const tasks = projectTasks(view);
-  const live = (t: ProjectTask) => t.state !== "ended" && t.state !== "draft";
-  const attention = tasks.filter((t) => t.attention && live(t));
-  const active = tasks.filter((t) => !t.attention && live(t));
-  const drafts = tasks.filter((t) => t.state === "draft");
-  const ended = tasks.filter((t) => t.state === "ended");
   const chats = view.chats.toSorted(
     (a, b) => chatActivity(b) - chatActivity(a)
   );
@@ -163,18 +171,13 @@ export const ProjectOverview = () => {
         </Alert>
       )}
 
-      {attention.length + waitingChats.length > 0 && (
+      {waitingChats.length > 0 && (
         <Section
-          title="Needs you"
-          hint={attention.length + waitingChats.length}
+          title="Chats waiting on you"
+          hint={waitingChats.length}
           attention
         >
           <ul>
-            {attention.map((t) => (
-              <TaskRow key={t.task} projectId={project.id} task={t}>
-                <WaitingCards view={view} task={t.task} />
-              </TaskRow>
-            ))}
             {waitingChats.map((c) => (
               <ChatRow key={c.id} projectId={project.id} chat={c} />
             ))}
@@ -182,27 +185,7 @@ export const ProjectOverview = () => {
         </Section>
       )}
 
-      {drafts.length > 0 && (
-        <Section title="Drafts" hint={drafts.length}>
-          <ul>
-            {drafts.map((t) => (
-              <TaskRow key={t.task} projectId={project.id} task={t} />
-            ))}
-          </ul>
-        </Section>
-      )}
-
-      {active.length > 0 && (
-        <Section title="Tasks" hint={active.length}>
-          <ul>
-            {active.map((t) => (
-              <TaskRow key={t.task} projectId={project.id} task={t} />
-            ))}
-          </ul>
-        </Section>
-      )}
-
-      {ended.length > 0 && <EndedTasks projectId={project.id} tasks={ended} />}
+      <TasksCard view={view} />
 
       {otherChats.length > 0 && (
         <Section
@@ -420,42 +403,137 @@ const OPENCODE_PILL: Record<ProjectView["runtime"]["opencode"], string> = {
   unhealthy: "border-destructive/45 text-destructive",
 };
 
-/** Tasks whose conversations are all gone, collapsed until opened; each can be archived. */
-const EndedTasks = (props: { projectId: string; tasks: ProjectTask[] }) => {
+type TasksView = "open" | Exclude<TaskFilter, "all">;
+
+const TASK_VIEWS: { id: TasksView; label: string }[] = [
+  { id: "open", label: "Open" },
+  { id: "attention", label: "Needs you" },
+  { id: "running", label: "Working" },
+  { id: "idle", label: "Idle" },
+  { id: "draft", label: "Drafts" },
+  { id: "ended", label: "Ended" },
+];
+
+const isTasksView = (v: string | null): v is TasksView =>
+  TASK_VIEWS.some((o) => o.id === v);
+
+/** Open is everything not ended: what needs the user first, then what is working, idle, and drafts. */
+const inView = (t: ProjectTask, v: TasksView) =>
+  v === "open" ? t.state !== "ended" : matchesTaskFilter(t, v);
+
+const TASK_ORDER: TaskFilter[] = [
+  "attention",
+  "running",
+  "idle",
+  "draft",
+  "ended",
+];
+const taskRank = (t: ProjectTask) =>
+  TASK_ORDER.findIndex((f) => matchesTaskFilter(t, f));
+
+/** The project's tasks in one card, filtered by state (`?tasks=`) and title (`?q=`); waiting ones answer in place, ended ones archive. */
+const TasksCard = ({ view }: { view: ProjectView }) => {
   const { report } = useDash();
-  const [open, setOpen] = useState(false);
-  return (
-    <Section
-      title={`Ended tasks (${props.tasks.length})`}
-      hint="their conversations are gone; archive them to hide them"
-      action={
-        <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
-          {open ? "Hide" : "Show"}
-        </Button>
-      }
-    >
-      {open && (
-        <ul>
-          {props.tasks.map((t) => (
-            <TaskRow
-              key={t.task}
-              projectId={props.projectId}
-              task={t}
-              action={
+  const [params, setParams] = useSearchParams();
+  const projectId = view.project.id;
+  const raw = params.get("tasks");
+  const filter: TasksView = isTasksView(raw) ? raw : "open";
+  const q = params.get("q") ?? "";
+  const set = (key: string, value: string) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) {
+          next.set(key, value);
+        } else {
+          next.delete(key);
+        }
+        return next;
+      },
+      { replace: true }
+    );
+
+  const tasks = projectTasks(view);
+  const searched = tasks.filter((t) => matches(q, t.title));
+  const shown = searched
+    .filter((t) => inView(t, filter))
+    .toSorted((a, b) => taskRank(a) - taskRank(b));
+  const waiting = tasks.filter((t) => matchesTaskFilter(t, "attention")).length;
+
+  let body;
+  if (tasks.length === 0) {
+    body = (
+      <p className={cn(muted, "px-4 py-3")}>
+        No tasks yet. Start one, or make one from a chat.
+      </p>
+    );
+  } else if (shown.length === 0) {
+    body = <p className={cn(muted, "px-4 py-3")}>No tasks match.</p>;
+  } else {
+    body = (
+      <ul>
+        {shown.map((t) => (
+          <TaskRow
+            key={t.task}
+            projectId={projectId}
+            task={t}
+            action={
+              t.state === "ended" && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    void archiveTask(props.projectId, t.task).catch(report)
+                    void archiveTask(projectId, t.task).catch(report)
                   }
                 >
                   Archive
                 </Button>
-              }
+              )
+            }
+          >
+            {t.attention && <WaitingCards view={view} task={t.task} />}
+          </TaskRow>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <Section
+      title="Tasks"
+      hint={tasks.filter((t) => inView(t, "open")).length}
+      attention={waiting > 0}
+    >
+      {tasks.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
+          <div className="max-w-full [scrollbar-width:none] overflow-x-auto">
+            <Segmented
+              label="State"
+              value={filter}
+              onChange={(id) => set("tasks", id === "open" ? "" : id)}
+              options={TASK_VIEWS.map((o) => ({
+                id: o.id,
+                label: (
+                  <>
+                    {o.label}{" "}
+                    <span className="text-muted-foreground text-xs tabular-nums">
+                      {searched.filter((t) => inView(t, o.id)).length}
+                    </span>
+                  </>
+                ),
+              }))}
             />
-          ))}
-        </ul>
+          </div>
+          <Input
+            className="h-8 w-48 max-md:w-full md:ml-auto"
+            placeholder="Search tasks…"
+            aria-label="Search tasks"
+            value={q}
+            onChange={(e) => set("q", e.target.value)}
+          />
+        </div>
       )}
+      {body}
     </Section>
   );
 };

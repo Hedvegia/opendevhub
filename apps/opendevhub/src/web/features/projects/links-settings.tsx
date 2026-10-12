@@ -12,7 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
+import { JIRA_JQL_MAX, jiraQueryParams } from "../../../shared/jira";
+import type { JiraTicketQuery } from "../../../shared/jira";
 import type { ProjectLinks } from "../../../shared/types";
 import {
   fetchJiraCatalog,
@@ -25,6 +28,26 @@ import { useJiraQuery } from "../jira/use-jira";
 
 const NO_BOARD = "none";
 const REPOSITORY = /^[\w.-]+\/[\w.-]+$/u;
+
+/** The project's open tickets: its board's when it has one, else every ticket, narrowed by its JQL. */
+export const projectTicketsQuery = (
+  links: Pick<ProjectLinks, "jiraBoard" | "jiraJql">
+): Partial<JiraTicketQuery> => ({
+  ...(links.jiraBoard
+    ? { board: links.jiraBoard.id, scope: "board" }
+    : { scope: "all" }),
+  ...(links.jiraJql ? { jql: links.jiraJql } : {}),
+  status: "open",
+});
+
+/** The Tickets page listing the project's open tickets. */
+export const projectTicketsHref = (
+  links: Pick<ProjectLinks, "jiraBoard" | "jiraJql">
+): string => `/jira?${jiraQueryParams(projectTicketsQuery(links))}`;
+
+/** The pull request inbox listing the repository's open pull requests. */
+export const projectPullsHref = (repository: string): string =>
+  `/forgejo?${new URLSearchParams({ inbox: "review", repository, state: "open" })}`;
 
 export const projectLinksKey = (projectId: string) =>
   ["project-links", projectId] as const;
@@ -95,6 +118,63 @@ const JiraBoardPicker = (props: {
   );
 };
 
+const JiraJqlInput = (props: {
+  links: ProjectLinks;
+  saving: boolean;
+  onSave: (links: ProjectLinks) => void;
+}) => {
+  const saved = props.links.jiraJql ?? "";
+  const [draft, setDraft] = useState(saved);
+  useEffect(() => setDraft(saved), [saved]);
+  const value = draft.trim();
+  const changed = value !== saved;
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (changed) {
+      props.onSave({ ...props.links, jiraJql: value || undefined });
+    }
+  };
+  return (
+    <form className="flex flex-col gap-1.5" onSubmit={submit}>
+      <label htmlFor="project-jira-jql" className="text-sm font-medium">
+        Jira JQL
+      </label>
+      <Textarea
+        id="project-jira-jql"
+        className="max-w-xl font-mono text-sm"
+        rows={2}
+        maxLength={JIRA_JQL_MAX}
+        placeholder='project = APP AND component = "Web"'
+        value={draft}
+        disabled={props.saving}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            submit(e);
+          }
+        }}
+        spellCheck={false}
+      />
+      <p className={muted}>
+        {props.links.jiraBoard
+          ? "Narrows the board's tickets."
+          : "Picks the project's tickets from all of Jira."}{" "}
+        Passed to Jira as written; an ORDER BY sets the order.
+      </p>
+      {changed && (
+        <Button
+          type="submit"
+          size="sm"
+          className="w-fit"
+          disabled={props.saving}
+        >
+          {value ? "Save JQL" : "Remove JQL"}
+        </Button>
+      )}
+    </form>
+  );
+};
+
 const ForgejoRepositoryInput = (props: {
   links: ProjectLinks;
   saving: boolean;
@@ -144,7 +224,7 @@ const ForgejoRepositoryInput = (props: {
   );
 };
 
-/** Links the project to a Jira board and a Forgejo repository, so the sidebar lists their tickets and pull requests. */
+/** Links the project to a Jira board or JQL and a Forgejo repository, so the sidebar lists their tickets and pull requests. */
 export const LinksSettings = ({ projectId }: { projectId: string }) => {
   const { jira, forgejo } = useDash();
   const query = useProjectLinks(projectId);
@@ -172,11 +252,18 @@ export const LinksSettings = ({ projectId }: { projectId: string }) => {
       {links && (
         <div className="flex flex-col gap-4">
           {jira?.enabled && (
-            <JiraBoardPicker
-              links={links}
-              saving={save.isPending}
-              onSave={(next) => save.mutate(next)}
-            />
+            <>
+              <JiraBoardPicker
+                links={links}
+                saving={save.isPending}
+                onSave={(next) => save.mutate(next)}
+              />
+              <JiraJqlInput
+                links={links}
+                saving={save.isPending}
+                onSave={(next) => save.mutate(next)}
+              />
+            </>
           )}
           {forgejo?.enabled && (
             <ForgejoRepositoryInput

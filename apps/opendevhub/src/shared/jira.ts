@@ -63,8 +63,37 @@ export interface JiraTicketQuery {
   status: JiraStatusFilter;
   sort: JiraSort;
   search: string;
+  /**
+   * Raw JQL that narrows the view further, passed to Jira as written and never parsed here. An `ORDER BY` in it
+   * replaces the sort.
+   */
+  jql?: string;
   startAt: number;
 }
+
+/** The longest JQL a view or a project link may carry. */
+export const JIRA_JQL_MAX = 2000;
+
+/** A Tickets page view as a filter preset keeps it: every filter but the page. */
+export type JiraPresetFilters = Omit<JiraTicketQuery, "startAt">;
+
+export interface JiraFilterPreset {
+  id: number;
+  name: string;
+  filters: JiraPresetFilters;
+}
+
+export interface JiraFilterPresets {
+  presets: JiraFilterPreset[];
+}
+
+/** JQL as it is kept: a line break or tab and the space around it become one space; ends are trimmed. */
+export const normalizeJql = (jql: string): string =>
+  jql.replaceAll(/\s*[\t\r\n]\s*/gu, " ").trim();
+
+/** Whether `jql` can be sent: short enough and free of control characters once normalized. */
+export const validJql = (jql: string): boolean =>
+  jql.length <= JIRA_JQL_MAX && !/[\u0000-\u001F]/u.test(jql);
 
 export const JIRA_DEFAULT_QUERY: JiraTicketQuery = {
   scope: "assigned",
@@ -105,7 +134,9 @@ export const parseJiraQuery = (
   const filter = params.get("filter");
   const project = params.get("project");
   const sprint = params.get("sprint");
+  const jql = normalizeJql(params.get("jql") ?? "");
   if (
+    !validJql(jql) ||
     !scope ||
     !status ||
     !sort ||
@@ -130,13 +161,15 @@ export const parseJiraQuery = (
     ...(filter === null ? {} : { filter: Number(filter) }),
     ...(project === null ? {} : { project }),
     ...(sprint === null ? {} : { sprint: true }),
+    ...(jql ? { jql } : {}),
   };
 };
 
 /** Typed HTTP query values, leaving out defaults so URLs stay short. */
 export const jiraQueryValues = (query: Partial<JiraTicketQuery>) => {
   const d = JIRA_DEFAULT_QUERY;
-  const { scope, board, sprint, filter, project, status, sort, search } = query;
+  const { scope, board, sprint, filter, project, status, sort, search, jql } =
+    query;
   return {
     ...(scope && scope !== d.scope ? { scope } : {}),
     ...(scope === "board" && board !== undefined
@@ -149,6 +182,7 @@ export const jiraQueryValues = (query: Partial<JiraTicketQuery>) => {
     ...(status && status !== d.status ? { status } : {}),
     ...(sort && sort !== d.sort ? { sort } : {}),
     ...(search ? { search } : {}),
+    ...(jql ? { jql } : {}),
     ...(query.startAt ? { startAt: String(query.startAt) } : {}),
   };
 };

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { openDatabase } from "../../../src/server/db/database";
-import { ForgejoPresetStore } from "../../../src/server/db/forgejo-presets";
+import {
+  ForgejoPresetStore,
+  JiraPresetStore,
+} from "../../../src/server/db/filter-presets";
 import { ConflictError, NotFoundError } from "../../../src/server/errors";
 import type { ForgejoPresetFilters } from "../../../src/shared/forgejo";
+import type { JiraPresetFilters } from "../../../src/shared/jira";
 
 const mine: ForgejoPresetFilters = { inbox: "authored", state: "open" };
 const team: ForgejoPresetFilters = {
@@ -59,5 +63,22 @@ describe("ForgejoPresetStore", () => {
     expect(presets.list()).toStrictEqual([]);
     expect(() => presets.remove(id)).toThrow(NotFoundError);
     expect(() => presets.update(id, { name: "x" })).toThrow(NotFoundError);
+  });
+});
+
+describe("JiraPresetStore", () => {
+  it("keeps Tickets views apart from pull request presets", () => {
+    const db = openDatabase(":memory:");
+    const jira = new JiraPresetStore(db);
+    new ForgejoPresetStore(db).create("Mine", mine);
+    const view: JiraPresetFilters = {
+      jql: "labels = api",
+      scope: "all",
+      search: "",
+      sort: "updated",
+      status: "open",
+    };
+    jira.create("API", view);
+    expect(jira.list()).toStrictEqual([{ filters: view, id: 1, name: "API" }]);
   });
 });

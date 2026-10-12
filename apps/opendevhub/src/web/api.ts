@@ -9,6 +9,7 @@ import type {
 import type { ImageSide } from "../shared/images";
 import { jiraQueryValues } from "../shared/jira";
 import type {
+  JiraPresetFilters,
   JiraSettingsInput,
   JiraTaskSource,
   JiraTicketQuery,
@@ -316,6 +317,31 @@ export const fetchJiraSettings = () =>
 
 export const saveJiraSettings = (input: JiraSettingsInput) =>
   read(api.jira.settings.$post({ json: input }), "save Jira settings");
+
+export const fetchJiraPresets = (signal?: AbortSignal) =>
+  read(
+    api.jira.presets.$get(undefined, { init: { cache: "no-store", signal } }),
+    "Filter presets"
+  );
+
+export const createJiraPreset = (name: string, filters: JiraPresetFilters) =>
+  read(api.jira.presets.$post({ json: { filters, name } }), "Save preset");
+
+export const updateJiraPreset = (
+  id: number,
+  changes: { name?: string; filters?: JiraPresetFilters }
+) =>
+  read(
+    api.jira.presets[":id"].$put({ json: changes, param: { id: String(id) } }),
+    "Update preset"
+  );
+
+export const removeJiraPreset = async (id: number) => {
+  await complete(
+    api.jira.presets[":id"].$delete({ param: { id: String(id) } }),
+    "Delete preset"
+  );
+};
 
 export const fetchJiraTickets = (
   query: Partial<JiraTicketQuery> = {},

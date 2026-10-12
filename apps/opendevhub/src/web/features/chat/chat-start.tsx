@@ -1,4 +1,4 @@
-import { GitBranchIcon } from "lucide-react";
+import { GitBranchIcon, ListTodoIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -11,6 +11,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import type {
@@ -51,13 +56,15 @@ const lists = (snapshot: DashboardSnapshot | undefined, w: Waiting) =>
 
 /**
  * Chat's start page: the composer centred on an empty page, with the project and the checkout it starts in.
- * The first message starts a chat there, and the page moves on to that chat's view.
+ * The first message starts a chat there, and the page moves on to that chat's view; Start as task hands the
+ * message to the New task dialog instead.
  */
 export const ChatStart = () => {
-  const { snapshot, openAddProject } = useDash();
+  const { snapshot, openAddProject, newTask } = useDash();
   const navigate = useNavigate();
   const { view } = useCurrentProject();
   const [choice, setChoice] = useState<string>();
+  const [text, setText] = useState("");
   const waiting = useRef<Waiting>(undefined);
   const latest = useRef(snapshot);
 
@@ -140,6 +147,7 @@ export const ChatStart = () => {
         hero
         autoFocus
         onSend={send}
+        onTextChange={setText}
         footer={
           <div className="flex flex-col gap-1 px-1">
             <div className="text-muted-foreground flex items-center gap-1 text-xs">
@@ -166,6 +174,24 @@ export const ChatStart = () => {
                   ))}
                 </SelectContent>
               </Select>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto h-7 gap-1 px-2 text-xs"
+                    onClick={() =>
+                      newTask(id, text.trim() ? { prompt: text } : undefined)
+                    }
+                  >
+                    <ListTodoIcon /> Start as task
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Open New task with this message as its prompt
+                </TooltipContent>
+              </Tooltip>
             </div>
             {!canCreateWorktree(view) && (
               <p className="text-muted-foreground px-2 text-xs">

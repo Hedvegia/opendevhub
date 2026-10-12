@@ -5,6 +5,7 @@ import {
   FileIcon,
   ListEndIcon,
   PaperclipIcon,
+  PlayIcon,
   SquareSlashIcon,
   XIcon,
 } from "lucide-react";
@@ -34,6 +35,7 @@ import type {
   ProjectView,
 } from "../../../shared/types";
 import {
+  envAction,
   fetchComposerAgents,
   fetchComposerCommands,
   fetchModels,
@@ -41,6 +43,7 @@ import {
 } from "../../api";
 import { StatusDot } from "../../components/status";
 import { Tip } from "../../components/tip";
+import { useDash } from "../../dashboard-context";
 import { envOfDirectory, envTone } from "../../derive";
 import { AgentPicker } from "./agent-picker";
 import { addAttachments, formatSize } from "./attachments";
@@ -141,13 +144,65 @@ const targetOf = (view: ProjectView, directory: string) => {
   const ready =
     runtime.containerState === "running" && runtime.opencode === "healthy";
   return {
+    envId: env?.id,
     label: env ? "worktree container" : "project container",
     ready,
+    /** Stopped or failed: a Start would bring it up. */
+    startable:
+      runtime.containerState === "stopped" ||
+      runtime.containerState === "error",
+    starting:
+      runtime.containerState === "starting" || runtime.opencode === "starting",
     tone: envTone({ runtime }),
     why: env
-      ? "This worktree's container isn't running: start it from the Worktrees tab."
-      : "The project's container isn't running: start the project first.",
+      ? "This worktree's container isn't running: start it to send."
+      : "The project's container isn't running: start it to send.",
   };
+};
+
+/** Starts the container the composer sends to: the worktree's own, else the project's. */
+const StartContainer = (props: {
+  projectId: string;
+  envId: string | undefined;
+  startable: boolean;
+  starting: boolean;
+}) => {
+  const { act, report } = useDash();
+  const [asked, setAsked] = useState(false);
+  // The snapshot reports "starting" shortly after the request; until then the click itself counts.
+  useEffect(() => {
+    if (!props.startable) {
+      setAsked(false);
+    }
+  }, [props.startable]);
+  if (!props.startable && !props.starting) {
+    return null;
+  }
+  const busy = props.starting || asked;
+  const start = () => {
+    setAsked(true);
+    if (props.envId === undefined) {
+      act(props.projectId, "start");
+      return;
+    }
+    envAction(props.projectId, props.envId, "start").catch((error: unknown) => {
+      setAsked(false);
+      report(error);
+    });
+  };
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-7 px-2 text-xs"
+      disabled={busy}
+      onClick={start}
+    >
+      <PlayIcon className="size-3" />
+      {busy ? "Starting…" : "Start"}
+    </Button>
+  );
 };
 
 /**
@@ -178,12 +233,21 @@ export const Composer = (props: {
   footer?: ReactNode;
   /** The model the conversation uses; the picker starts at it, else at the project's default. */
   model?: ModelRef;
-  /** The agent the conversation uses; the picker starts at it, else at opencode's default. */
+  /** The agent the conversation uses; the picker starts at it, else at the first agent opencode lists. */
   agent?: string;
   /** What the box starts with; for stories. */
   initialText?: string;
+  /** Hears the text as it is typed; Chat's start page hands it to a new task. */
+  onTextChange?: (text: string) => void;
 }) => {
-  const { view, directory, running, hubCommands, hero = false } = props;
+  const {
+    view,
+    directory,
+    running,
+    hubCommands,
+    hero = false,
+    onTextChange,
+  } = props;
   const projectId = view.project.id;
   const target = targetOf(view, directory);
 
@@ -198,6 +262,7 @@ export const Composer = (props: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const textarea = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => onTextChange?.(value.text), [onTextChange, value.text]);
   const list = useRef<HTMLDivElement>(null);
   const pendingCaret = useRef<number>(undefined);
   const [anchor, setAnchor] = useState({ left: 0, top: 0 });
@@ -220,9 +285,10 @@ export const Composer = (props: {
     chosenModel && !sameModel(chosenModel, props.model)
       ? chosenModel
       : undefined;
-  const shownAgent = chosenAgent ?? props.agent;
+  // Without a pick or a conversation agent, the first primary agent opencode lists, sent so it is the one that runs.
+  const shownAgent = chosenAgent ?? props.agent ?? models.data?.agents[0]?.id;
   const sentAgent =
-    chosenAgent && chosenAgent !== props.agent ? chosenAgent : undefined;
+    shownAgent && shownAgent !== props.agent ? shownAgent : undefined;
 
   const attach = async (added: File[]) => {
     if (added.length === 0) {
@@ -697,6 +763,12 @@ export const Composer = (props: {
               <span className="truncate">
                 {props.checkoutLabel} · {target.label}
               </span>
+              <StartContainer
+                projectId={projectId}
+                envId={target.envId}
+                startable={target.startable}
+                starting={target.starting}
+              />
             </span>
           )}
           <div className="ml-auto flex min-w-0 items-center gap-0.5">

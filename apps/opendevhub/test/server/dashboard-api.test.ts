@@ -10,7 +10,10 @@ import { createDashboardApp } from "../../src/server/dashboard-api";
 import type { DashboardHub, PushPort } from "../../src/server/dashboard-api";
 import { openDatabase } from "../../src/server/db/database";
 import { EventStore } from "../../src/server/db/events";
-import { ForgejoPresetStore } from "../../src/server/db/forgejo-presets";
+import {
+  ForgejoPresetStore,
+  JiraPresetStore,
+} from "../../src/server/db/filter-presets";
 import { ProvenanceStore } from "../../src/server/db/provenance";
 import { CommandError } from "../../src/server/environments/containers";
 import { EditorUnavailableError } from "../../src/server/environments/editors";
@@ -2530,6 +2533,72 @@ describe("forgejo preset endpoints", () => {
   it("answers 412 when presets aren't available", async () => {
     const { app } = setup();
     expect((await app.request("/api/forgejo/presets")).status).toBe(412);
+  });
+});
+
+describe("jira preset endpoints", () => {
+  const withPresets = () => {
+    const base = setup();
+    return createDashboardApp({
+      store: base.store,
+      hub: base.hub,
+      onboarding: base.onboarding,
+      push: base.push,
+      cleanup: base.cleanup,
+      checks: base.checks,
+      jiraPresets: new JiraPresetStore(openDatabase(":memory:")),
+    });
+  };
+  const send = (
+    app: ReturnType<typeof createDashboardApp>,
+    method: string,
+    url: string,
+    body: unknown
+  ) =>
+    app.request(url, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const filters = {
+    board: 7,
+    jql: "labels = api",
+    scope: "board",
+    search: "",
+    sort: "rank",
+    status: "open",
+  };
+
+  it("saves, lists and deletes presets, keeping JQL on one line", async () => {
+    const app = withPresets();
+    const created = await send(app, "POST", "/api/jira/presets", {
+      name: "API board",
+      filters: { ...filters, jql: "labels = api\n" },
+    });
+    await expect(created.json()).resolves.toStrictEqual({
+      filters,
+      id: 1,
+      name: "API board",
+    });
+    const list = await app.request("/api/jira/presets");
+    await expect(list.json()).resolves.toStrictEqual({
+      presets: [{ filters, id: 1, name: "API board" }],
+    });
+    expect(
+      (await app.request("/api/jira/presets/1", { method: "DELETE" })).status
+    ).toBe(200);
+  });
+
+  it("answers 400 for a view whose board does not fit its scope", async () => {
+    const app = withPresets();
+    expect(
+      (
+        await send(app, "POST", "/api/jira/presets", {
+          name: "Bad",
+          filters: { ...filters, scope: "assigned" },
+        })
+      ).status
+    ).toBe(400);
   });
 });
 

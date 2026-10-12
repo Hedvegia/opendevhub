@@ -30,6 +30,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import {
   JIRA_DEFAULT_QUERY,
+  JIRA_JQL_MAX,
   jiraKanban,
   jiraQueryParams,
   jiraTaskPrompt,
@@ -38,6 +39,7 @@ import {
 import type {
   JiraBoardColumn,
   JiraCatalog,
+  JiraPresetFilters,
   JiraScope,
   JiraSort,
   JiraStatusFilter,
@@ -48,14 +50,20 @@ import type {
   JiraTickets,
 } from "../../../shared/jira";
 import {
+  createJiraPreset,
   fetchJiraBoardColumns,
   fetchJiraCatalog,
   draftFromTicket,
+  fetchJiraPresets,
   fetchJiraTicket,
   fetchJiraTickets,
+  removeJiraPreset,
+  updateJiraPreset,
 } from "../../api";
 import { Choice } from "../../components/choice";
 import type { ChoiceOption } from "../../components/choice";
+import { FilterPresets } from "../../components/filter-presets";
+import type { PresetSource } from "../../components/filter-presets";
 import { MarkdownBody } from "../../components/markdown-body";
 import {
   Chip,
@@ -235,6 +243,21 @@ const listTitle = (query: JiraTicketQuery, catalog?: JiraCatalog): string => {
     return filterName(query, catalog);
   }
   return LIST_TITLES[query.scope];
+};
+
+/** The view's search parameters, without the page; two views with the same string list the same tickets. */
+const presetSearch = (filters: JiraPresetFilters): string =>
+  jiraQueryParams({ ...filters, startAt: 0 }).toString();
+
+const PRESETS: PresetSource<JiraPresetFilters> = {
+  create: createJiraPreset,
+  empty:
+    "No presets yet. Name the current view, filters and JQL to switch back to them in one click.",
+  key: ["jira-presets"],
+  list: fetchJiraPresets,
+  remove: removeJiraPreset,
+  search: presetSearch,
+  update: updateJiraPreset,
 };
 
 type JiraLayout = "list" | "board";
@@ -491,9 +514,11 @@ export const JiraPage = () => {
   const query = parseJiraQuery(params) ?? JIRA_DEFAULT_QUERY;
   const layout: JiraLayout =
     params.get("layout") === "board" ? "board" : "list";
-  const { search } = query;
+  const { search, jql = "" } = query;
   const [input, setInput] = useState(search);
   useEffect(() => setInput(search), [search]);
+  const [jqlInput, setJqlInput] = useState(jql);
+  useEffect(() => setJqlInput(jql), [jql]);
   const catalog = useJiraResource<JiraCatalog>(["catalog"], fetchJiraCatalog);
   const queryClient = useQueryClient();
   const busy = useIsFetching({ queryKey: ["jira"] }) > 0;
@@ -506,6 +531,7 @@ export const JiraPage = () => {
       : undefined;
   const customized =
     jiraQueryParams({ ...query, search: "", startAt: 0 }).size > 0;
+  const { startAt: _startAt, ...current } = query;
   const projectOptions: ChoiceOption[] = [
     { label: "All projects", value: "" },
     ...(query.project &&
@@ -517,7 +543,7 @@ export const JiraPage = () => {
       value: p.key,
     })),
   ];
-  const where = viewPhrase(query, catalog.data);
+  const where = `${viewPhrase(query, catalog.data)}${jql ? " narrowed by JQL" : ""}`;
   return (
     <Page>
       <PageHeader
@@ -603,12 +629,21 @@ export const JiraPage = () => {
               Active sprint only
             </Label>
           )}
+          <div className="ml-auto">
+            <FilterPresets
+              source={PRESETS}
+              current={current}
+              onApply={(filters) =>
+                setParams(pageParams({ ...filters, startAt: 0 }, layout))
+              }
+            />
+          </div>
         </div>
         <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            change({ search: input.trim() });
+            change({ jql: jqlInput.trim() || undefined, search: input.trim() });
           }}
         >
           <div className="flex min-w-56 flex-1 flex-col gap-1.5">
@@ -619,6 +654,20 @@ export const JiraPage = () => {
               onChange={(e) => setInput(e.target.value)}
               maxLength={500}
               placeholder="Text in this view, or a ticket key such as APP-123"
+            />
+          </div>
+          <div className="flex min-w-56 flex-1 flex-col gap-1.5">
+            <Label htmlFor="jira-jql">JQL</Label>
+            <Input
+              id="jira-jql"
+              className="font-mono"
+              value={jqlInput}
+              onChange={(e) => setJqlInput(e.target.value)}
+              maxLength={JIRA_JQL_MAX}
+              placeholder='labels = backend AND fixVersion = "2.0"'
+              autoComplete="off"
+              spellCheck={false}
+              title="Added to the view's own filters as written. An ORDER BY replaces the sort."
             />
           </div>
           <Button type="submit">
