@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import {
   Tooltip,
@@ -9,13 +9,15 @@ import {
 /** A tooltip on any element; the child must take a ref (a DOM element or a forwarding component). */
 export const Tip = ({
   label,
+  side,
   children,
 }: {
   label: ReactNode;
+  side?: ComponentProps<typeof TooltipContent>["side"];
   children: ReactElement;
 }) => (
   <Tooltip>
     <TooltipTrigger asChild>{children}</TooltipTrigger>
-    <TooltipContent>{label}</TooltipContent>
+    <TooltipContent side={side}>{label}</TooltipContent>
   </Tooltip>
 );

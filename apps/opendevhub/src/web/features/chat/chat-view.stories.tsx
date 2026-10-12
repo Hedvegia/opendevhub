@@ -16,7 +16,7 @@ const meta = preview.meta({
   title: "Pages/Chat/View",
 });
 
-/** A chat in a worktree, full-width: the transcript and the composer, with Changes and Make task in its header. */
+/** A chat in a worktree, full-width: the transcript and the composer, with Make task in its header and the side panels on the right. */
 export const Conversation = meta.story({
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -66,16 +66,22 @@ export const Question = meta.story({
   },
 });
 
-/** Opening, switching and closing the side panels from the rail. */
+/** Opening, switching and closing the side panels from the sidebar's rail, Changes among them. */
 export const SidePanels = meta.story({
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const turns = await canvas.findByRole("button", { name: "Turns" });
-    await userEvent.click(turns);
+    const rail = within(
+      await canvas.findByRole("list", { name: "Side panels" })
+    );
+    await userEvent.click(rail.getByRole("button", { name: "Turns" }));
     await expect(
       await canvas.findByRole("complementary", { name: "Turns" })
     ).toBeVisible();
-    await userEvent.click(canvas.getByRole("button", { name: "Subagents" }));
+    await userEvent.click(rail.getByRole("button", { name: "Changes" }));
+    await expect(
+      await canvas.findByRole("complementary", { name: "Changes" })
+    ).toBeVisible();
+    await userEvent.click(rail.getByRole("button", { name: "Subagents" }));
     await expect(
       await canvas.findByText("Find where requests are counted")
     ).toBeVisible();

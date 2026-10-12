@@ -33,6 +33,7 @@ export const SessionView = ({
   checkout,
   session,
   showTask = false,
+  changes = false,
   onStarted,
   chips,
   actions,
@@ -41,6 +42,8 @@ export const SessionView = ({
   checkout: Checkout;
   session: SessionSummary;
   showTask?: boolean;
+  /** Offers the checkout's changes in a side panel. */
+  changes?: boolean;
   /** A conversation the composer's `/new` started in this checkout, with its chat. */
   onStarted?: (sessionId: string, chat?: string) => void;
   /** More chips for the header. */
@@ -75,6 +78,7 @@ export const SessionView = ({
       detail={detail}
       error={error?.message}
       showTask={showTask}
+      changes={changes}
       chips={chips}
       actions={actions}
       onSend={async (message) => {

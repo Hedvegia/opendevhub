@@ -1,16 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
-import { ArchiveIcon, FileDiffIcon, ListTodoIcon } from "lucide-react";
+import { ArchiveIcon, ListTodoIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -24,9 +17,6 @@ import { archiveChat, fetchChat } from "../../api";
 import { Chip, Empty, muted } from "../../components/page";
 import { useDash } from "../../dashboard-context";
 import { Link, Navigate, useNavigate } from "../../routing";
-import { CheckoutProvider } from "../checkouts/checkout-context";
-import { checkoutOf } from "../checkouts/checkouts";
-import { ProjectReview } from "../review/project-review";
 import { SessionView } from "../sessions/session-page";
 import { startStepLabel } from "../tasks/tasks";
 import { conversationCheckout } from "../tasks/variant-waiting";
@@ -36,7 +26,7 @@ import { MakeTaskDialog } from "./make-task-dialog";
 
 /**
  * One chat: its conversation full-width and full-height, with a header naming it, its project and checkout, and
- * offering its Changes, Make task and Archive. A task id in place of the chat's (an old link) opens the task; a chat a
+ * offering Make task and Archive; its checkout's changes are a panel in the conversation's sidebar. A task id in place of the chat's (an old link) opens the task; a chat a
  * task adopted opens that task with its variant selected.
  */
 export const ChatView = () => {
@@ -121,6 +111,7 @@ const ChatPage = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
           view={view}
           checkout={checkout}
           session={session}
+          changes
           chips={chips}
           actions={actions}
           onStarted={(_, next) => {
@@ -194,15 +185,11 @@ const SetupLog = ({ lines }: { lines: string[] }) => (
   </pre>
 );
 
-/** The chat header's buttons: its checkout's changes in a sheet, Make task, and Archive. */
+/** The chat header's buttons: Make task and Archive. */
 const ChatActions = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
   const navigate = useNavigate();
-  const [changes, setChanges] = useState(false);
   const [making, setMaking] = useState(false);
   const [error, setError] = useState<string>();
-  const checkout = chat.directory
-    ? checkoutOf(view, chat.directory)
-    : undefined;
   const blocked = makeTaskBlocked(view, chat);
 
   const archive = async () => {
@@ -217,14 +204,6 @@ const ChatActions = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
   return (
     <>
       {error && <span className="text-destructive text-xs">{error}</span>}
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={!checkout}
-        onClick={() => setChanges(true)}
-      >
-        <FileDiffIcon /> <span className="max-sm:sr-only">Changes</span>
-      </Button>
       <Tooltip>
         <TooltipTrigger asChild>
           {/* A disabled button gets no pointer events, so its tooltip hangs on a wrapper. */}
@@ -253,31 +232,6 @@ const ChatActions = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
         >
           <ArchiveIcon />
         </Button>
-      )}
-      {checkout && (
-        <Sheet open={changes} onOpenChange={setChanges}>
-          <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-4xl">
-            <SheetHeader>
-              <SheetTitle>Changes</SheetTitle>
-              <SheetDescription>
-                {checkout.worktree
-                  ? "The branch's commits against its base, and what isn't committed yet."
-                  : "What isn't committed yet in the main checkout."}
-              </SheetDescription>
-            </SheetHeader>
-            <div className="px-4 pb-4">
-              <CheckoutProvider
-                value={{
-                  checkout,
-                  view,
-                  ...(chat.sessionId ? { sessionId: chat.sessionId } : {}),
-                }}
-              >
-                <ProjectReview />
-              </CheckoutProvider>
-            </div>
-          </SheetContent>
-        </Sheet>
       )}
       {making && (
         <MakeTaskDialog

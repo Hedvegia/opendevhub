@@ -85,6 +85,7 @@ import { formatUsage } from "../features/usage/usage";
 import { Link, useIsActive, useSearchParams } from "../routing";
 import { CommandPalette } from "./command-palette";
 import { Logo } from "./logo";
+import { RightSidebarHost } from "./right-sidebar";
 
 const FILTER_THRESHOLD = 8;
 
@@ -528,13 +529,15 @@ export const Shell = () => {
   return (
     <SidebarProvider>
       <AppSidebar onSearch={() => setPalette(true)} />
-      <SidebarInset className="min-w-0">
-        <MobileBar onSearch={() => setPalette(true)} />
-        <Banners />
-        <div className="px-4 pt-4 pb-12 md:px-8 md:pt-6 md:pb-16">
-          <Outlet />
-        </div>
-      </SidebarInset>
+      <RightSidebarHost>
+        <SidebarInset className="min-w-0">
+          <MobileBar onSearch={() => setPalette(true)} />
+          <Banners />
+          <div className="px-4 pt-4 pb-12 md:px-8 md:pt-6 md:pb-16">
+            <Outlet />
+          </div>
+        </SidebarInset>
+      </RightSidebarHost>
       <CommandPalette open={palette} onClose={() => setPalette(false)} />
       <NewTaskDialog />
       <AddProjectDialog />

@@ -19,17 +19,19 @@ import { SessionBadge } from "../../components/status";
 import { Tip } from "../../components/tip";
 import { needsAttention, sessionHref } from "../../derive";
 import { Link } from "../../routing";
+import { CheckoutProvider } from "../checkouts/checkout-context";
 import type { Checkout } from "../checkouts/checkouts";
+import { ProjectReview } from "../review/project-review";
 import { taskChip } from "../tasks/tasks";
 import { Composer } from "./composer";
 import { PendingStack } from "./pending-cards";
 import {
-  PanelRail,
-  SidePanel,
+  ConversationSidebar,
   SubagentsPanel,
   TurnsPanel,
   useSidePanel,
 } from "./side-panel";
+import type { OpenPanel, PanelId } from "./side-panel";
 import { Transcript } from "./transcript";
 import { UsagePopover } from "./usage-popover";
 import { useStickToBottom } from "./use-stick-to-bottom";
@@ -39,8 +41,8 @@ const NOTICE_MS = 5000;
 
 /**
  * One conversation, filling the height it is given: a one-line header, the transcript scrolling under it, the
- * pending cards and the composer pinned to the bottom, and a rail of side panels on the right. `chips` and `actions`
- * add to the header, e.g. the Chat view's project and its link to the task.
+ * pending cards and the composer pinned to the bottom, and a right sidebar of panels. `chips` and `actions` add to
+ * the header, e.g. the Chat view's project and its link to the task; `changes` adds the checkout's Changes panel.
  */
 export const Conversation = (props: {
   view: ProjectView;
@@ -50,6 +52,8 @@ export const Conversation = (props: {
   error?: string;
   /** Adds a chip linking to the task the conversation belongs to. */
   showTask?: boolean;
+  /** Offers the checkout's changes in a side panel, for a conversation whose page has no Changes of its own. */
+  changes?: boolean;
   chips?: ReactNode;
   actions?: ReactNode;
   onSend: (
@@ -74,8 +78,49 @@ export const Conversation = (props: {
   const running = session.status !== "idle";
   const openHref = sessionHref(view, session);
   const subagents = detail?.subagents.length ?? 0;
-  // A remembered Subagents panel stays shut for a conversation without any.
-  const shown = panel === "subagents" && subagents === 0 ? undefined : panel;
+  const panels: PanelId[] = [
+    "turns",
+    ...(props.changes ? (["changes"] as const) : []),
+    ...(subagents > 0 ? (["subagents"] as const) : []),
+  ];
+  // A remembered panel this conversation doesn't offer stays shut.
+  const shown = panel && panels.includes(panel) ? panel : undefined;
+  let open: OpenPanel | undefined;
+  if (shown === "changes") {
+    open = {
+      children: (
+        <CheckoutProvider value={{ checkout, sessionId: session.id, view }}>
+          <ProjectReview />
+        </CheckoutProvider>
+      ),
+      hint: checkout.worktree
+        ? "Commits against the base, and what isn't committed"
+        : "What isn't committed",
+      id: shown,
+    };
+  } else if (shown === "turns" && detail) {
+    open = {
+      children: (
+        <TurnsPanel
+          detail={detail}
+          session={session}
+          projectId={projectId}
+          checkout={checkout}
+          onSent={setNotice}
+        />
+      ),
+      hint: `${detail.turns.length}${detail.more ? "+" : ""}, newest first`,
+      id: shown,
+    };
+  } else if (shown === "subagents" && detail) {
+    open = {
+      children: (
+        <SubagentsPanel detail={detail} view={view} session={session} />
+      ),
+      hint: subagents,
+      id: shown,
+    };
+  }
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -195,30 +240,12 @@ export const Conversation = (props: {
         </footer>
       </div>
 
-      {shown && detail && (
-        <SidePanel
-          panel={shown}
-          onClose={close}
-          hint={
-            shown === "turns"
-              ? `${detail.turns.length}${detail.more ? "+" : ""}, newest first`
-              : subagents
-          }
-        >
-          {shown === "turns" ? (
-            <TurnsPanel
-              detail={detail}
-              session={session}
-              projectId={projectId}
-              checkout={checkout}
-              onSent={setNotice}
-            />
-          ) : (
-            <SubagentsPanel detail={detail} view={view} session={session} />
-          )}
-        </SidePanel>
-      )}
-      <PanelRail panel={shown} onToggle={toggle} subagents={subagents} />
+      <ConversationSidebar
+        panels={panels}
+        open={open}
+        onToggle={toggle}
+        onClose={close}
+      />
     </div>
   );
 };

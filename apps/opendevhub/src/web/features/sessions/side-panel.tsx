@@ -3,6 +3,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ExternalLinkIcon,
+  FileDiffIcon,
   ListTreeIcon,
   LoaderCircleIcon,
   XIcon,
@@ -18,7 +19,15 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Toggle } from "@/components/ui/toggle";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
 import { modelShortName } from "../../../shared/tasks";
@@ -34,20 +43,24 @@ import { Tip } from "../../components/tip";
 import { When } from "../../components/when";
 import { needsAttention, openUrlOf } from "../../derive";
 import { useMediaQuery } from "../../hooks/use-media-query";
+import { RightSidebar } from "../../shell/right-sidebar";
 import type { Checkout } from "../checkouts/checkouts";
 import { TurnChanges } from "../review/turn-changes";
 import { formatCost, formatTokens } from "../tasks/tasks";
 import { turnActivity, turnDuration } from "./session-detail";
 
-export type PanelId = "turns" | "subagents";
+export type PanelId = "turns" | "changes" | "subagents";
 
 const PANEL_KEY = "opendevhub.conversation.panel";
 const WIDE_QUERY = "(min-width: 1024px)";
 
+const isPanelId = (value: string | null): value is PanelId =>
+  value === "turns" || value === "changes" || value === "subagents";
+
 const readPanel = (): PanelId | undefined => {
   try {
     const stored = localStorage.getItem(PANEL_KEY);
-    return stored === "turns" || stored === "subagents" ? stored : undefined;
+    return isPanelId(stored) ? stored : undefined;
   } catch {
     return undefined;
   }
@@ -79,76 +92,86 @@ export const useSidePanel = () => {
   };
 };
 
-const PANELS = {
+export const PANELS = {
+  changes: { icon: FileDiffIcon, label: "Changes" },
   subagents: { icon: BotIcon, label: "Subagents" },
   turns: { icon: ListTreeIcon, label: "Turns" },
 } as const;
 
-/** The icon buttons on the conversation's right edge, one per panel. */
-export const PanelRail = (props: {
-  panel?: PanelId;
+/** The open panel's content and the short note beside its title. */
+export interface OpenPanel {
+  id: PanelId;
+  hint?: ReactNode;
+  children: ReactNode;
+}
+
+/**
+ * The conversation's right sidebar, on the window's right edge: a rail of icon buttons, one per panel, and the open
+ * panel beside it. On narrow screens the open panel is a sheet over the conversation instead.
+ */
+export const ConversationSidebar = (props: {
+  /** The panels offered, in the rail's order. */
+  panels: PanelId[];
+  open?: OpenPanel;
   onToggle: (id: PanelId) => void;
-  subagents: number;
+  onClose: () => void;
 }) => {
-  const ids: PanelId[] =
-    props.subagents > 0 ? ["turns", "subagents"] : ["turns"];
+  const wide = useMediaQuery(WIDE_QUERY);
+  const { open } = props;
   return (
-    <nav
-      aria-label="Side panels"
-      className="flex shrink-0 flex-col items-center gap-1 border-l px-1.5 py-2"
-    >
-      {ids.map((id) => {
-        const { icon: Icon, label } = PANELS[id];
-        return (
-          <Tip key={id} label={label}>
-            <Toggle
-              size="sm"
-              aria-label={label}
-              pressed={props.panel === id}
-              onPressedChange={() => props.onToggle(id)}
-            >
-              <Icon />
-            </Toggle>
-          </Tip>
-        );
-      })}
-    </nav>
+    <RightSidebar>
+      <Sidebar
+        side="right"
+        collapsible="none"
+        className="sticky top-0 h-svh w-auto shrink-0 flex-row border-l"
+      >
+        {open && wide && <PanelColumn panel={open} onClose={props.onClose} />}
+        <SidebarContent className="w-12 flex-none border-l first:border-l-0">
+          <SidebarGroup className="px-2">
+            <SidebarMenu aria-label="Side panels">
+              {props.panels.map((id) => {
+                const { icon: Icon, label } = PANELS[id];
+                return (
+                  <SidebarMenuItem key={id}>
+                    <Tip label={label} side="left">
+                      <SidebarMenuButton
+                        className="size-8 justify-center p-0"
+                        aria-label={label}
+                        aria-pressed={open?.id === id}
+                        isActive={open?.id === id}
+                        onClick={() => props.onToggle(id)}
+                      >
+                        <Icon />
+                      </SidebarMenuButton>
+                    </Tip>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+      {open && !wide && <PanelSheet panel={open} onClose={props.onClose} />}
+    </RightSidebar>
   );
 };
 
-/** The open panel: a column beside the transcript on wide screens, a sheet over it on narrow ones. */
-export const SidePanel = (props: {
-  panel: PanelId;
-  onClose: () => void;
-  hint?: ReactNode;
-  children: ReactNode;
-}) => {
-  const wide = useMediaQuery(WIDE_QUERY);
-  const { label } = PANELS[props.panel];
-  if (!wide) {
-    return (
-      <Sheet open onOpenChange={(open) => !open && props.onClose()}>
-        <SheetContent className="w-full gap-0 sm:max-w-md">
-          <SheetHeader className="border-b">
-            <SheetTitle>{label}</SheetTitle>
-            <SheetDescription className={props.hint ? undefined : "sr-only"}>
-              {props.hint ?? label}
-            </SheetDescription>
-          </SheetHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto">{props.children}</div>
-        </SheetContent>
-      </Sheet>
-    );
-  }
+/** The open panel as a column of the sidebar; Changes gets more room for its diffs. */
+const PanelColumn = (props: { panel: OpenPanel; onClose: () => void }) => {
+  const { id, hint, children } = props.panel;
+  const { label } = PANELS[id];
   return (
     <aside
       aria-label={label}
-      className="flex min-h-0 w-[26rem] shrink-0 flex-col border-l xl:w-[40%]"
+      className={cn(
+        "flex min-h-0 flex-col",
+        id === "changes" ? "w-[32rem] xl:w-[44vw]" : "w-[26rem] xl:w-[34vw]"
+      )}
     >
-      <header className="flex items-center gap-2 border-b py-1.5 pr-1.5 pl-4">
+      <SidebarHeader className="h-12 flex-row items-center gap-2 border-b py-0 pr-2 pl-4">
         <h3 className="text-sm font-semibold">{label}</h3>
-        {props.hint && (
-          <span className={cn(muted, "text-xs")}>{props.hint}</span>
+        {hint && (
+          <span className={cn(muted, "min-w-0 truncate text-xs")}>{hint}</span>
         )}
         <Button
           variant="ghost"
@@ -159,9 +182,46 @@ export const SidePanel = (props: {
         >
           <XIcon />
         </Button>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">{props.children}</div>
+      </SidebarHeader>
+      <div
+        className={cn(
+          "bg-background min-h-0 flex-1 overflow-y-auto",
+          id === "changes" && "p-4"
+        )}
+      >
+        {children}
+      </div>
     </aside>
+  );
+};
+
+const PanelSheet = (props: { panel: OpenPanel; onClose: () => void }) => {
+  const { id, hint, children } = props.panel;
+  const { label } = PANELS[id];
+  return (
+    <Sheet open onOpenChange={(open) => !open && props.onClose()}>
+      <SheetContent
+        className={cn(
+          "w-full gap-0",
+          id === "changes" ? "sm:max-w-4xl" : "sm:max-w-md"
+        )}
+      >
+        <SheetHeader className="border-b">
+          <SheetTitle>{label}</SheetTitle>
+          <SheetDescription className={hint ? undefined : "sr-only"}>
+            {hint ?? label}
+          </SheetDescription>
+        </SheetHeader>
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto",
+            id === "changes" && "p-4"
+          )}
+        >
+          {children}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 };
 
