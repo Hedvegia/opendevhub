@@ -270,6 +270,39 @@ export const createForgejoRoutes = (deps: DashboardDeps) => {
         })
     )
     .post(
+      "/api/forgejo/pulls/:owner/:repo/:number/ocr-review",
+      validateJson(bodies.aiReview),
+      (c) =>
+        json(c, async (_id): Promise<AiReviewResult> => {
+          if (!deps.ocr) {
+            throw new UnavailableError("Open Code Review is not available");
+          }
+          const b = c.req.valid("json");
+          const details = await pullAt(c, b.commitId);
+          const pull = reviewedPull(details);
+          const review = await deps.ocr.service.review({
+            details,
+            directory: b.directory,
+            projectId: b.projectId,
+          });
+          if (pull && links) {
+            links.insertReview(
+              {
+                checkout: { directory: b.directory, projectId: b.projectId },
+                findings: review.findings,
+                headSha: details.headSha,
+                mode: "ocr",
+                pullRequestId: pull.id,
+                stats: review.stats,
+                summary: review.summary,
+              },
+              USER
+            );
+          }
+          return review;
+        })
+    )
+    .post(
       "/api/forgejo/pulls/:owner/:repo/:number/worktree",
       validateJson(bodies.forgejoWorktree),
       (c) =>

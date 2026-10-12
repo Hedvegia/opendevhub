@@ -9,6 +9,7 @@ import {
   GitPullRequestIcon,
   PlugIcon,
   SearchIcon,
+  ScanSearchIcon,
   ServerIcon,
   SettingsIcon,
   TicketIcon,
@@ -52,6 +53,7 @@ import {
   IntegrationsSettings,
 } from "./integrations-settings";
 import { NotificationSettings } from "./notification-settings";
+import { OCR_SECTION, OcrSettingsSection } from "./ocr-settings";
 import { ProjectSettings } from "./project-settings";
 import { SETTINGS_PARAM, SettingsLink, useSettingsHref } from "./settings-link";
 import { ShortcutSettings } from "./shortcut-settings";
@@ -168,6 +170,15 @@ const SECTIONS: SectionDef[] = [
     keywords: "tickets token url",
     label: "Jira",
     render: () => <IntegrationSettingsPage id="jira" />,
+  },
+  {
+    group: "integrations",
+    icon: ScanSearchIcon,
+    id: OCR_SECTION,
+    keywords:
+      "ocr review model provider api key timeout concurrency budget pull requests",
+    label: "Open Code Review",
+    render: () => <OcrSettingsSection />,
   },
 ];
 

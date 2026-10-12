@@ -1,4 +1,8 @@
-import type { AiFinding } from "../../shared/forgejo";
+import type {
+  AiFinding,
+  AiReviewMode,
+  OcrRunStats,
+} from "../../shared/forgejo";
 import type {
   ForgeKind,
   NodeId,
@@ -58,10 +62,13 @@ export interface NewReview {
   /** The review task; defaults to the task of `sessionId`. */
   taskId?: string;
   sessionId?: string;
-  mode: "session" | "quick";
+  /** Without a task or session: the checkout reviewed, whose variant's task the review belongs to. */
+  checkout?: { projectId: string; directory: string };
+  mode: AiReviewMode;
   headSha: string;
   summary: string;
   findings: AiFinding[];
+  stats?: OcrRunStats;
 }
 
 /** A task's links as the snapshot shows them. */
@@ -100,10 +107,11 @@ interface RawReview {
   pull_request_id: number;
   task_id: string | null;
   session_id: string | null;
-  mode: "session" | "quick";
+  mode: AiReviewMode;
   head_sha: string;
   summary: string | null;
   findings: string;
+  stats: string | null;
   created_at: number;
 }
 
@@ -208,6 +216,20 @@ const parseFindings = (text: string): AiFinding[] => {
   }
 };
 
+const parseStats = (raw: string | null): { stats?: OcrRunStats } => {
+  if (!raw) {
+    return {};
+  }
+  try {
+    const s = JSON.parse(raw) as OcrRunStats;
+    return s && typeof s === "object" && typeof s.filesReviewed === "number"
+      ? { stats: s }
+      : {};
+  } catch {
+    return {};
+  }
+};
+
 const toReview = (r: RawReview): StoredAiReview => ({
   createdAt: r.created_at,
   findings: parseFindings(r.findings),
@@ -215,6 +237,7 @@ const toReview = (r: RawReview): StoredAiReview => ({
   id: r.id,
   mode: r.mode,
   summary: r.summary ?? "",
+  ...parseStats(r.stats),
   ...(r.session_id === null ? {} : { sessionId: r.session_id }),
   ...(r.task_id === null ? {} : { taskId: r.task_id }),
 });
@@ -529,13 +552,15 @@ export class LinkStore {
                 .prepare("SELECT task_id FROM variants WHERE session_id = ?")
                 .get(input.sessionId) as { task_id: string } | undefined
             )?.task_id
-          : undefined);
-      const review = { ...input, ...(taskId ? { taskId } : {}) };
+          : undefined) ??
+        (input.checkout ? this.checkoutTask(input.checkout) : undefined);
+      const { checkout: _checkout, ...rest } = input;
+      const review = { ...rest, ...(taskId ? { taskId } : {}) };
       const id = Number(
         this.db
           .prepare(
-            `INSERT INTO reviews (pull_request_id, task_id, session_id, mode, head_sha, summary, findings, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO reviews (pull_request_id, task_id, session_id, mode, head_sha, summary, findings, stats, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             review.pullRequestId,
@@ -545,6 +570,7 @@ export class LinkStore {
             review.headSha,
             review.summary,
             JSON.stringify(review.findings),
+            review.stats ? JSON.stringify(review.stats) : null,
             at
           ).lastInsertRowid
       );
@@ -575,6 +601,23 @@ export class LinkStore {
         .get(id) as unknown as RawReview;
       return toReview(row);
     });
+  }
+
+  /** The task whose newest live variant works in a checkout, if any. */
+  private checkoutTask(checkout: {
+    projectId: string;
+    directory: string;
+  }): string | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT v.task_id AS task_id FROM variants v JOIN tasks t ON t.id = v.task_id
+         WHERE t.project_id = ? AND v.directory = ? AND t.archived_at IS NULL
+         ORDER BY t.created_at DESC, v.n DESC LIMIT 1`
+      )
+      .get(checkout.projectId, checkout.directory) as
+      | { task_id: string }
+      | undefined;
+    return row?.task_id;
   }
 
   /** A pull request's stored reviews, newest first; none for a URL without a row. */

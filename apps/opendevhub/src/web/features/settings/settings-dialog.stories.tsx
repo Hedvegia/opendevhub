@@ -1,6 +1,12 @@
+import { userEvent, within } from "storybook/test";
+
 import preview from "../../../../.storybook/preview";
 import { App } from "../../app";
-import { gitSetupBare, integrationOff } from "../../mocks/fixtures";
+import {
+  gitSetupBare,
+  integrationOff,
+  ocrSettingsEmpty,
+} from "../../mocks/fixtures";
 import { mockApi } from "../../mocks/story";
 
 const meta = preview.meta({
@@ -52,4 +58,33 @@ export const IntegrationsOff = meta.story({
 
 export const Forgejo = meta.story({
   parameters: { route: "/?settings=forgejo" },
+});
+
+/** Open Code Review with a custom gateway as the default provider; a key is saved. */
+export const OpenCodeReview = meta.story({
+  parameters: { route: "/?settings=open-code-review" },
+});
+
+/** Nothing set up yet, and no ~/.opencodereview to import. */
+export const OpenCodeReviewEmpty = meta.story({
+  beforeEach: mockApi({ ocr: ocrSettingsEmpty }),
+  parameters: { route: "/?settings=open-code-review" },
+});
+
+/** Test connection shows the provider's error from `ocr llm test`. */
+export const OpenCodeReviewTestFailed = meta.story({
+  beforeEach: mockApi({
+    ocrTest: {
+      error:
+        "[ocr] Error: LLM completion error: authentication: 401 Unauthorized: Incorrect API key provided",
+      ok: false,
+    },
+  }),
+  parameters: { route: "/?settings=open-code-review" },
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    await userEvent.click(
+      await body.findByRole("button", { name: "Test connection" })
+    );
+  },
 });

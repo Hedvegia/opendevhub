@@ -10,6 +10,12 @@ import type {
 } from "../../shared/forgejo";
 import type { GitSetup } from "../../shared/git-setup";
 import type { JiraFilterPreset, JiraSettings } from "../../shared/jira";
+import type {
+  OcrProjectSettings,
+  OcrSettings,
+  OcrSettingsInput,
+  OcrTestResult,
+} from "../../shared/ocr";
 import type { DashboardSnapshot, ProjectLinks } from "../../shared/types";
 import {
   activityPage,
@@ -38,6 +44,9 @@ import {
   jiraTickets,
   logLines,
   models,
+  ocrReview,
+  ocrSettings,
+  projectOcrDefault,
   PATCH,
   publishInfo,
   pullLinks,
@@ -58,6 +67,11 @@ export interface MockOptions {
   git?: GitSetup;
   /** Milliseconds every REST response waits, to show loading states. */
   latency?: number;
+  ocr?: OcrSettings;
+  /** Every project's Open Code Review settings. */
+  projectOcr?: OcrProjectSettings;
+  /** What Test connection answers. */
+  ocrTest?: OcrTestResult;
 }
 
 const aiReview: AiReviewResult = {
@@ -92,7 +106,10 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
     jira = jiraSettings,
     git = gitSetup,
     latency = 0,
+    projectOcr = projectOcrDefault,
+    ocrTest = { ok: true },
   } = options;
+  let ocr = options.ocr ?? ocrSettings;
   let presets: ForgejoFilterPreset[] = [
     {
       filters: { inbox: "review-requested", state: "open" },
@@ -239,6 +256,52 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
       await delay(800);
       return HttpResponse.json(aiReview);
     }),
+    http.post(
+      "/api/forgejo/pulls/:owner/:repo/:number/ocr-review",
+      async () => {
+        await delay(1500);
+        return HttpResponse.json(ocrReview);
+      }
+    ),
+    http.get("/api/ocr/settings", async () => {
+      await wait();
+      return HttpResponse.json(ocr);
+    }),
+    http.put("/api/ocr/settings", async ({ request }) => {
+      const input = (await request.json()) as OcrSettingsInput;
+      const { key, clearKey, ...provider } = input.provider;
+      ocr = {
+        ...ocr,
+        limits: input.limits,
+        provider: {
+          ...provider,
+          hasKey: clearKey ? false : !!key || ocr.provider.hasKey,
+        },
+      };
+      return HttpResponse.json(ocr);
+    }),
+    http.post("/api/ocr/settings/test", async () => {
+      await delay(600);
+      return HttpResponse.json(ocrTest);
+    }),
+    http.post("/api/ocr/settings/import", () =>
+      HttpResponse.json({
+        key: "sk-imported",
+        model: "vllm/coding",
+        preset: "custom",
+        protocol: "openai",
+        url: "https://ask-ai.example.com/api",
+      })
+    ),
+    http.post("/api/ocr/install", async () => {
+      await delay(800);
+      return HttpResponse.json({ installed: true });
+    }),
+    http.get("/api/projects/:id/ocr", async () => {
+      await wait();
+      return HttpResponse.json(projectOcr);
+    }),
+    http.put("/api/projects/:id/ocr", () => HttpResponse.json(projectOcr)),
     http.get("/api/forgejo/pulls/:owner/:repo/:number/ai-reviews", () =>
       HttpResponse.json({ reviews: pullLinks(forgejoDetails.pull.url).reviews })
     ),

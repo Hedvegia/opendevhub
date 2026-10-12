@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -9,17 +10,29 @@ import type {
 import { creatorView } from "../db/checkouts";
 import { USER } from "../db/events";
 import type { CheckTarget } from "../environments/checks";
-import type { ExecTarget } from "../environments/containers";
+import type { Containers, ExecTarget } from "../environments/containers";
 import type { Environments, TaskEnv } from "../environments/environments";
 import { repoOf } from "../environments/ports";
 import type { GitPort, HubDeps } from "../environments/ports";
 import { BusyError, UnavailableError } from "../errors";
+import type { RunResult } from "../nodes/exec";
+import { LOCAL_NODE } from "../nodes/host";
 import type { Sessions } from "../sessions/sessions";
 import {
   InvalidRequestError,
   validateBranch,
   worktreeDirName,
 } from "./worktrees";
+
+/** A running checkout's container, as tools that run in it reach it. */
+export interface ToolEnv {
+  project: Project;
+  exec: (
+    command: string[],
+    opts?: Parameters<Containers["exec"]>[2]
+  ) => Promise<RunResult>;
+  copyIn: (localFile: string, containerPath: string) => Promise<void>;
+}
 
 const NO_WORKTREE_MOUNT =
   "this container was created before opendevhub mounted a worktrees folder — rebuild the container to enable worktrees";
@@ -282,6 +295,57 @@ export class Checkouts {
       () => repo.bringHome(p, layout, branch)
     );
     return { branch };
+  }
+
+  /**
+   * A running checkout's container, for tools opendevhub runs in it: commands, and files of this machine copied
+   * in. On another node a file is first uploaded to the node's tools folder, once per path.
+   */
+  toolEnv(id: ProjectId, directory: string): ToolEnv {
+    const project = this.envs.requireProject(id);
+    this.envs.checkDirectory(id, directory);
+    const env = this.envs.envForDirectory(project, directory);
+    const rt = this.deps.store.runtime(env.id);
+    if (rt.containerState !== "running" || !rt.containerId) {
+      throw new UnavailableError(
+        env.worktree
+          ? "this worktree's container is not running — start it from the Worktrees tab"
+          : "the project's container is not running"
+      );
+    }
+    const { containerId } = rt;
+    const kit = this.envs.kit(env);
+    const { containers } = kit;
+    const { exec, copyIn } = containers;
+    if (!exec || !copyIn) {
+      throw new UnavailableError("this node can't run tools in containers");
+    }
+    const upload = async (local: string): Promise<string> => {
+      const { host } = kit;
+      if (env.node === LOCAL_NODE || !host) {
+        return local;
+      }
+      const rel = local.split(`${path.sep}tools${path.sep}`).at(-1) ?? "";
+      const remote = path.posix.join(
+        host.home,
+        ".opendevhub",
+        "tools",
+        ...rel.split(path.sep)
+      );
+      const cached = await host.run("test", ["-f", remote], {
+        timeoutMs: 30_000,
+      });
+      if (cached.exitCode !== 0) {
+        await host.writeFile(remote, await fs.readFile(local));
+      }
+      return remote;
+    };
+    return {
+      copyIn: async (local, destination) =>
+        copyIn.call(containers, containerId, await upload(local), destination),
+      exec: (command, opts) => exec.call(containers, env.target, command, opts),
+      project,
+    };
   }
 
   /** A checkout as checks run it: its environment (and whether it runs) and its host folder. */

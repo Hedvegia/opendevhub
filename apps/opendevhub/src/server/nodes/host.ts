@@ -18,7 +18,7 @@ export interface Host {
   dial: (ip: string, port: number) => Promise<Duplex>;
   readFile: (file: string) => Promise<string>;
   /** Creates missing parent folders. */
-  writeFile: (file: string, content: string) => Promise<void>;
+  writeFile: (file: string, content: string | Buffer) => Promise<void>;
   /** The absolute home folder on that machine; opendevhub's files on a node go under `<home>/.opendevhub`. */
   home: string;
 }

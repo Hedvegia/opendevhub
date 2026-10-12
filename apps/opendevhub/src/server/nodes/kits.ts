@@ -80,5 +80,6 @@ export const buildNodeKit = (
     network: { route: (c) => sshRoute(host, c.ip) },
     git: new GitOps({ containers }),
     repo: new NodeRepo({ host, local: deps.local, node: host.id, target }),
+    host,
   };
 };

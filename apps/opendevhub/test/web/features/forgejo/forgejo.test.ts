@@ -9,6 +9,7 @@ import {
   forgejoCommentNote,
   placeAiFindings,
   suggestionComment,
+  withSuggestion,
   forgejoFilePatches,
   forgejoReviewComments,
   forgejoReviewFiles,
@@ -494,5 +495,49 @@ describe("forgejoRoute", () => {
     expect(
       forgejoRoute("https://git.acme.dev/a/b/pulls/1", undefined)
     ).toBeUndefined();
+  });
+});
+
+describe("withSuggestion", () => {
+  it("appends the suggested code as a fenced block", () => {
+    expect(withSuggestion("Use <", { suggestion: "i < n\n" })).toBe(
+      "Use <\n\n```\ni < n\n```"
+    );
+  });
+
+  it("uses a fence longer than any backticks in the code, and leaves text without a suggestion alone", () => {
+    expect(withSuggestion("x", { suggestion: "a ``` b" })).toBe(
+      "x\n\n````\na ``` b\n````"
+    );
+    expect(withSuggestion("x", {})).toBe("x");
+    expect(withSuggestion("x", { suggestion: "  " })).toBe("x");
+  });
+});
+
+describe("placeAiFindings with Open Code Review fields", () => {
+  it("keeps a finding's category and suggested code when it lands in the diff", () => {
+    const files = forgejoReviewFiles(
+      "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,1 +1,2 @@\n x\n+y\n"
+    );
+    const { inline } = placeAiFindings(
+      [
+        {
+          body: "b",
+          category: "bug",
+          existing: "y",
+          file: "a.ts",
+          line: 2,
+          severity: "major",
+          side: "new",
+          suggestion: "z",
+        },
+      ],
+      files
+    );
+    expect(inline[0]).toMatchObject({
+      category: "bug",
+      existing: "y",
+      suggestion: "z",
+    });
   });
 });

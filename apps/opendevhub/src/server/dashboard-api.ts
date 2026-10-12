@@ -10,6 +10,7 @@ import { createForgejoRoutes } from "./api/forgejo";
 import { errorResponse } from "./api/helpers";
 import { createJiraRoutes } from "./api/jira";
 import { createLinksRoutes } from "./api/links";
+import { createOcrRoutes } from "./api/ocr";
 import { createProjectsRoutes } from "./api/projects";
 import type { EventStore } from "./db/events";
 import type { ForgejoPresetStore, JiraPresetStore } from "./db/filter-presets";
@@ -25,6 +26,8 @@ import type { Forgejo } from "./integrations/forgejo";
 import type { Jira } from "./integrations/jira";
 import type { Nodes } from "./nodes/registry";
 import type { Push } from "./notifications/push";
+import type { OcrService } from "./ocr/service";
+import type { OcrSettingsStore } from "./ocr/settings";
 import type { OnboardingPort } from "./projects/onboarding";
 import type { StateStore } from "./projects/state";
 import type { Chat } from "./sessions/chat";
@@ -188,6 +191,14 @@ export interface DashboardDeps {
     | "forPull"
     | "forTicket"
   >;
+  /** Open Code Review settings and runs; absent in tests that don't need them. */
+  ocr?: {
+    settings: Pick<
+      OcrSettingsStore,
+      "view" | "save" | "projectView" | "saveProject" | "importHost"
+    >;
+    service: Pick<OcrService, "test" | "review" | "install">;
+  };
   /** The event feed; absent in tests that don't need it. */
   activity?: Pick<EventStore, "page">;
   /** Where entities came from; absent in tests that don't need it. */
@@ -234,6 +245,7 @@ export const createDashboardApp = (deps: DashboardDeps) => {
     .route("/", createForgejoRoutes(deps))
     .route("/", createJiraRoutes(deps))
     .route("/", createLinksRoutes(deps))
+    .route("/", createOcrRoutes(deps))
     .route("/", createProjectsRoutes(deps));
   // An unknown API path must fail loudly, not answer 200 with the page (the client would take HTML for data).
   app.all("/api/*", (c) =>

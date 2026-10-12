@@ -124,6 +124,59 @@ describe("migrate", () => {
   });
 });
 
+describe("migration 4: reviews may be OCR reviews", () => {
+  it("keeps existing reviews and accepts the ocr mode", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("PRAGMA foreign_keys = ON");
+    migrate(db, MIGRATIONS.slice(0, 3));
+    db.exec(`
+      INSERT INTO pull_requests (id, url, forge) VALUES (1, 'https://f.example/o/r/pulls/1', 'forgejo');
+      INSERT INTO reviews (id, pull_request_id, session_id, mode, head_sha, summary, findings, created_at)
+        VALUES (5, 1, 'ses_1', 'session', 'abc', 'ok', '[]', 10), (6, 1, NULL, 'quick', 'abc', '', '[]', 20);
+    `);
+    expect(() =>
+      db.exec(
+        "INSERT INTO reviews (pull_request_id, mode, head_sha, findings, created_at) VALUES (1, 'ocr', 'abc', '[]', 1)"
+      )
+    ).toThrow(/CHECK/u);
+    migrate(db);
+    expect(
+      db
+        .prepare(
+          "SELECT id, session_id, mode, summary, stats, created_at FROM reviews ORDER BY id"
+        )
+        .all()
+    ).toEqual([
+      {
+        created_at: 10,
+        id: 5,
+        mode: "session",
+        session_id: "ses_1",
+        stats: null,
+        summary: "ok",
+      },
+      {
+        created_at: 20,
+        id: 6,
+        mode: "quick",
+        session_id: null,
+        stats: null,
+        summary: "",
+      },
+    ]);
+    db.exec(
+      "INSERT INTO reviews (pull_request_id, mode, head_sha, findings, stats, created_at) VALUES (1, 'ocr', 'abc', '[]', '{}', 30)"
+    );
+    expect(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'reviews'"
+        )
+        .all()
+    ).toEqual([{ name: "reviews_pull" }]);
+  });
+});
+
 describe("migration 2: manual tasks become chats", () => {
   it("turns each manual task into a chat, keeps other tasks and events, and frees its branch", () => {
     const db = new DatabaseSync(":memory:");

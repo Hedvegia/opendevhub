@@ -10,8 +10,9 @@ export const AI_REVIEW_TIMEOUT_MS = 5 * 60_000;
 const DESCRIPTION_CHARS = 12_000;
 /** Leaves room for the description and instructions within the session prompt limit. */
 const PATCH_CHARS = 150_000;
-const MAX_FINDINGS = 100;
-const BODY_CHARS = 4000;
+/** Shared by every review engine: at most this many findings, each body cut to BODY_CHARS. */
+export const MAX_FINDINGS = 100;
+export const BODY_CHARS = 4000;
 const SEVERITIES = new Set<string>(["blocker", "major", "minor", "nit"]);
 
 export const aiReviewTitle = (details: ForgejoPullDetails): string =>

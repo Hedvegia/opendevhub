@@ -1,4 +1,4 @@
-import type { AiFinding } from "./forgejo";
+import type { AiFinding, AiReviewMode, OcrRunStats } from "./forgejo";
 import type { JiraTaskSource } from "./jira";
 import type { StackId } from "./stacks";
 
@@ -1025,12 +1025,14 @@ export interface StoredAiReview {
   id: number;
   /** The head commit the review was checked against. */
   headSha: string;
-  mode: "session" | "quick";
+  mode: AiReviewMode;
   sessionId?: string;
   /** The review task it ran in. */
   taskId?: string;
   summary: string;
   findings: AiFinding[];
+  /** Set for Open Code Review runs. */
+  stats?: OcrRunStats;
   createdAt: number;
 }
 

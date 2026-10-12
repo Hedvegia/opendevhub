@@ -51,6 +51,7 @@ import { Worktrees } from "./git/worktrees";
 import { createHub } from "./hub";
 import { FileForgejoSettings, Forgejo } from "./integrations/forgejo";
 import { FileJiraSettings, Jira } from "./integrations/jira";
+import { OsSecretStore } from "./integrations/secrets";
 import { Gateway } from "./network/gateway";
 import { PortForwarder } from "./network/port-forwarder";
 import type { ResolveTarget } from "./network/proxy";
@@ -62,6 +63,9 @@ import { NodeKits, buildNodeKit } from "./nodes/kits";
 import { Nodes } from "./nodes/registry";
 import { startNotifier } from "./notifications/notifier";
 import { Push } from "./notifications/push";
+import { OcrBinaries } from "./ocr/binary";
+import { OcrService } from "./ocr/service";
+import { OcrSettingsStore } from "./ocr/settings";
 import { OpencodeClient } from "./opencode/client";
 import { OpencodeRuntime } from "./opencode/runtime";
 import { preflight } from "./preflight";
@@ -400,6 +404,22 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
   // After the local containers, so a node coming online adopts into a settled store.
   nodes.start();
 
+  const ocrSettings = new OcrSettingsStore({
+    configDir: dir,
+    project: (id) => store.project(id),
+    projects: projectSettings,
+    secrets: new OsSecretStore("opendevhub.ocr"),
+  });
+  const ocr = {
+    service: new OcrService({
+      binaries: new OcrBinaries({ configDir: dir }),
+      run: spawnRunner,
+      settings: ocrSettings,
+      toolEnv: (id, directory) => hub.checkouts.toolEnv(id, directory),
+    }),
+    settings: ocrSettings,
+  };
+
   const push = new Push({ file: path.join(stateDir(), "push.json") });
   const stopNotifier = startNotifier(store, push);
   const app = createDashboardApp({
@@ -444,6 +464,7 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
     jiraPresets: new JiraPresetStore(db),
     jira: new Jira(new FileJiraSettings(dir)),
     links,
+    ocr,
     activity: events,
     provenance: new ProvenanceStore(db),
     ...(usage ? { usage } : {}),

@@ -7,6 +7,7 @@ import type {
   ForgejoReview,
   ForgejoReviewComment,
   ForgejoStackNode,
+  OcrRunStats,
 } from "../../../shared/forgejo";
 import type { PublishInfo, ReviewFile } from "../../../shared/types";
 import { linesLabel, parsePatch } from "../review/review";
@@ -455,9 +456,28 @@ export const placeAiFindings = (
       severity: f.severity,
       side: f.side ?? "new",
       ...(start === undefined ? {} : { start }),
+      ...(f.category ? { category: f.category } : {}),
+      ...(f.suggestion ? { suggestion: f.suggestion } : {}),
+      ...(f.existing ? { existing: f.existing } : {}),
     });
   }
   return { general, inline };
+};
+
+/** The comment text with the finding's suggested code below it, fenced so that backticks in the code can't end it. */
+export const withSuggestion = (
+  text: string,
+  s: Pick<AiFinding, "suggestion">
+): string => {
+  if (!s.suggestion?.trim()) {
+    return text;
+  }
+  const longest = Math.max(
+    0,
+    ...[...s.suggestion.matchAll(/`+/gu)].map((m) => m[0].length)
+  );
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return `${text}\n\n${fence}\n${s.suggestion.replace(/\n+$/u, "")}\n${fence}`;
 };
 
 /** An accepted AI suggestion as one of your draft comments. */
@@ -503,10 +523,23 @@ export interface AiReviewRun {
   headSha: string;
   projectId: string;
   directory: string;
-  /** "agent": a session investigates first. "quick": findings straight from the diff. */
-  kind: "agent" | "quick";
-  /** waiting: for the checkout's opencode. reviewing: the session works. collecting: generating findings. */
-  stage: "waiting" | "reviewing" | "collecting" | "done" | "failed";
+  /** "agent": a session investigates first. "quick": findings straight from the diff. "ocr": Open Code Review. */
+  kind: "agent" | "quick" | "ocr";
+  /**
+   * waiting: for the checkout's opencode. installing: copying Open Code Review into the environment.
+   * reviewing: the session (or OCR) works. collecting: generating findings.
+   */
+  stage:
+    | "waiting"
+    | "installing"
+    | "reviewing"
+    | "collecting"
+    | "done"
+    | "failed";
+  /** Set on Open Code Review runs. */
+  stats?: OcrRunStats;
+  /** The error is about the provider's settings, so it links to them. */
+  settingsError?: boolean;
   sessionId?: string;
   /** When the current stage began. */
   startedAt: number;

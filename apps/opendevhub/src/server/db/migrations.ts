@@ -229,6 +229,25 @@ CREATE TABLE jira_filter_presets (
   updated_at INTEGER NOT NULL
 );
 `,
+  `
+CREATE TABLE reviews_new (
+  id              INTEGER PRIMARY KEY,
+  pull_request_id INTEGER NOT NULL REFERENCES pull_requests (id),
+  task_id         TEXT REFERENCES tasks (id),
+  session_id      TEXT,
+  mode            TEXT NOT NULL CHECK (mode IN ('session', 'quick', 'ocr')),
+  head_sha        TEXT NOT NULL,
+  summary         TEXT,
+  findings        TEXT NOT NULL,
+  stats           TEXT,
+  created_at      INTEGER NOT NULL
+);
+INSERT INTO reviews_new (id, pull_request_id, task_id, session_id, mode, head_sha, summary, findings, created_at)
+SELECT id, pull_request_id, task_id, session_id, mode, head_sha, summary, findings, created_at FROM reviews;
+DROP TABLE reviews;
+ALTER TABLE reviews_new RENAME TO reviews;
+CREATE INDEX reviews_pull ON reviews (pull_request_id, created_at);
+`,
 ];
 
 export class NewerDatabaseError extends Error {

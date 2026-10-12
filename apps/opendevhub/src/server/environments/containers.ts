@@ -29,6 +29,7 @@ export interface ExecTarget {
 const UP_TIMEOUT_MS = 15 * 60_000;
 const EXEC_TIMEOUT_MS = 30_000;
 const DOCKER_TIMEOUT_MS = 15_000;
+const COPY_TIMEOUT_MS = 5 * 60_000;
 
 export class CommandError extends Error {
   readonly tail: string[];
@@ -570,6 +571,8 @@ export class Containers {
       env?: Record<string, string>;
       timeoutMs?: number;
       onLine?: (line: string) => void;
+      /** Written to the command's stdin: for secrets, which `--remote-env` would show in the process list. */
+      input?: string;
     } = {}
   ): Promise<RunResult> {
     const args = ["exec", ...this.idArgs(target)];
@@ -579,7 +582,27 @@ export class Containers {
     return this.run("devcontainer", [...args, ...command], {
       timeoutMs: opts.timeoutMs ?? EXEC_TIMEOUT_MS,
       ...(opts.onLine ? { onLine: opts.onLine } : {}),
+      ...(opts.input === undefined ? {} : { input: opts.input }),
     });
+  }
+
+  /** Copies a file of the machine running Docker into a container. */
+  async copyIn(
+    containerId: string,
+    source: string,
+    destination: string
+  ): Promise<void> {
+    const r = await this.run(
+      "docker",
+      ["cp", source, `${containerId}:${destination}`],
+      { timeoutMs: COPY_TIMEOUT_MS }
+    );
+    if (r.exitCode !== 0) {
+      throw new CommandError(
+        `docker cp failed: ${r.stderr.trim()}`,
+        tailLines(r.stderr)
+      );
+    }
   }
 
   /**

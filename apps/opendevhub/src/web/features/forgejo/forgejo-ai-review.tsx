@@ -1,11 +1,22 @@
+import { useQueries } from "@tanstack/react-query";
 import {
+  BotIcon,
+  ChevronDownIcon,
   CircleCheckIcon,
   ExternalLinkIcon,
   MessageSquareIcon,
+  ScanSearchIcon,
   SparklesIcon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import { confirm } from "@/components/confirm-dialog";
@@ -19,6 +30,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,7 +45,9 @@ import type {
   AiSeverity,
   ForgejoComment,
   ForgejoPullDetails,
+  OcrRunStats,
 } from "../../../shared/forgejo";
+import type { OcrSettings } from "../../../shared/ocr";
 import type {
   ProjectView,
   SessionSummary,
@@ -37,20 +56,31 @@ import type {
 import {
   collectAiReview,
   createForgejoWorktree,
+  fetchProjectOcr,
+  installOcr,
+  runOcrReview,
   startAiReviewSession,
 } from "../../api";
 import { Choice } from "../../components/choice";
 import { MarkdownBody } from "../../components/markdown-body";
 import { Chip, Note } from "../../components/page";
 import { useDash } from "../../dashboard-context";
-import { Link } from "../../routing";
+import { Link, useNavigate } from "../../routing";
 import {
   checkoutOf,
   checkoutRuntime,
   checkouts,
   sessionPath,
 } from "../checkouts/checkouts";
+import { ProjectSettingsDialog } from "../projects/project-settings-dialog";
 import { linesLabel, newId } from "../review/review";
+import {
+  OCR_SECTION,
+  projectOcrKey,
+  useOcrSettings,
+  useProjectOcr,
+} from "../settings/ocr-settings";
+import { SettingsLink, useSettingsHref } from "../settings/settings-link";
 import { readAiRun, saveAiRun } from "./forgejo";
 import type { AiReviewRun, AiSuggestion } from "./forgejo";
 import { RequestState } from "./forgejo-context";
@@ -65,6 +95,8 @@ const IDLE_GRACE_MS = 20_000;
 const GONE_MS = 30_000;
 /** How often a running review re-checks the grace periods above. */
 const TICK_MS = 5000;
+/** How often an Open Code Review's elapsed time updates. */
+const CLOCK_MS = 1000;
 
 export interface AiReview {
   run?: AiReviewRun;
@@ -85,7 +117,17 @@ export interface AiReview {
   handle: (id: string) => void;
   /** Shows a stored earlier review's findings in the diff, in place of the current run. */
   open: (review: StoredAiReview) => void;
+  /**
+   * An Open Code Review whose request was lost (the page reloaded mid-run): the server still stores its result,
+   * so `adopt` takes it from the earlier reviews once it is there.
+   */
+  orphaned: boolean;
+  adopt: (review: StoredAiReview) => void;
 }
+
+/** Errors that the provider's settings fix: missing setup, a rejected key, an unknown model. */
+const PROVIDER_ERROR =
+  /set up open code review|unauthori[sz]ed|authenticat|forbidden|api key|\b40[13]\b|model.*(?:not found|does not exist|invalid)|no valid llm endpoint/iu;
 
 /**
  * An AI review of the pull request's head commit. An agent review waits for its checkout's opencode, runs a
@@ -164,6 +206,59 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
     [patch, headSha, pull]
   );
 
+  /** Open Code Review: install it in the checkout's environment, then review; one request each. */
+  const ocrInFlight = useRef(false);
+  const runOcr = useCallback(
+    async (current: AiReviewRun) => {
+      if (busy.current) {
+        return;
+      }
+      busy.current = true;
+      ocrInFlight.current = true;
+      const where = {
+        directory: current.directory,
+        projectId: current.projectId,
+      };
+      try {
+        patch(current.id, { error: undefined, stage: "installing" });
+        await installOcr(where);
+        patch(current.id, { stage: "reviewing", startedAt: Date.now() });
+        const result = await runOcrReview(
+          pull.owner,
+          pull.repo,
+          String(pull.number),
+          { ...where, commitId: headSha }
+        );
+        patch(current.id, {
+          findings: result.findings,
+          handled: [],
+          stage: "done",
+          summary: result.summary,
+          ...(result.stats ? { stats: result.stats } : {}),
+        });
+      } catch (error) {
+        const text = message(error);
+        patch(current.id, {
+          error: text,
+          settingsError: PROVIDER_ERROR.test(text),
+          stage: "failed",
+        });
+      } finally {
+        busy.current = false;
+        ocrInFlight.current = false;
+      }
+    },
+    [patch, headSha, pull]
+  );
+
+  // Installing: (re)start an Open Code Review, also after a reload lost the install request.
+  useEffect(() => {
+    const { current } = runRef;
+    if (current?.kind === "ocr" && current.stage === "installing") {
+      void runOcr(current);
+    }
+  }, [run?.stage, runOcr]);
+
   // Waiting: start the review session once the checkout can run it.
   useEffect(() => {
     const { current } = runRef;
@@ -200,7 +295,7 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
   // Reviewing: collect once the session has worked and gone idle again.
   useEffect(() => {
     const { current } = runRef;
-    if (current?.stage !== "reviewing") {
+    if (current?.stage !== "reviewing" || current.kind === "ocr") {
       return;
     }
     const waited = Date.now() - current.startedAt;
@@ -226,9 +321,13 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
     if (run?.stage !== "reviewing") {
       return;
     }
-    const timer = setInterval(() => setTick((n) => n + 1), TICK_MS);
+    // Open Code Review shows how long it has been running.
+    const timer = setInterval(
+      () => setTick((n) => n + 1),
+      run.kind === "ocr" ? CLOCK_MS : TICK_MS
+    );
     return () => clearInterval(timer);
-  }, [run?.stage]);
+  }, [run?.stage, run?.kind]);
 
   // Collecting after a reload: the request that was in flight is lost, so ask again.
   useEffect(() => {
@@ -246,7 +345,36 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
     sessionLink = `/p/${encodeURIComponent(view.project.id)}?session=${encodeURIComponent(run.sessionId)}`;
   }
 
+  const toRun = (review: StoredAiReview): AiReviewRun => {
+    let kind: AiReviewRun["kind"] = "quick";
+    if (review.mode === "session") {
+      kind = "agent";
+    } else if (review.mode === "ocr") {
+      kind = "ocr";
+    }
+    return {
+      directory: "",
+      findings: review.findings,
+      handled: [],
+      headSha,
+      id: `stored-${review.id}`,
+      kind,
+      projectId: "",
+      stage: "done",
+      startedAt: review.createdAt,
+      summary: review.summary,
+      ...(review.sessionId ? { sessionId: review.sessionId } : {}),
+      ...(review.stats ? { stats: review.stats } : {}),
+    };
+  };
+
   return {
+    adopt: (review) => {
+      const { current } = runRef;
+      if (current) {
+        setRun({ ...toRun(review), id: current.id });
+      }
+    },
     clear: () => setRun(undefined),
     collectNow: () => {
       const { current } = runRef;
@@ -265,7 +393,14 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
       if (!current) {
         return;
       }
-      if (current.kind === "quick") {
+      if (current.kind === "ocr") {
+        setRun({
+          ...current,
+          error: undefined,
+          settingsError: undefined,
+          stage: "installing",
+        });
+      } else if (current.kind === "quick") {
         setRun({ ...current, error: undefined, stage: "collecting" });
       } else if (current.sessionId) {
         sawBusy.current = false;
@@ -279,21 +414,9 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
         setRun({ ...current, error: undefined, stage: "waiting" });
       }
     },
-    open: (review) => {
-      setRun({
-        directory: "",
-        findings: review.findings,
-        handled: [],
-        headSha,
-        id: `stored-${review.id}`,
-        kind: review.mode === "session" ? "agent" : "quick",
-        projectId: "",
-        stage: "done",
-        startedAt: review.createdAt,
-        summary: review.summary,
-        ...(review.sessionId ? { sessionId: review.sessionId } : {}),
-      });
-    },
+    open: (review) => setRun(toRun(review)),
+    orphaned:
+      run?.kind === "ocr" && run.stage === "reviewing" && !ocrInFlight.current,
     run,
     session,
     sessionLink,
@@ -305,7 +428,7 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
         id: newId(),
         kind,
         projectId,
-        stage: kind === "quick" ? "collecting" : "waiting",
+        stage: startStage[kind],
         startedAt: Date.now(),
       });
     },
@@ -313,17 +436,56 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
   };
 };
 
+const startStage: Record<AiReviewRun["kind"], AiReviewRun["stage"]> = {
+  agent: "waiting",
+  ocr: "installing",
+  quick: "collecting",
+};
+
 const NEW_WORKTREE = "new";
 const matchKey = (m: { projectId: string; directory: string }) =>
   `${m.projectId}\n${m.directory}`;
 
-/** Where to run an AI review: an agent in a checkout of the pull request, or a quick one from the diff. */
+/** What the dialog says about Open Code Review in the chosen project, and whether it can start there. */
+const OcrModelNote = (props: { projectId: string }) => {
+  const query = useProjectOcr(props.projectId || undefined);
+  const e = query.data?.effective;
+  if (!props.projectId || !e) {
+    return null;
+  }
+  if (!e.configured) {
+    return (
+      <Note error>
+        Open Code Review isn&apos;t set up for this project.{" "}
+        <SettingsLink section={OCR_SECTION} className="underline">
+          Set it up in Settings
+        </SettingsLink>
+        {query.data?.override.mode === "custom" &&
+          ", or complete the project's own provider in its settings"}
+        .
+      </Note>
+    );
+  }
+  return (
+    <Note>
+      Reviews with <strong>{e.model}</strong> via {e.provider}
+      {e.source === "project" ? " (project)" : ""}.
+    </Note>
+  );
+};
+
+/**
+ * Where to run an AI review. The agent engine reviews in a checkout of the pull request, or quickly from the
+ * diff; Open Code Review runs its own file-by-file review in a checkout.
+ */
 export const ForgejoAiReviewDialog = (props: {
   details: ForgejoPullDetails;
+  engine?: "agent" | "ocr";
   onStart: AiReview["start"];
   onClose: () => void;
 }) => {
   const { details } = props;
+  const ocr = props.engine === "ocr";
   const { snapshot } = useDash();
   const projects = snapshot?.projects ?? [];
   const links = useForgejoCheckouts(details);
@@ -336,7 +498,12 @@ export const ForgejoAiReviewDialog = (props: {
   const [branch, setBranch] = useState(`review/pr-${details.pull.number}`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const quick = exact[0] ?? matches[0];
+  const quick = ocr ? undefined : (exact[0] ?? matches[0]);
+  const chosenProject =
+    choice === NEW_WORKTREE ? newProject : (choice.split("\n")[0] ?? "");
+  const ocrState = useProjectOcr(ocr ? chosenProject || undefined : undefined);
+  const ocrBlocked = ocr && !ocrState.data?.effective.configured;
+  const engine = ocr ? "ocr" : "agent";
   const label = (m: { projectId: string; directory: string }) => {
     const view = projects.find((p) => p.project.id === m.projectId);
     const c = view && checkouts(view).find((k) => k.directory === m.directory);
@@ -346,7 +513,7 @@ export const ForgejoAiReviewDialog = (props: {
     e.preventDefault();
     if (choice !== NEW_WORKTREE) {
       const [projectId = "", directory = ""] = choice.split("\n");
-      props.onStart("agent", projectId, directory);
+      props.onStart(engine, projectId, directory);
       props.onClose();
       return;
     }
@@ -361,7 +528,7 @@ export const ForgejoAiReviewDialog = (props: {
         branch.trim(),
         details.headSha
       );
-      props.onStart("agent", newProject, worktree.path);
+      props.onStart(engine, newProject, worktree.path);
       props.onClose();
     } catch (err) {
       setError(message(err));
@@ -391,12 +558,13 @@ export const ForgejoAiReviewDialog = (props: {
       <DialogContent className="sm:max-w-xl">
         <form className="flex flex-col gap-4" onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>AI review of #{details.pull.number}</DialogTitle>
+            <DialogTitle>
+              {ocr ? "Open Code Review" : "AI review"} of #{details.pull.number}
+            </DialogTitle>
             <DialogDescription>
-              An agent reviews the head commit in a checkout of the pull
-              request, where it can read the surrounding code and run tests. It
-              doesn&apos;t change anything. Its findings appear in the diff as
-              suggestions for you to accept, edit or dismiss.
+              {ocr
+                ? "Open Code Review reviews the head commit file by file in a checkout of the pull request, with the model set for its project. It doesn't change anything. Its findings, with suggested code, appear in the diff for you to accept, edit or dismiss."
+                : "An agent reviews the head commit in a checkout of the pull request, where it can read the surrounding code and run tests. It doesn't change anything. Its findings appear in the diff as suggestions for you to accept, edit or dismiss."}
             </DialogDescription>
           </DialogHeader>
           <RequestState query={links} />
@@ -439,6 +607,7 @@ export const ForgejoAiReviewDialog = (props: {
               </div>
             )}
           </fieldset>
+          {ocr && <OcrModelNote projectId={chosenProject} />}
           {quick && (
             <Note>
               In a hurry? A quick review reads only the diff, in {label(quick)}.
@@ -475,10 +644,12 @@ export const ForgejoAiReviewDialog = (props: {
               type="submit"
               disabled={
                 busy ||
+                ocrBlocked ||
                 (choice === NEW_WORKTREE && (!newProject || !branch.trim()))
               }
             >
-              {busy ? "Creating worktree…" : "Start agent review"}
+              {busy && "Creating worktree…"}
+              {!busy && (ocr ? "Start OCR review" : "Start agent review")}
             </Button>
           </DialogFooter>
         </form>
@@ -498,7 +669,36 @@ export const SeverityChip = ({ severity }: { severity: AiSeverity }) => (
   <Chip className={SEVERITY_STYLE[severity]}>{severity}</Chip>
 );
 
-const stageText = (run: AiReviewRun, session?: SessionSummary): string => {
+/** mm:ss since `from`. */
+export const elapsed = (from: number, now = Date.now()): string => {
+  const seconds = Math.max(0, Math.floor((now - from) / 1000));
+  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const ss = String(seconds % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+};
+
+const ocrStageText = (run: AiReviewRun, orphaned: boolean): string => {
+  if (run.stage === "installing") {
+    return "Installing Open Code Review…";
+  }
+  if (orphaned) {
+    return `Open Code Review is still reviewing (${elapsed(run.startedAt)}). Its result shows up here, and under earlier AI reviews, once it is stored.`;
+  }
+  return `Open Code Review is reviewing… (${elapsed(run.startedAt)})`;
+};
+
+/** "3 files reviewed, 1 skipped" for an Open Code Review run. */
+export const ocrStatsText = (stats: OcrRunStats): string =>
+  `${stats.filesReviewed} file${stats.filesReviewed === 1 ? "" : "s"} reviewed${stats.filesSkipped ? `, ${stats.filesSkipped} skipped` : ""}`;
+
+const stageText = (
+  run: AiReviewRun,
+  session?: SessionSummary,
+  orphaned = false
+): string => {
+  if (run.kind === "ocr") {
+    return ocrStageText(run, orphaned);
+  }
   if (run.stage === "waiting") {
     return "Waiting for the checkout's container and opencode…";
   }
@@ -538,8 +738,10 @@ export const AiReviewPanel = (props: {
   }
   const working =
     run.stage === "waiting" ||
+    run.stage === "installing" ||
     run.stage === "reviewing" ||
     run.stage === "collecting";
+  const isOcr = run.kind === "ocr";
   return (
     <section
       aria-label="AI review"
@@ -547,10 +749,13 @@ export const AiReviewPanel = (props: {
     >
       <div className="flex flex-wrap items-center gap-2">
         <SparklesIcon className="text-primary size-4 shrink-0" />
-        <h2 className="font-semibold">AI review</h2>
+        <h2 className="font-semibold">
+          {isOcr ? "Open Code Review" : "AI review"}
+        </h2>
         {run.stage === "done" && (
           <span className="text-muted-foreground text-sm">
             {props.inline} in the diff · {props.general.length} general
+            {run.stats && ` · ${ocrStatsText(run.stats)}`}
           </span>
         )}
         <div className="ml-auto flex flex-wrap gap-2">
@@ -561,7 +766,7 @@ export const AiReviewPanel = (props: {
               </Link>
             </Button>
           )}
-          {run.stage === "reviewing" && (
+          {run.stage === "reviewing" && !isOcr && (
             <Button variant="outline" size="sm" onClick={() => ai.collectNow()}>
               Collect findings now
             </Button>
@@ -600,11 +805,28 @@ export const AiReviewPanel = (props: {
       {working && (
         // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         <p role="status" className="text-muted-foreground text-sm">
-          {stageText(run, ai.session)}
+          {stageText(run, ai.session, ai.orphaned)}
         </p>
       )}
       {run.stage === "failed" && (
-        <Note error>{run.error ?? "The AI review failed."}</Note>
+        <Note error>
+          <span className="whitespace-pre-wrap">
+            {run.error ?? "The AI review failed."}
+          </span>
+          {run.settingsError && (
+            <>
+              {" "}
+              <SettingsLink section={OCR_SECTION} className="underline">
+                Open Code Review settings
+              </SettingsLink>
+            </>
+          )}
+        </Note>
+      )}
+      {run.stage === "done" && run.stats?.status === "skipped" && (
+        <p className="text-muted-foreground text-sm">
+          Open Code Review found nothing to review: no supported files changed.
+        </p>
       )}
       {run.stage === "done" && run.summary && (
         <MarkdownBody>{run.summary}</MarkdownBody>
@@ -622,6 +844,40 @@ export const AiReviewPanel = (props: {
         </ul>
       )}
     </section>
+  );
+};
+
+const SuggestionDiff = lazy(() => import("./suggestion-diff"));
+
+const CodeBlock = ({ code }: { code: string }) => (
+  <pre className="bg-muted overflow-x-auto rounded-md p-2 font-mono text-xs leading-relaxed">
+    <code>{code.replace(/\n+$/u, "")}</code>
+  </pre>
+);
+
+/** The code a finding suggests: as a patch of the code it quotes, or as a block on its own. */
+const SuggestedCode = (props: { suggestion: AiSuggestion }) => {
+  const { suggestion, existing, file } = props.suggestion;
+  if (!suggestion) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-muted-foreground text-xs">Suggested code</span>
+      {existing ? (
+        <div className="overflow-hidden rounded-md border">
+          <Suspense fallback={<CodeBlock code={suggestion} />}>
+            <SuggestionDiff
+              file={file ?? "suggestion"}
+              existing={existing}
+              suggestion={suggestion}
+            />
+          </Suspense>
+        </div>
+      ) : (
+        <CodeBlock code={suggestion} />
+      )}
+    </div>
   );
 };
 
@@ -652,6 +908,9 @@ export const AiSuggestionCard = (props: {
         <SparklesIcon className="text-primary size-3.5 shrink-0" />
         <span className="text-muted-foreground text-xs">AI suggestion</span>
         <SeverityChip severity={s.severity} />
+        {s.category && (
+          <Chip className="bg-primary/10 text-primary">{s.category}</Chip>
+        )}
         {!props.inDiff && s.file && (
           <span className="text-muted-foreground font-mono text-xs break-all">
             {s.file}
@@ -678,6 +937,7 @@ export const AiSuggestionCard = (props: {
       ) : (
         <MarkdownBody>{s.body}</MarkdownBody>
       )}
+      <SuggestedCode suggestion={s} />
       <div className="flex flex-wrap items-center gap-2">
         {props.onAccept && (
           <Button
@@ -749,5 +1009,122 @@ export const ForgejoCommentNote = (props: {
       </div>
       <MarkdownBody>{c.body}</MarkdownBody>
     </div>
+  );
+};
+
+/** Whether the default provider is complete. */
+const defaultConfigured = (settings?: OcrSettings): boolean =>
+  !!settings &&
+  !!settings.provider.url &&
+  !!settings.provider.protocol &&
+  !!settings.provider.model &&
+  settings.provider.hasKey;
+
+/**
+ * Where Open Code Review stands for this pull request: ready when the default provider or a project with a
+ * checkout of it is set up, else the project whose own provider is incomplete, if one is.
+ */
+const useOcrReadiness = (details: ForgejoPullDetails) => {
+  const { snapshot } = useDash();
+  const settings = useOcrSettings();
+  const links = useForgejoCheckouts(details);
+  const projectIds = [
+    ...new Set((links.data?.matches ?? []).map((m) => m.projectId)),
+  ];
+  const projects = useQueries({
+    queries: projectIds.map((id) => ({
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        fetchProjectOcr(id, signal),
+      queryKey: projectOcrKey(id),
+    })),
+  });
+  const views = projects.map((q, i) => ({ id: projectIds[i], ocr: q.data }));
+  const ready =
+    defaultConfigured(settings.data) ||
+    views.some((v) => v.ocr?.effective.configured);
+  const incomplete = views.find(
+    (v) => v.ocr?.override.mode === "custom" && !v.ocr.effective.configured
+  );
+  const view = incomplete
+    ? snapshot?.projects.find((p) => p.project.id === incomplete.id)
+    : undefined;
+  return { incompleteProject: view, ready };
+};
+
+/** The PR header's AI review button: the agent review, or Open Code Review once it is set up. */
+export const AiReviewMenu = (props: {
+  details: ForgejoPullDetails;
+  busy: boolean;
+  onPick: (engine: "agent" | "ocr") => void;
+}) => {
+  const ocr = useOcrReadiness(props.details);
+  const [projectSettings, setProjectSettings] = useState(false);
+  const navigate = useNavigate();
+  const settingsHref = useSettingsHref();
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" disabled={props.busy}>
+            <SparklesIcon /> {props.busy ? "AI reviewing…" : "AI review"}
+            <ChevronDownIcon />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72">
+          <DropdownMenuItem onSelect={() => props.onPick("agent")}>
+            <BotIcon />
+            <span className="flex flex-col">
+              <span>Agent review</span>
+              <span className="text-muted-foreground text-xs">
+                An opencode agent investigates in a checkout.
+              </span>
+            </span>
+          </DropdownMenuItem>
+          {ocr.ready && (
+            <DropdownMenuItem onSelect={() => props.onPick("ocr")}>
+              <ScanSearchIcon />
+              <span className="flex flex-col">
+                <span>Open Code Review</span>
+                <span className="text-muted-foreground text-xs">
+                  Reviews file by file and suggests code.
+                </span>
+              </span>
+            </DropdownMenuItem>
+          )}
+          {!ocr.ready && ocr.incompleteProject && (
+            <DropdownMenuItem onSelect={() => setProjectSettings(true)}>
+              <ScanSearchIcon />
+              <span className="flex flex-col">
+                <span>Set up Open Code Review…</span>
+                <span className="text-muted-foreground text-xs">
+                  Complete {ocr.incompleteProject.project.name}&apos;s own
+                  provider.
+                </span>
+              </span>
+            </DropdownMenuItem>
+          )}
+          {!ocr.ready && !ocr.incompleteProject && (
+            <DropdownMenuItem
+              onSelect={() => void navigate(settingsHref(OCR_SECTION))}
+            >
+              <ScanSearchIcon />
+              <span className="flex flex-col">
+                <span>Set up Open Code Review…</span>
+                <span className="text-muted-foreground text-xs">
+                  Choose the model it reviews with.
+                </span>
+              </span>
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {ocr.incompleteProject && (
+        <ProjectSettingsDialog
+          view={ocr.incompleteProject}
+          open={projectSettings}
+          onOpenChange={setProjectSettings}
+        />
+      )}
+    </>
   );
 };

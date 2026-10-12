@@ -215,11 +215,31 @@ export interface AiFinding {
   start?: number;
   severity: AiSeverity;
   body: string;
+  /** What kind of problem it is (Open Code Review: bug, security, performance, …). */
+  category?: string;
+  /** Code that replaces `existing` (Open Code Review). */
+  suggestion?: string;
+  /** The code the suggestion replaces, when the reviewer quoted it. */
+  existing?: string;
+}
+
+/** The engine and mode a review ran with. */
+export type AiReviewMode = "session" | "quick" | "ocr";
+
+/** How an Open Code Review run went. */
+export interface OcrRunStats {
+  /** OCR's status: success, completed_with_warnings, partial, skipped, … */
+  status: string;
+  filesReviewed: number;
+  /** Files OCR selected but could not review. */
+  filesSkipped: number;
 }
 
 export interface AiReviewResult {
-  /** The session the findings came from; it stays open to follow up in. */
-  sessionId: string;
+  /** The session the findings came from; it stays open to follow up in. None for Open Code Review. */
+  sessionId?: string;
   summary: string;
   findings: AiFinding[];
+  /** Set for Open Code Review. */
+  stats?: OcrRunStats;
 }

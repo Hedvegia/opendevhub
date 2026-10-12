@@ -6,6 +6,8 @@ import type {
   ProvenanceStep,
 } from "../../shared/activity";
 import type {
+  AiFinding,
+  AiReviewResult,
   ForgejoApprovals,
   ForgejoChecks,
   ForgejoComment,
@@ -22,6 +24,12 @@ import type {
   JiraTicket,
   JiraTicketSummary,
 } from "../../shared/jira";
+import { OCR_DEFAULT_LIMITS, OCR_VERSION } from "../../shared/ocr";
+import type {
+  OcrEffective,
+  OcrProjectSettings,
+  OcrSettings,
+} from "../../shared/ocr";
 import type {
   AgentOption,
   CandidateList,
@@ -1647,6 +1655,37 @@ export const logLines: string[] = [
 ];
 
 /** What opendevhub links to PR #42: tsk_rate made it, it is checked out once, and an AI review ran on it twice. */
+/** What an Open Code Review of the rate-limit pull request found. */
+const OCR_FINDINGS: AiFinding[] = [
+  {
+    body: "`hits` keeps every key it has seen; prune expired windows for all keys, not just the current one.",
+    category: "performance",
+    existing:
+      "const recent = hits.get(key)?.filter((t) => now - t < WINDOW_MS) ?? [];",
+    file: "src/server/rate-limit.ts",
+    line: 9,
+    severity: "major",
+    side: "new",
+    start: 8,
+    suggestion:
+      "for (const [k, times] of hits) {\n  hits.set(k, times.filter((t) => now - t < WINDOW_MS));\n}\nconst recent = hits.get(key) ?? [];",
+  },
+  {
+    body: "The limiter is created but never applied to the login route.",
+    category: "bug",
+    file: "src/server/routes.ts",
+    line: 11,
+    severity: "blocker",
+    side: "new",
+    suggestion: 'app.post("/login", limit, login);',
+  },
+  {
+    body: "Document the new 429 response for clients.",
+    category: "documentation",
+    severity: "nit",
+  },
+];
+
 export const pullLinks = (url: string): PullLinks =>
   url === RATE_LIMIT_PR.url
     ? {
@@ -1676,6 +1715,16 @@ export const pullLinks = (url: string): PullLinks =>
           },
         ],
         reviews: [
+          {
+            createdAt: ago(20 * MINUTE),
+            findings: OCR_FINDINGS,
+            headSha: forgejoDetails.headSha,
+            id: 3,
+            mode: "ocr",
+            stats: { filesReviewed: 3, filesSkipped: 1, status: "partial" },
+            summary:
+              "Adds a burst limit to the login limiter; the limiter is not wired into the login route yet.",
+          },
           {
             createdAt: ago(90 * MINUTE),
             findings: [
@@ -2107,4 +2156,75 @@ export const gitSetupBare: GitSetup = {
   projects: [],
   signing: { enabled: false },
   version: "2.43.0",
+};
+
+// Open Code Review
+
+/** Set up with a custom gateway; a key is saved. */
+export const ocrSettings: OcrSettings = {
+  canImport: true,
+  limits: OCR_DEFAULT_LIMITS,
+  provider: {
+    hasKey: true,
+    model: "vllm/coding",
+    preset: "custom",
+    protocol: "openai",
+    url: "https://ask-ai.example.com/api",
+  },
+  version: OCR_VERSION,
+};
+
+/** Nothing set up yet, and no ~/.opencodereview to import. */
+export const ocrSettingsEmpty: OcrSettings = {
+  canImport: false,
+  limits: OCR_DEFAULT_LIMITS,
+  provider: {
+    hasKey: false,
+    model: "",
+    preset: "custom",
+    protocol: "",
+    url: "",
+  },
+  version: OCR_VERSION,
+};
+
+const ocrDefault: OcrEffective = {
+  configured: true,
+  model: "vllm/coding",
+  provider: "ask-ai.example.com",
+  source: "global",
+};
+
+/** The project uses the default provider. */
+export const projectOcrDefault: OcrProjectSettings = {
+  effective: ocrDefault,
+  global: ocrDefault,
+  override: { mode: "global" },
+};
+
+/** The project reviews with its own model on DeepSeek, with the default key. */
+export const projectOcrOwn: OcrProjectSettings = {
+  effective: {
+    configured: true,
+    model: "deepseek-v4-pro",
+    provider: "DeepSeek API",
+    source: "project",
+  },
+  global: ocrDefault,
+  override: {
+    hasKey: false,
+    mode: "custom",
+    model: "deepseek-v4-pro",
+    preset: "deepseek",
+    protocol: "openai",
+    url: "https://api.deepseek.com",
+  },
+};
+
+/** An Open Code Review of the rate-limit pull request. */
+export const ocrReview: AiReviewResult = {
+  findings: OCR_FINDINGS,
+  stats: { filesReviewed: 3, filesSkipped: 0, status: "success" },
+  summary:
+    "Adds a burst limit to the login limiter; the limiter is not wired into the login route yet.",
 };

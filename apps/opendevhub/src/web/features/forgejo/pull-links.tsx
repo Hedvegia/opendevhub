@@ -12,8 +12,15 @@ import { useDash } from "../../dashboard-context";
 import { Link } from "../../routing";
 import { checkoutOf, checkoutPath } from "../checkouts/checkouts";
 import { taskPath } from "../tasks/tasks";
+import { ocrStatsText } from "./forgejo-ai-review";
 
 const SHORT_SHA = 8;
+
+const ENGINE: Record<StoredAiReview["mode"], string> = {
+  ocr: "Open Code Review",
+  quick: "quick",
+  session: "agent",
+};
 
 /**
  * What opendevhub knows about a pull request, from its records. Fetched again when the number of tasks in the
@@ -113,8 +120,9 @@ export const EarlierAiReviews = (props: {
                 <Chip title="Made against an older head commit">outdated</Chip>
               )}
               <span className="text-muted-foreground">
-                {r.mode === "quick" ? "quick" : "agent"} · {r.findings.length}{" "}
-                finding{r.findings.length === 1 ? "" : "s"}
+                {ENGINE[r.mode]} · {r.findings.length} finding
+                {r.findings.length === 1 ? "" : "s"}
+                {r.stats && ` · ${ocrStatsText(r.stats)}`}
               </span>
               <span className="min-w-0 flex-1 truncate" title={r.summary}>
                 {r.summary}

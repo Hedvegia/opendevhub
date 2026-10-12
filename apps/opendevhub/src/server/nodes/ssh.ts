@@ -127,7 +127,7 @@ export class SshHost implements Host {
     return r.stdout;
   }
 
-  async writeFile(file: string, content: string): Promise<void> {
+  async writeFile(file: string, content: string | Buffer): Promise<void> {
     const r = await this.run(
       "sh",
       ["-c", 'mkdir -p "$(dirname "$1")" && cat > "$1"', "sh", file],

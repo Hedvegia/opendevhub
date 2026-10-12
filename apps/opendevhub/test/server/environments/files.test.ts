@@ -32,7 +32,8 @@ describe(EnvFiles, () => {
     const fake = fakeRunner();
     const host = {
       ...localHost(fake.run),
-      writeFile: async (f: string, c: string) => void written.push([f, c]),
+      writeFile: async (f: string, c: string | Buffer) =>
+        void written.push([f, String(c)]),
     };
     const files = new EnvFiles("/home/tim/.opendevhub/envs", host);
     await expect(files.write("demo-feat-0a1b", { image: "x" })).resolves.toBe(

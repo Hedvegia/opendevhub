@@ -13,7 +13,6 @@ import {
   LayersIcon,
   MessageSquareIcon,
   RefreshCwIcon,
-  SparklesIcon,
 } from "lucide-react";
 import {
   createContext,
@@ -88,9 +87,11 @@ import {
   saveForgejoPreference,
   stackForgejoPulls,
   suggestionComment,
+  withSuggestion,
 } from "./forgejo";
 import type { AiSuggestion, PullMode } from "./forgejo";
 import {
+  AiReviewMenu,
   AiReviewPanel,
   AiSuggestionCard,
   ForgejoAiReviewDialog,
@@ -125,6 +126,8 @@ import { FAILED_CHECK, usePullFeedback } from "./use-pull-feedback";
 
 /** Extra left padding per level of a stacked pull request in the list. */
 const STACK_INDENT_REM = 1.5;
+/** How often a lost Open Code Review request looks for its stored result. */
+const ORPHAN_POLL_MS = 10_000;
 
 const ForgejoGate = ({ children }: { children: ReactNode }) => {
   const { forgejo, forgejoError } = useDash();
@@ -283,7 +286,7 @@ const PullView = ({
   // Address mode: what goes to the agent.
   const [selection, setSelection] = useState<FeedbackSelection>({});
   const [dialog, setDialog] = useState<
-    "handoff" | "review" | "worktree" | "ai"
+    "handoff" | "review" | "worktree" | "ai" | "ocr"
   >();
 
   const patch = useForgejoQuery(
@@ -306,6 +309,34 @@ const PullView = ({
   const feedback = usePullFeedback(details);
   const ai = useAiReview(details);
   const pullLinks = usePullLinks(details.pull.url, ai.run?.stage);
+  // An Open Code Review whose request a reload lost: poll the stored reviews and take its result once it's there.
+  const { orphaned, adopt } = ai;
+  const ocrStartedAt = ai.run?.startedAt ?? 0;
+  const { refetch: refetchLinks } = pullLinks;
+  useEffect(() => {
+    if (!orphaned) {
+      return;
+    }
+    const found = pullLinks.data?.reviews.find(
+      (r) =>
+        r.mode === "ocr" &&
+        r.headSha === details.headSha &&
+        r.createdAt >= ocrStartedAt
+    );
+    if (found) {
+      adopt(found);
+      return;
+    }
+    const timer = setInterval(() => void refetchLinks(), ORPHAN_POLL_MS);
+    return () => clearInterval(timer);
+  }, [
+    orphaned,
+    adopt,
+    pullLinks.data,
+    details.headSha,
+    ocrStartedAt,
+    refetchLinks,
+  ]);
   const openStored = ai.run?.id.startsWith("stored-")
     ? Number(ai.run.id.slice("stored-".length))
     : undefined;
@@ -412,7 +443,8 @@ const PullView = ({
     pick("ai", s, false);
     ai.handle(s.id);
   };
-  const accept = (s: AiSuggestion, text: string) => {
+  const accept = (s: AiSuggestion, edited: string) => {
+    const text = withSuggestion(edited, s);
     if (s.file && s.line !== undefined) {
       setComments((current) => [...current, suggestionComment(s, text)]);
     } else {
@@ -536,22 +568,11 @@ const PullView = ({
               </Tip>
             )}
             {details.headSha && (
-              <Tip
-                label={
-                  reviewing
-                    ? "Have an agent review the head commit and suggest line comments"
-                    : "Have an agent review the head commit; hand its findings to the agent that fixes them"
-                }
-              >
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={aiBusy}
-                  onClick={() => setDialog("ai")}
-                >
-                  <SparklesIcon /> {aiBusy ? "AI reviewing…" : "AI review"}
-                </Button>
-              </Tip>
+              <AiReviewMenu
+                details={details}
+                busy={aiBusy}
+                onPick={(engine) => setDialog(engine === "ocr" ? "ocr" : "ai")}
+              />
             )}
             <Refresh
               busy={fetchingDetails || patch.isFetching}
@@ -604,7 +625,7 @@ const PullView = ({
           general={generalAi}
           inline={inlineAi.length}
           renderGeneral={(s) => suggestionCard(s, false)}
-          onRerun={() => setDialog("ai")}
+          onRerun={() => setDialog(ai.run?.kind === "ocr" ? "ocr" : "ai")}
         />
         <EarlierAiReviews
           reviews={pullLinks.data?.reviews ?? []}
@@ -661,9 +682,10 @@ const PullView = ({
             onClose={() => setDialog(undefined)}
           />
         )}
-        {dialog === "ai" && (
+        {(dialog === "ai" || dialog === "ocr") && (
           <ForgejoAiReviewDialog
             details={details}
+            engine={dialog === "ocr" ? "ocr" : "agent"}
             onStart={startAi}
             onClose={() => setDialog(undefined)}
           />

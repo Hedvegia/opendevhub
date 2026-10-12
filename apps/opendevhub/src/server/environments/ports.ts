@@ -15,6 +15,7 @@ import type { HostPortTunnelOptions } from "../network/relay/host-ports";
 import type { RelayRuntime } from "../network/relay/runtime";
 import { directRoute } from "../network/routes";
 import type { Network, RouteContainer } from "../network/routes";
+import type { Host } from "../nodes/host";
 import type { NodeRepoPort } from "../nodes/repo";
 import type {
   OpencodeClient,
@@ -44,7 +45,7 @@ export type ContainersPort = Pick<
   | "ensureVolume"
   | "removeVolume"
 > &
-  Partial<Pick<Containers, "remoteEnv" | "exec">>;
+  Partial<Pick<Containers, "remoteEnv" | "exec" | "copyIn">>;
 export type ImagesPort = Pick<Images, "ensureBase">;
 export type EnvFilesPort = Pick<EnvFiles, "path" | "write" | "remove">;
 export type GitPort = Pick<
@@ -110,6 +111,8 @@ export interface NodeKit {
   network: NetworkPort;
   git: GitPort;
   repo: NodeRepoPort;
+  /** The node's files, for tools opendevhub copies into its containers. */
+  host?: Pick<Host, "home" | "run" | "writeFile">;
 }
 
 /** The other nodes: a kit while a node is online. */

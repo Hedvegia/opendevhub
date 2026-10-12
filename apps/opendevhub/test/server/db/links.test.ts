@@ -342,4 +342,68 @@ describe("LinkStore reviews", () => {
     ]);
     expect(links.taskLinks(project.id).get(task)?.reviewOf?.url).toBe(PR);
   });
+
+  it("stores an OCR review without a session, on the task whose variant owns the checkout", () => {
+    const { links, tasks, events, db } = setup();
+    const pull = links.ensurePull(PR);
+    const task = tasks.startReview({
+      createdAt: 1000,
+      directory: "/w",
+      envId: project.id,
+      projectId: project.id,
+      reviewOf: pull.id,
+      sessionId: "ses_1",
+      title: "AI review: PR #12",
+    });
+    events();
+    const finding = {
+      body: "Off by one",
+      category: "bug",
+      existing: "i <= n",
+      file: "a.ts",
+      line: 3,
+      severity: "major" as const,
+      side: "new" as const,
+      suggestion: "i < n",
+    };
+    const stored = links.insertReview(
+      {
+        checkout: { directory: "/w", projectId: project.id },
+        findings: [finding],
+        headSha: "abc123",
+        mode: "ocr",
+        pullRequestId: pull.id,
+        stats: { filesReviewed: 2, filesSkipped: 0, status: "success" },
+        summary: "One bug",
+      },
+      USER
+    );
+    expect(events()).toStrictEqual([`review.run review ${task}`]);
+    expect(eventsSince(db, 0).at(-1)?.data).toMatchObject({
+      findings: 1,
+      mode: "ocr",
+    });
+    expect(stored).toMatchObject({ mode: "ocr", taskId: task });
+    expect(stored.sessionId).toBeUndefined();
+    const [listed] = links.reviewsOf(PR);
+    expect(listed.findings).toStrictEqual([finding]);
+    expect(listed.stats).toStrictEqual({
+      filesReviewed: 2,
+      filesSkipped: 0,
+      status: "success",
+    });
+
+    const elsewhere = links.insertReview(
+      {
+        checkout: { directory: "/elsewhere", projectId: project.id },
+        findings: [],
+        headSha: "abc123",
+        mode: "ocr",
+        pullRequestId: pull.id,
+        summary: "",
+      },
+      USER
+    );
+    expect(elsewhere.taskId).toBeUndefined();
+  });
 });

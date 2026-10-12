@@ -89,6 +89,20 @@ const aiReview = z.object({
   directory: z.string(),
   commitId: z.string(),
 });
+const ocrProvider = z.object({
+  preset: z.string().max(100),
+  url: z.string().max(2000),
+  protocol: z.enum(["", "anthropic", "openai", "openai-responses"]),
+  model: z.string().max(200),
+  key: z.string().max(4096).optional(),
+  clearKey: flag,
+});
+const ocrLimits = z.object({
+  concurrency: z.number(),
+  fileTimeout: z.number(),
+  tokenBudget: z.number(),
+  runLimit: z.number(),
+});
 const strings = z
   .array(z.unknown())
   .transform((values) =>
@@ -178,6 +192,16 @@ export const bodies = {
   }),
   aiReview,
   aiFindings: aiReview.extend({ sessionId: text }),
+  ocrSettings: z.object({ provider: ocrProvider, limits: ocrLimits }),
+  ocrProject: z.discriminatedUnion("mode", [
+    z.object({ mode: z.literal("global") }),
+    ocrProvider.extend({ mode: z.literal("custom") }),
+  ]),
+  ocrTest: z.object({
+    provider: ocrProvider,
+    projectId: z.string().max(200).optional(),
+  }),
+  ocrInstall: z.object({ projectId: z.string(), directory: z.string() }),
   forgejoWorktree: z.object({
     projectId: z.string(),
     branch: z.string(),

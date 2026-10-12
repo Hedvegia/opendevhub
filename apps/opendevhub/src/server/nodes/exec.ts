@@ -16,7 +16,7 @@ export interface RunOptions {
   /** Run in a new session without a controlling terminal, so ssh can't open /dev/tty to prompt. */
   detached?: boolean;
   /** Written to the command's stdin, which is then closed. Without it stdin is ignored. */
-  input?: string;
+  input?: string | Buffer;
 }
 
 export type Runner = (

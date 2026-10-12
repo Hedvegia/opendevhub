@@ -14,6 +14,11 @@ import type {
   JiraTaskSource,
   JiraTicketQuery,
 } from "../shared/jira";
+import type {
+  OcrProjectInput,
+  OcrSettingsInput,
+  OcrTestInput,
+} from "../shared/ocr";
 import type { StackId } from "../shared/stacks";
 import type {
   ChatStartRequest,
@@ -1233,4 +1238,61 @@ export const collectAiReview = (
       json: input,
     }),
     "collect AI review"
+  );
+
+export const fetchOcrSettings = (signal?: AbortSignal) =>
+  read(
+    api.ocr.settings.$get(undefined, { init: { cache: "no-store", signal } }),
+    "Open Code Review settings"
+  );
+
+export const saveOcrSettings = (input: OcrSettingsInput) =>
+  read(
+    api.ocr.settings.$put({ json: input }),
+    "save Open Code Review settings"
+  );
+
+/** Runs `ocr llm test` on this machine with the form's values; a missing key falls back to the saved one. */
+export const testOcrConnection = (input: OcrTestInput) =>
+  read(
+    api.ocr.settings.test.$post({ json: input }),
+    "test Open Code Review connection"
+  );
+
+/** The active provider of this machine's `~/.opencodereview/config.json`, to fill the form with. */
+export const importOcrConfig = () =>
+  read(api.ocr.settings.import.$post(), "import Open Code Review config");
+
+export const fetchProjectOcr = (projectId: string, signal?: AbortSignal) =>
+  read(
+    project.ocr.$get(
+      { param: projectParam(projectId) },
+      { init: { cache: "no-store", signal } }
+    ),
+    "project Open Code Review settings"
+  );
+
+export const saveProjectOcr = (projectId: string, input: OcrProjectInput) =>
+  read(
+    project.ocr.$put({ json: input, param: projectParam(projectId) }),
+    "save project Open Code Review settings"
+  );
+
+/** Copies the bundled `ocr` into the checkout's environment unless it has it. */
+export const installOcr = (input: { projectId: string; directory: string }) =>
+  read(api.ocr.install.$post({ json: input }), "install Open Code Review");
+
+/** Runs Open Code Review on the pull request's head commit in a checkout; the review is stored before it answers. */
+export const runOcrReview = (
+  owner: string,
+  repo: string,
+  number: string,
+  input: { projectId: string; directory: string; commitId: string }
+) =>
+  read(
+    pull["ocr-review"].$post({
+      param: pullParam(owner, repo, number),
+      json: input,
+    }),
+    "Open Code Review"
   );
