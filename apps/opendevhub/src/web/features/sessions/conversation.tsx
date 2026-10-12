@@ -1,5 +1,5 @@
 import { ArrowDownIcon, ExternalLinkIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -43,6 +43,12 @@ const COLUMN = "w-full max-w-4xl";
 /** How long a send's notice stays under the transcript. */
 const NOTICE_MS = 5000;
 
+const CheckoutTerminal = lazy(() =>
+  import("../checkouts/checkout-terminal").then((module) => ({
+    default: module.CheckoutTerminal,
+  }))
+);
+
 /**
  * One conversation, filling the height it is given: a one-line header, the transcript scrolling under it, the
  * pending cards and the composer pinned to the bottom, and a right sidebar of panels. `chips` and `actions` add to
@@ -58,6 +64,8 @@ export const Conversation = (props: {
   showTask?: boolean;
   /** Offers the checkout's changes in a side panel, for a conversation whose page has no Changes of its own. */
   changes?: boolean;
+  /** Offers the checkout's terminal in a side panel. */
+  terminal?: boolean;
   chips?: ReactNode;
   actions?: ReactNode;
   onSend: (
@@ -86,6 +94,7 @@ export const Conversation = (props: {
     "turns",
     ...(props.changes ? (["changes"] as const) : []),
     ...(subagents > 0 ? (["subagents"] as const) : []),
+    ...(props.terminal ? (["terminal"] as const) : []),
   ];
   // A remembered panel this conversation doesn't offer stays shut.
   const shown = panel && panels.includes(panel) ? panel : undefined;
@@ -100,6 +109,18 @@ export const Conversation = (props: {
       hint: checkout.worktree
         ? "Commits against the base, and what isn't committed"
         : "What isn't committed",
+      id: shown,
+    };
+  } else if (shown === "terminal") {
+    open = {
+      children: (
+        <CheckoutProvider value={{ checkout, sessionId: session.id, view }}>
+          <Suspense fallback={<Skeleton className="h-full w-full" />}>
+            <CheckoutTerminal fill />
+          </Suspense>
+        </CheckoutProvider>
+      ),
+      hint: checkout.worktree?.branch ?? checkout.label,
       id: shown,
     };
   } else if (shown === "turns" && detail) {

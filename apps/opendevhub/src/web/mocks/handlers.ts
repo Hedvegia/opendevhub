@@ -1,5 +1,5 @@
 // MSW handlers for every route the dashboard calls, so pages render in Storybook without a server.
-import { delay, http, HttpResponse, sse } from "msw";
+import { delay, http, HttpResponse, sse, ws } from "msw";
 import type { AnyHandler } from "msw";
 
 import type {
@@ -152,6 +152,15 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
   };
 
   return [
+    ws.link("*/api/terminal").addEventListener("connection", ({ client }) => {
+      client.send(JSON.stringify({ type: "ready" }));
+      client.send(
+        JSON.stringify({
+          data: "Storybook terminal preview\r\n$ ",
+          type: "output",
+        })
+      );
+    }),
     sse<{ snapshot: string; log: string }>("/api/events", ({ client }) => {
       if (snap) {
         client.send({ data: JSON.stringify(snap), event: "snapshot" });

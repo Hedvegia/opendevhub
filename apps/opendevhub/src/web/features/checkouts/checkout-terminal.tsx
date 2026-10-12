@@ -1,20 +1,30 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
+import { RotateCwIcon, TerminalIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 import { useCheckoutContext } from "./checkout-context";
 import { checkoutRuntime } from "./checkouts";
 
-export const CheckoutTerminal = () => {
+export const CheckoutTerminal = ({ fill = false }: { fill?: boolean }) => {
   const { view, checkout } = useCheckoutContext();
   return (
     <TerminalPanel
       key={`${view.project.id}:${checkout.directory}`}
       project={view.project.id}
       directory={checkout.directory}
+      fill={fill}
       running={
         checkoutRuntime(view, checkout.directory).containerState === "running"
       }
@@ -26,10 +36,12 @@ const TerminalPanel = ({
   project,
   directory,
   running,
+  fill,
 }: {
   project: string;
   directory: string;
   running: boolean;
+  fill: boolean;
 }) => {
   const storageKey = `terminal-shell:${project}:${directory}`;
   const [shell, setShell] = useState(() => {
@@ -112,57 +124,95 @@ const TerminalPanel = ({
   }, [project, directory, shell, running, retry]);
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-sm">
-          Shell
-          <select
+    <section
+      className={cn(
+        "flex flex-col overflow-hidden rounded-lg border",
+        fill && "h-full min-h-0"
+      )}
+    >
+      <div className="bg-muted/30 flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2">
+        <Select
+          value={shell}
+          onValueChange={(value) => {
+            setShell(value);
+            try {
+              localStorage.setItem(storageKey, value);
+            } catch {
+              /* Storage may be disabled. */
+            }
+          }}
+        >
+          <SelectTrigger
             aria-label="Terminal shell"
-            className="bg-background rounded-md border px-3 py-2"
-            value={shell}
-            onChange={(event) => {
-              setShell(event.target.value);
-              try {
-                localStorage.setItem(storageKey, event.target.value);
-              } catch {
-                /* Storage may be disabled. */
-              }
-            }}
+            size="sm"
+            className="bg-background min-w-28 font-mono text-xs"
           >
+            <TerminalIcon className="size-3.5" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper" align="start">
             {["bash", "zsh", "sh", "fish"].map((value) => (
-              <option key={value} value={value}>
+              <SelectItem
+                key={value}
+                value={value}
+                className="font-mono text-xs"
+              >
                 {value}
-              </option>
+              </SelectItem>
             ))}
-          </select>
-        </label>
-        <span role="status" className="text-muted-foreground text-sm">
-          {running
-            ? status
-            : "Start this checkout's container to open a terminal."}
+          </SelectContent>
+        </Select>
+        <span
+          role="status"
+          className="text-muted-foreground ml-auto flex min-w-0 items-center gap-1.5 text-xs"
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              "size-1.5 shrink-0 rounded-full",
+              running && status === "Connected"
+                ? "bg-emerald-500"
+                : "bg-muted-foreground/50"
+            )}
+          />
+          {running ? status : "Container stopped"}
         </span>
         {running && status !== "Connected" && (
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
+            className="h-7 px-2 text-xs"
             onClick={() => setRetry((n) => n + 1)}
           >
+            <RotateCwIcon className="size-3.5" />
             Reconnect
           </Button>
         )}
       </div>
-      <p className="text-muted-foreground text-sm">
-        Runs in this checkout&apos;s container. The selected shell must be
-        installed there. Sessions stay available for 30 minutes after leaving
-        this tab.
-      </p>
-      {running && (
+      {running ? (
         <div
-          ref={container}
-          aria-label="Worktree terminal"
-          className="h-[min(65vh,700px)] min-h-72 overflow-hidden rounded-lg bg-black p-3"
-        />
+          className={cn(
+            "flex overflow-hidden bg-black p-3",
+            fill ? "min-h-0 flex-1" : "h-[min(65vh,700px)] min-h-72"
+          )}
+        >
+          <div
+            ref={container}
+            aria-label="Worktree terminal"
+            className="min-h-0 min-w-0 flex-1"
+          />
+        </div>
+      ) : (
+        <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+          <TerminalIcon className="size-8 opacity-50" />
+          <p className="max-w-64 text-sm">
+            Start this checkout&apos;s container to open a terminal.
+          </p>
+        </div>
       )}
+      <p className="bg-muted/30 text-muted-foreground shrink-0 border-t px-3 py-2 text-xs">
+        Sessions stay available for 30 minutes after closing.
+      </p>
     </section>
   );
 };

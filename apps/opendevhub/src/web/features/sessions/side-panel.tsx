@@ -6,6 +6,7 @@ import {
   FileDiffIcon,
   ListTreeIcon,
   LoaderCircleIcon,
+  TerminalIcon,
   XIcon,
 } from "lucide-react";
 import { useState } from "react";
@@ -49,13 +50,16 @@ import { TurnChanges } from "../review/turn-changes";
 import { formatCost, formatTokens } from "../tasks/tasks";
 import { turnActivity, turnDuration } from "./session-detail";
 
-export type PanelId = "turns" | "changes" | "subagents";
+export type PanelId = "turns" | "changes" | "subagents" | "terminal";
 
 const PANEL_KEY = "opendevhub.conversation.panel";
 const WIDE_QUERY = "(min-width: 1024px)";
 
 const isPanelId = (value: string | null): value is PanelId =>
-  value === "turns" || value === "changes" || value === "subagents";
+  value === "turns" ||
+  value === "changes" ||
+  value === "subagents" ||
+  value === "terminal";
 
 const readPanel = (): PanelId | undefined => {
   try {
@@ -95,6 +99,7 @@ export const useSidePanel = () => {
 export const PANELS = {
   changes: { icon: FileDiffIcon, label: "Changes" },
   subagents: { icon: BotIcon, label: "Subagents" },
+  terminal: { icon: TerminalIcon, label: "Terminal" },
   turns: { icon: ListTreeIcon, label: "Turns" },
 } as const;
 
@@ -156,7 +161,7 @@ export const ConversationSidebar = (props: {
   );
 };
 
-/** The open panel as a column of the sidebar; Changes gets more room for its diffs. */
+/** The open panel as a column of the sidebar; Changes and Terminal get more room. */
 const PanelColumn = (props: { panel: OpenPanel; onClose: () => void }) => {
   const { id, hint, children } = props.panel;
   const { label } = PANELS[id];
@@ -165,7 +170,9 @@ const PanelColumn = (props: { panel: OpenPanel; onClose: () => void }) => {
       aria-label={label}
       className={cn(
         "flex min-h-0 flex-col",
-        id === "changes" ? "w-[32rem] xl:w-[44vw]" : "w-[26rem] xl:w-[34vw]"
+        id === "changes" || id === "terminal"
+          ? "w-[32rem] xl:w-[44vw]"
+          : "w-[26rem] xl:w-[34vw]"
       )}
     >
       <SidebarHeader className="h-12 flex-row items-center gap-2 border-b py-0 pr-2 pl-4">
@@ -186,7 +193,7 @@ const PanelColumn = (props: { panel: OpenPanel; onClose: () => void }) => {
       <div
         className={cn(
           "bg-background min-h-0 flex-1 overflow-y-auto",
-          id === "changes" && "p-4"
+          (id === "changes" || id === "terminal") && "p-4"
         )}
       >
         {children}
@@ -203,7 +210,7 @@ const PanelSheet = (props: { panel: OpenPanel; onClose: () => void }) => {
       <SheetContent
         className={cn(
           "w-full gap-0",
-          id === "changes" ? "sm:max-w-4xl" : "sm:max-w-md"
+          id === "changes" || id === "terminal" ? "sm:max-w-4xl" : "sm:max-w-md"
         )}
       >
         <SheetHeader className="border-b">
@@ -215,7 +222,7 @@ const PanelSheet = (props: { panel: OpenPanel; onClose: () => void }) => {
         <div
           className={cn(
             "min-h-0 flex-1 overflow-y-auto",
-            id === "changes" && "p-4"
+            (id === "changes" || id === "terminal") && "p-4"
           )}
         >
           {children}

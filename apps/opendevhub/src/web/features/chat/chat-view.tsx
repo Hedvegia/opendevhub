@@ -26,7 +26,7 @@ import { MakeTaskDialog } from "./make-task-dialog";
 
 /**
  * One chat: its conversation full-width and full-height, with a header naming it, its project and checkout, and
- * offering Make task and Archive; its checkout's changes are a panel in the conversation's sidebar. A task id in place of the chat's (an old link) opens the task; a chat a
+ * offering Make task and Archive; its checkout's changes and terminal are panels in the conversation's sidebar. A task id in place of the chat's (an old link) opens the task; a chat a
  * task adopted opens that task with its variant selected.
  */
 export const ChatView = () => {
@@ -112,6 +112,7 @@ const ChatPage = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
           checkout={checkout}
           session={session}
           changes
+          terminal
           chips={chips}
           actions={actions}
           onStarted={(_, next) => {

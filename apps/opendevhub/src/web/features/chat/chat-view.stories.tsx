@@ -66,7 +66,7 @@ export const Question = meta.story({
   },
 });
 
-/** Opening, switching and closing the side panels from the sidebar's rail, Changes among them. */
+/** Opening, switching and closing the side panels from the sidebar's rail. */
 export const SidePanels = meta.story({
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -91,6 +91,50 @@ export const SidePanels = meta.story({
     await expect(
       canvas.queryByRole("complementary", { name: "Subagents" })
     ).not.toBeInTheDocument();
+    await userEvent.click(rail.getByRole("button", { name: "Terminal" }));
+    await expect(
+      await canvas.findByRole("complementary", { name: "Terminal" })
+    ).toBeVisible();
+    await expect(
+      await canvas.findByRole("combobox", { name: "Terminal shell" })
+    ).toHaveTextContent("bash");
+    await expect(await canvas.findByText("Connected")).toBeVisible();
+    await userEvent.click(
+      canvas.getByRole("button", { name: "Close Terminal" })
+    );
+    await expect(
+      canvas.queryByRole("complementary", { name: "Terminal" })
+    ).not.toBeInTheDocument();
+  },
+});
+
+/** The terminal fills the right sidebar, beside the transcript and composer. */
+export const Terminal = meta.story({
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      await canvas.findByRole("button", { name: "Terminal" })
+    );
+    await expect(
+      await canvas.findByRole("complementary", { name: "Terminal" })
+    ).toBeVisible();
+    await expect(await canvas.findByText("Connected")).toBeVisible();
+  },
+});
+
+/** On a phone the terminal opens in the same sheet as the other panels. */
+export const MobileTerminal = meta.story({
+  globals: { viewport: { isRotated: false, value: "mobile1" } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      await canvas.findByRole("button", { name: "Terminal" })
+    );
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(
+      await body.findByRole("dialog", { name: "Terminal" })
+    ).toBeVisible();
+    await expect(await body.findByText("Connected")).toBeVisible();
   },
 });
 
