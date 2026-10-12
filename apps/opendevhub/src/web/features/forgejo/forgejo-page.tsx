@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import type { InfiniteData } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
@@ -39,11 +40,8 @@ import {
   fetchForgejoDetails,
   fetchForgejoDiff,
   forgejoImageUrl,
-  fetchForgejoOrganizations,
   fetchForgejoPulls,
-  fetchForgejoTeams,
 } from "../../api";
-import { Choice } from "../../components/choice";
 import { MarkdownBody } from "../../components/markdown-body";
 import {
   Chip,
@@ -110,6 +108,8 @@ import type {
   FeedbackSelection,
   FeedbackValue,
 } from "./forgejo-context";
+import { ActiveFilters, ForgejoFilters, parseAuthors } from "./forgejo-filters";
+import type { ActiveFilter, InboxFilters } from "./forgejo-filters";
 import { ForgejoHandoff } from "./forgejo-handoff";
 import {
   ForgejoReviewDialog,
@@ -776,67 +776,6 @@ const PullView = ({
   );
 };
 
-const ALL = "";
-/** Keeps a filter from the URL selectable while its list is loading or doesn't include it. */
-const withCurrent = (names: string[] | undefined, current: string) =>
-  current && !names?.includes(current)
-    ? [current, ...(names ?? [])]
-    : (names ?? []);
-
-const OrgTeamFilter = ({
-  org,
-  team,
-  onChange,
-}: {
-  org: string;
-  team: string;
-  onChange: (org: string, team: string) => void;
-}) => {
-  const orgs = useForgejoQuery(["orgs"], fetchForgejoOrganizations);
-  const teams = useForgejoQuery(
-    ["teams", org],
-    (signal) => fetchForgejoTeams(org, signal),
-    !!org
-  );
-  return (
-    <>
-      <Choice
-        className="w-full sm:w-48"
-        label="Organization filter"
-        value={org}
-        disabled={orgs.isError && !org}
-        onChange={(value) => onChange(value, ALL)}
-        options={[
-          { label: "All organizations", value: ALL },
-          ...withCurrent(orgs.data?.orgs, org).map((name) => ({
-            label: name,
-            value: name,
-          })),
-        ]}
-      />
-      {org && (
-        <Choice
-          className="w-full sm:w-48"
-          label="Team filter"
-          value={team}
-          disabled={teams.isError && !team}
-          onChange={(value) => onChange(org, value)}
-          options={[
-            {
-              label: teams.isError ? "Teams unavailable" : "All teams",
-              value: ALL,
-            },
-            ...withCurrent(teams.data?.teams, team).map((name) => ({
-              label: name,
-              value: name,
-            })),
-          ]}
-        />
-      )}
-    </>
-  );
-};
-
 // oxlint-disable-next-line complexity
 export const ForgejoPage = () => {
   const { forgejo } = useDash();
@@ -865,12 +804,48 @@ export const ForgejoPage = () => {
   const repository = filters.get("repository") ?? "";
   const org = filters.get("org") ?? "";
   const team = org ? (filters.get("team") ?? "") : "";
+  const authorParam = filters.get("authors");
+  const authors = useMemo(() => parseAuthors(authorParam), [authorParam]);
+  // "Authored by me" already narrows to one author, so the filter waits for another inbox.
+  const showAuthors = inbox !== "authored";
+  const shownAuthors = showAuthors ? authors : [];
   const [queryInput, setQueryInput] = useState(q);
   const [repoInput, setRepoInput] = useState(repository);
-  const change = (key: string, value: string) => {
+  const changeAll = (values: Record<string, string>) => {
     const next = new URLSearchParams(filters);
-    next.set(key, value);
+    for (const [key, value] of Object.entries(values)) {
+      next.set(key, value);
+    }
     setSearch(next, { replace: true });
+  };
+  const change = (key: string, value: string) => changeAll({ [key]: value });
+  const inboxFilters: InboxFilters = {
+    authors: shownAuthors,
+    org,
+    repository,
+    team,
+  };
+  const clearFilters = () => {
+    setRepoInput("");
+    // Hidden authors aren't shown as active, so they aren't cleared either.
+    changeAll({
+      authors: showAuthors ? "" : authors.join(","),
+      org: "",
+      repository: "",
+      team: "",
+    });
+  };
+  const removeFilter = ({ key, value }: ActiveFilter) => {
+    if (key === "authors") {
+      change("authors", authors.filter((a) => a !== value).join(","));
+    } else if (key === "org") {
+      changeAll({ org: "", team: "" });
+    } else {
+      if (key === "repository") {
+        setRepoInput("");
+      }
+      change(key, "");
+    }
   };
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect
@@ -897,24 +872,35 @@ export const ForgejoPage = () => {
     ...(repository ? { repository } : {}),
     ...(org ? { org } : {}),
     ...(team ? { team } : {}),
+    ...(authors.length ? { authors: authors.join(",") } : {}),
   }).toString();
   useEffect(() => {
     saveForgejoPreference("inbox", listSearch);
   }, [listSearch]);
+  const inboxClient = useQueryClient();
   const query = useInfiniteQuery({
     enabled: !!forgejo?.enabled,
     getNextPageParam: (last: ForgejoPulls) => last.nextPage,
     initialPageParam: 1,
     queryFn: ({ pageParam, signal }) =>
       fetchForgejoPulls(
-        { inbox, org, page: pageParam, q, repository, state, team },
+        {
+          authors: shownAuthors,
+          inbox,
+          org,
+          page: pageParam,
+          q,
+          repository,
+          state,
+          team,
+        },
         signal
       ),
     queryKey: [
       "forgejo",
       forgejo?.url,
       "inbox",
-      { inbox, org, q, repository, state, team },
+      { authors: shownAuthors, inbox, org, q, repository, state, team },
     ],
   });
   const pulls = [
@@ -926,6 +912,18 @@ export const ForgejoPage = () => {
     ).values(),
   ];
   const username = query.data?.pages[0]?.username;
+  // Authors in every list loaded so far: once the list is filtered, the others stay one click away.
+  const seenAuthors = [
+    ...new Set(
+      inboxClient
+        .getQueriesData<InfiniteData<ForgejoPulls>>({
+          queryKey: ["forgejo", forgejo?.url, "inbox"],
+        })
+        .flatMap(([, data]) => data?.pages ?? [])
+        .flatMap((page) => page.pulls)
+        .flatMap((p) => (p.author ? [p.author] : []))
+    ),
+  ].toSorted((a, b) => a.localeCompare(b));
   return (
     <Page>
       <PageHeader
@@ -962,32 +960,34 @@ export const ForgejoPage = () => {
               { id: "closed", label: "Closed / merged" },
             ]}
           />
-          <Input
-            className="w-full sm:w-64"
-            aria-label="Search pull requests"
-            placeholder="Search pull requests…"
-            value={queryInput}
-            maxLength={200}
-            onChange={(e) => setQueryInput(e.target.value)}
-          />
-          <Input
-            className="w-full sm:w-56"
-            aria-label="Repository filter"
-            placeholder="Repository: owner/name"
-            value={repoInput}
-            onChange={(e) => setRepoInput(e.target.value)}
-          />
-          <OrgTeamFilter
-            org={org}
-            team={team}
-            onChange={(nextOrg, nextTeam) => {
-              const next = new URLSearchParams(filters);
-              next.set("org", nextOrg);
-              next.set("team", nextTeam);
-              setSearch(next, { replace: true });
-            }}
-          />
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:min-w-64">
+            <Input
+              className="min-w-0 flex-1"
+              aria-label="Search pull requests"
+              placeholder="Search pull requests…"
+              value={queryInput}
+              maxLength={200}
+              onChange={(e) => setQueryInput(e.target.value)}
+            />
+            <ForgejoFilters
+              filters={inboxFilters}
+              repoInput={repoInput}
+              onRepoInput={setRepoInput}
+              showAuthors={showAuthors}
+              suggestedAuthors={seenAuthors}
+              onOrgTeam={(nextOrg, nextTeam) =>
+                changeAll({ org: nextOrg, team: nextTeam })
+              }
+              onAuthors={(next) => change("authors", next.join(","))}
+              onClear={clearFilters}
+            />
+          </div>
         </div>
+        <ActiveFilters
+          filters={inboxFilters}
+          onRemove={removeFilter}
+          onClear={clearFilters}
+        />
         <RequestState query={query} />
         {query.data && !pulls.length && (
           <Empty
@@ -1029,6 +1029,7 @@ export const ForgejoPage = () => {
                       <p className="font-medium break-words">{pull.title}</p>
                       <p className="text-muted-foreground text-sm break-words">
                         {pull.owner}/{pull.repo} #{pull.number}
+                        {pull.author && ` by ${pull.author}`}
                         {pull.stack && (
                           <>
                             {" "}

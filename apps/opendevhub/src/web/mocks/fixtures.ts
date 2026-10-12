@@ -1251,6 +1251,7 @@ const pull = (
   title: string,
   extra: Partial<ForgejoPullRequest> = {}
 ): ForgejoPullRequest => ({
+  author: "tim",
   number,
   owner: "acme",
   repo: "web",
@@ -1272,8 +1273,9 @@ export const forgejoPulls: ForgejoPullRequest[] = [
       },
     },
   }),
-  pull(38, "Dark mode toggle in settings"),
+  pull(38, "Dark mode toggle in settings", { author: "sam" }),
   pull(31, "Fix invoice rounding for JPY", {
+    author: "alex",
     repo: "billing",
     url: "https://git.acme.dev/acme/billing/pulls/31",
   }),

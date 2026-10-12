@@ -927,6 +927,90 @@ describe("Forgejo inbox, context and connection verification", () => {
     expect(fetcher).toHaveBeenCalledTimes(calls);
   });
 
+  it("filters by any of several authors and reads on past pages they leave empty", async () => {
+    await settings.save(configured);
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ login: "alice" }))
+      .mockResolvedValueOnce(response([issue(1)]))
+      .mockResolvedValueOnce(
+        response([
+          issue(2, { user: { login: "Bob" } }),
+          issue(3, { user: { login: "carol" } }),
+          issue(4, { user: { login: "dave" } }),
+        ])
+      );
+    const result = await new Forgejo(settings, fetcher).inbox({
+      authors: ["bob", "carol"],
+      inbox: "review",
+    });
+    expect(result.pulls.map((p) => [p.number, p.author])).toStrictEqual([
+      [2, "Bob"],
+      [3, "carol"],
+    ]);
+    expect(result.nextPage).toBe(3);
+    const searches = fetcher.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .filter((url) => url.pathname.endsWith("/issues/search"))
+      .map((url) => url.searchParams);
+    expect(searches.map((s) => s.get("page"))).toStrictEqual(["1", "2"]);
+    expect(searches[0].get("created")).toBeNull();
+    for (const authors of [
+      ["../bob"],
+      ["a b"],
+      Array.from({ length: 21 }, (_, i) => `user${i}`),
+    ]) {
+      await expect(
+        new Forgejo(settings, fetcher).inbox({ authors })
+      ).rejects.toMatchObject({ status: 400 });
+    }
+    // The user, two search pages and the open pull requests that find stacks.
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it("stops after a few empty author-filtered pages and offers the next one", async () => {
+    await settings.save(configured);
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ login: "alice" }))
+      .mockImplementation(async () => response([issue(1)]));
+    const result = await new Forgejo(settings, fetcher).inbox({
+      authors: ["bob"],
+      inbox: "review",
+      page: 3,
+    });
+    expect(result).toMatchObject({ nextPage: 8, pulls: [] });
+    expect(fetcher).toHaveBeenCalledTimes(6);
+  });
+
+  it("searches accounts for the author filter, dropping malformed ones", async () => {
+    await settings.save(configured);
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        response({
+          data: [
+            { full_name: "Bob B", login: "bob" },
+            { login: "../evil" },
+            { login: "carol" },
+          ],
+          ok: true,
+        })
+      )
+      .mockResolvedValueOnce(response([]));
+    const forgejo = new Forgejo(settings, fetcher);
+    await expect(forgejo.users(" bo ")).resolves.toStrictEqual({
+      users: [
+        { fullName: "Bob B", login: "bob" },
+        { fullName: "", login: "carol" },
+      ],
+    });
+    const url = new URL(String(fetcher.mock.calls[0][0]));
+    expect(url.pathname).toBe("/git/api/v1/users/search");
+    expect(url.searchParams.get("q")).toBe("bo");
+    await expect(forgejo.users("x")).rejects.toMatchObject({ status: 502 });
+  });
+
   it("lists organizations and teams sorted across pages", async () => {
     await settings.save(configured);
     const fetcher = vi

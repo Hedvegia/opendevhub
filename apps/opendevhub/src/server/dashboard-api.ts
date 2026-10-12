@@ -144,7 +144,10 @@ export interface DashboardDeps {
     | "test"
   > &
     Partial<
-      Pick<Forgejo, "review" | "organizations" | "teams" | "image" | "pullUrl">
+      Pick<
+        Forgejo,
+        "review" | "organizations" | "teams" | "users" | "image" | "pullUrl"
+      >
     >;
   jira?: Pick<
     Jira,

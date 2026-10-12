@@ -16,6 +16,8 @@ import type {
   ForgejoStackNode,
   ForgejoStackPull,
   ForgejoTeams,
+  ForgejoUser,
+  ForgejoUsers,
 } from "../../shared/forgejo";
 import { imageType, MAX_IMAGE_BYTES } from "../../shared/images";
 import type { ImageSide } from "../../shared/images";
@@ -31,6 +33,14 @@ import {
 const PAGE_SIZE = 50;
 /** Upper bound on pages read for the organization and team pickers. */
 const NAME_PAGES = 10;
+/** Most authors one inbox filter takes. */
+export const MAX_AUTHORS = 20;
+/** Search pages one inbox request reads while an author filter leaves them empty. */
+const AUTHOR_PAGES = 5;
+/** Matches the author filter picker shows. */
+const USER_LIMIT = 10;
+/** Forgejo logins: letters, digits, `-`, `_` and `.`. */
+const LOGIN = /^[\w.-]{1,40}$/u;
 
 /**
  * Each reviewer's latest approving or change-requesting review decides their vote, as Forgejo counts them: a
@@ -474,6 +484,7 @@ export class Forgejo {
       repository = "",
       org = "",
       team = "",
+      authors = [],
       page = 1,
     } = input;
     if (
@@ -484,6 +495,9 @@ export class Forgejo {
       typeof repository !== "string" ||
       typeof org !== "string" ||
       typeof team !== "string" ||
+      !Array.isArray(authors) ||
+      authors.length > MAX_AUTHORS ||
+      !authors.every((a) => typeof a === "string" && LOGIN.test(a)) ||
       !Number.isSafeInteger(page) ||
       page < 1 ||
       page > 200
@@ -516,7 +530,6 @@ export class Forgejo {
     }
     const query = new URLSearchParams({
       limit: "50",
-      page: String(page),
       sort: "recentupdate",
       state,
       type: "pulls",
@@ -553,6 +566,48 @@ export class Forgejo {
     if (team) {
       query.set("team", team);
     }
+    // Forgejo's cross-repository search only filters by the token's own user, so other authors filter here.
+    const wanted = new Set(authors.map((a) => a.toLowerCase()));
+    const pulls = new Map<string, ForgejoPullRequest>();
+    let current = page;
+    let issues: Issue[] = [];
+    for (let read = 1; read <= AUTHOR_PAGES; read += 1) {
+      query.set("page", String(current));
+      issues = await this.searchPage(connection, query, signal);
+      this.collect(issues, pulls, connection, {
+        login: user.login,
+        inbox,
+        org,
+        repository,
+        state,
+        wanted,
+      });
+      // Without an author filter a page is never skipped, so an empty one isn't worth more requests.
+      if (
+        pulls.size ||
+        !issues.length ||
+        !wanted.size ||
+        read === AUTHOR_PAGES ||
+        current >= 200
+      ) {
+        break;
+      }
+      current += 1;
+    }
+    await this.addStacks(connection, [...pulls.values()]);
+    // Continue on nonempty pages: instance administrators can cap the requested page size.
+    return {
+      pulls: [...pulls.values()],
+      username: user.login,
+      ...(issues.length && current < 200 ? { nextPage: current + 1 } : {}),
+    };
+  }
+
+  private async searchPage(
+    connection: SavedSettings & { token: string },
+    query: URLSearchParams,
+    signal?: AbortSignal
+  ): Promise<Issue[]> {
     const issues = await this.json<Issue[]>(
       connection,
       `repos/issues/search?${query}`,
@@ -564,12 +619,32 @@ export class Forgejo {
         502
       );
     }
-    const pulls = new Map<string, ForgejoPullRequest>();
+    return issues;
+  }
+
+  /** Adds a search page's pull requests that pass the inbox filters. */
+  private collect(
+    issues: Issue[],
+    pulls: Map<string, ForgejoPullRequest>,
+    connection: SavedSettings,
+    filter: {
+      login: string;
+      inbox: string;
+      org: string;
+      repository: string;
+      state: string;
+      wanted: Set<string>;
+    }
+  ): void {
+    const { login, inbox, org, repository, state, wanted } = filter;
     for (const issue of issues) {
+      const author = issue?.user?.login;
       if (
         !issue?.pull_request ||
         (state !== "all" && issue.state !== state) ||
-        (inbox === "authored" && issue.user?.login !== user.login)
+        (inbox === "authored" && author !== login) ||
+        (wanted.size &&
+          !(typeof author === "string" && wanted.has(author.toLowerCase())))
       ) {
         continue;
       }
@@ -586,15 +661,11 @@ export class Forgejo {
         continue;
       }
       const pull = this.pull(connection, issueParts[0], issueParts[1], issue);
+      if (typeof author === "string" && author) {
+        pull.author = author;
+      }
       pulls.set(`${pull.owner}/${pull.repo}/${pull.number}`, pull);
     }
-    await this.addStacks(connection, [...pulls.values()]);
-    // Continue on nonempty pages: instance administrators can cap the requested page size.
-    return {
-      pulls: [...pulls.values()],
-      username: user.login,
-      ...(issues.length ? { nextPage: page + 1 } : {}),
-    };
   }
 
   /** Organizations the token's user belongs to, for the inbox's organization filter. */
@@ -614,6 +685,37 @@ export class Forgejo {
       signal
     );
     return { teams };
+  }
+
+  /** Accounts whose login or name matches, for the inbox's author filter. */
+  async users(q: string, signal?: AbortSignal): Promise<ForgejoUsers> {
+    if (typeof q !== "string" || q.length > 100) {
+      throw new ForgejoError("Invalid user search.");
+    }
+    const connection = await this.connection();
+    const query = new URLSearchParams({
+      limit: String(USER_LIMIT),
+      q: q.trim(),
+    });
+    const result = await this.json<{ data?: Record<string, unknown>[] }>(
+      connection,
+      `users/search?${query}`,
+      signal
+    );
+    if (!Array.isArray(result?.data)) {
+      throw new ForgejoError("Forgejo returned an invalid user list.", 502);
+    }
+    const users: ForgejoUser[] = [];
+    for (const item of result.data) {
+      const login = item?.login;
+      if (typeof login === "string" && LOGIN.test(login)) {
+        users.push({
+          fullName: typeof item.full_name === "string" ? item.full_name : "",
+          login,
+        });
+      }
+    }
+    return { users };
   }
 
   private async names(

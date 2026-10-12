@@ -120,6 +120,15 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
     http.get("/api/forgejo/orgs", () =>
       HttpResponse.json({ orgs: ["acme", "acme-labs"] })
     ),
+    http.get("/api/forgejo/users", ({ request }) => {
+      const q = new URL(request.url).searchParams.get("q")?.toLowerCase() ?? "";
+      const users = [
+        { fullName: "Alex Kim", login: "alex" },
+        { fullName: "Sam Ortiz", login: "sam" },
+        { fullName: "Tim", login: "tim" },
+      ].filter((u) => `${u.login} ${u.fullName}`.toLowerCase().includes(q));
+      return HttpResponse.json({ users });
+    }),
     http.get("/api/forgejo/orgs/:org/teams", () =>
       HttpResponse.json({ teams: ["backend", "frontend", "platform"] })
     ),
@@ -128,8 +137,10 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
       const url = new URL(request.url);
       const state = url.searchParams.get("state") ?? "all";
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
+      const authors = url.searchParams.get("authors")?.split(",") ?? [];
       const pulls = forgejoPulls.filter(
         (p) =>
+          (!authors.length || authors.includes(p.author ?? "")) &&
           (state === "all" ||
             (state === "open" ? p.state === "open" : p.state !== "open")) &&
           p.title.toLowerCase().includes(q)

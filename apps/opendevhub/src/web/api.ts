@@ -62,6 +62,7 @@ export const fetchForgejoPulls = (
     q: options.q || undefined,
     org: options.org || undefined,
     team: options.team || undefined,
+    authors: options.authors?.length ? options.authors.join(",") : undefined,
     page: options.page === undefined ? undefined : String(options.page),
   };
   return read(
@@ -73,6 +74,15 @@ export const fetchForgejoPulls = (
 export const fetchForgejoOrganizations = (signal?: AbortSignal) =>
   read(
     api.forgejo.orgs.$get(undefined, { init: { cache: "no-store", signal } }),
+    "Forgejo request"
+  );
+
+export const fetchForgejoUsers = (q: string, signal?: AbortSignal) =>
+  read(
+    api.forgejo.users.$get(
+      { query: { q } },
+      { init: { cache: "no-store", signal } }
+    ),
     "Forgejo request"
   );
 

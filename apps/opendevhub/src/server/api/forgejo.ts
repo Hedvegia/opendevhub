@@ -106,6 +106,7 @@ export const createForgejoRoutes = (deps: DashboardDeps) => {
             q: c.req.valid("query").q,
             repository: c.req.valid("query").repository,
             team: c.req.valid("query").team,
+            authors: c.req.valid("query").authors?.split(",").filter(Boolean),
             state: c.req.valid("query").state ?? "all",
           },
           c.req.raw.signal
@@ -121,6 +122,15 @@ export const createForgejoRoutes = (deps: DashboardDeps) => {
           throw new UnavailableError("Forgejo organizations are not available");
         }
         return forgejo.organizations(c.req.raw.signal);
+      })
+    )
+    .get("/api/forgejo/users", validateQuery(queries.users), (c) =>
+      json(c, () => {
+        const forgejo = requireForgejo();
+        if (!forgejo.users) {
+          throw new UnavailableError("Forgejo users are not available");
+        }
+        return forgejo.users(c.req.valid("query").q ?? "", c.req.raw.signal);
       })
     )
     .get("/api/forgejo/orgs/:org/teams", (c) =>

@@ -246,7 +246,10 @@ export const queries = {
     q: text,
     repository: text,
     team: text,
+    /** Comma-separated author logins. */
+    authors: z.string().max(1000).optional(),
   }),
+  users: z.object({ q: z.string().max(100).optional() }),
   jira: z.object({
     scope: z.enum(JIRA_SCOPES).optional(),
     board: text,

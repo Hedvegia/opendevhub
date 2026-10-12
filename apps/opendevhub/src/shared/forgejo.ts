@@ -19,6 +19,8 @@ export interface ForgejoPullQuery {
   org?: string;
   /** Team name within `org`: only repositories the team can access. */
   team?: string;
+  /** Logins of pull request authors; a pull request by any of them matches. */
+  authors?: string[];
   page?: number;
 }
 
@@ -30,6 +32,15 @@ export interface ForgejoTeams {
   teams: string[];
 }
 
+export interface ForgejoUser {
+  login: string;
+  fullName: string;
+}
+
+export interface ForgejoUsers {
+  users: ForgejoUser[];
+}
+
 export interface ForgejoPullRequest {
   owner: string;
   repo: string;
@@ -38,6 +49,8 @@ export interface ForgejoPullRequest {
   url: string;
   updatedAt: string;
   state: "open" | "closed" | "merged";
+  /** Inbox only: the login of whoever opened it. */
+  author?: string;
   /** Inbox only: set on an open pull request that targets another branch than its repository's default. */
   stack?: ForgejoStack;
 }
