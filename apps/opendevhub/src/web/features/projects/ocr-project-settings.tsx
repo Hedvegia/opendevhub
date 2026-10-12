@@ -164,9 +164,9 @@ export const OcrProjectSettingsBlock = ({
       aria-labelledby="ocr-project-title"
     >
       <div className="flex flex-col">
-        <h3 id="ocr-project-title" className="font-semibold">
+        <h2 id="ocr-project-title" className="font-semibold">
           Open Code Review
-        </h3>
+        </h2>
         <p className={muted}>
           The model that reviews this project&apos;s pull requests. Use another
           account, gateway or model than the default when this codebase needs

@@ -132,6 +132,7 @@ const presetFilters = z.object({
     .optional(),
 });
 const presetName = z.string().trim().min(1).max(80);
+const todoText = z.string().trim().min(1).max(500);
 
 /** Raw JQL, kept on one line; it is passed to Jira as written. */
 const jql = z.string().max(JIRA_JQL_MAX).transform(normalizeJql);
@@ -209,6 +210,8 @@ export const bodies = {
   }),
   roots: z.object({ roots: z.array(z.string()) }),
   projectName: z.object({ name: z.string().max(200) }),
+  todo: z.object({ text: todoText }),
+  todoUpdate: z.object({ text: todoText.optional(), done: flag }),
   projectPorts: z.object({
     ports: z.array(z.number().int().min(1).max(65_535)).max(100),
   }),
@@ -239,10 +242,12 @@ export const bodies = {
   node: z.object({ ssh: z.string(), label: text }),
   subscription: z.object({
     endpoint: text,
+    origin: z.string().optional(),
     expirationTime: z.number().nullable().optional(),
     keys: z.object({ p256dh: text, auth: text }).optional(),
   }),
   unsubscribe: z.object({ endpoint: text }),
+  pushTest: z.object({ endpoint: z.string().min(1) }),
   worktree: z.object({
     branch: text,
     base: text,

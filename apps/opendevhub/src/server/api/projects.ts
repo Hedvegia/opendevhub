@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 
 import type { DashboardDeps } from "../dashboard-api";
-import { UnavailableError } from "../errors";
+import { NotFoundError, UnavailableError } from "../errors";
 import { InvalidRequestError } from "../git/worktrees";
 import {
   errorStatus,
@@ -15,6 +15,14 @@ import {
   str,
 } from "./helpers";
 import { bodies, queries, validateJson, validateQuery } from "./validation";
+
+const todoId = (id: string): number => {
+  const n = Number(id);
+  if (!Number.isSafeInteger(n) || n < 1) {
+    throw new NotFoundError(id, "to-do");
+  }
+  return n;
+};
 
 export const createProjectsRoutes = (deps: DashboardDeps) => {
   const { store, hub, checks } = deps;
@@ -39,6 +47,12 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
     Array.isArray(value)
       ? value.filter((v): v is string => typeof v === "string")
       : undefined;
+  const requireTodos = () => {
+    if (!deps.todos) {
+      throw new UnavailableError("To-do lists are not available");
+    }
+    return deps.todos;
+  };
   const action = (c: Context, run: () => Promise<void>) => {
     if (store.preflight().errors.length > 0) {
       return c.json({ error: store.preflight().errors.join("; ") }, 412);
@@ -113,6 +127,27 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
         deps.projectLinks.save(id, c.req.valid("json"));
         return deps.projectLinks.get(id);
       })
+    )
+    .get("/api/projects/:id/todos", (c) =>
+      json(c, (id) => ({ todos: requireTodos().list(id) }))
+    )
+    .post("/api/projects/:id/todos", validateJson(bodies.todo), (c) =>
+      json(c, (id) => requireTodos().add(id, c.req.valid("json").text))
+    )
+    .patch(
+      "/api/projects/:id/todos/:todo",
+      validateJson(bodies.todoUpdate),
+      (c) =>
+        json(c, (id) =>
+          requireTodos().update(
+            id,
+            todoId(param(c, "todo")),
+            c.req.valid("json")
+          )
+        )
+    )
+    .delete("/api/projects/:id/todos/:todo", (c) =>
+      ok(c, (id) => requireTodos().remove(id, todoId(param(c, "todo"))))
     )
     .post("/api/projects/:id/rebuild", (c) =>
       action(c, () => actions["rebuild"](param(c, "id")))

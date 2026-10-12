@@ -237,7 +237,7 @@ export const LinksSettings = ({ projectId }: { projectId: string }) => {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col">
-        <h3 className="font-semibold">Tickets and pull requests</h3>
+        <h2 className="font-semibold">Tickets and pull requests</h2>
         <p className={muted}>
           The sidebar lists the open tickets and pull requests of what this
           project is linked to.

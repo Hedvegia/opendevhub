@@ -33,6 +33,14 @@ export interface ProjectLinks {
   forgejoRepository?: string;
 }
 
+/** One item on a project's to-do list. */
+export interface ProjectTodo {
+  id: number;
+  text: string;
+  done: boolean;
+  createdAt: number;
+}
+
 export type ContainerState =
   | "stopped"
   | "starting"

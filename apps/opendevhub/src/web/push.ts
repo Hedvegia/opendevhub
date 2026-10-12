@@ -50,7 +50,9 @@ const subscribe = async (): Promise<void> => {
     userVisibleOnly: true,
   });
   await complete(
-    api.push.subscribe.$post({ json: subscription.toJSON() }),
+    api.push.subscribe.$post({
+      json: { ...subscription.toJSON(), origin: window.location.origin },
+    }),
     "subscribe to notifications"
   );
 };
@@ -149,7 +151,33 @@ export const closeNotifications = async (
   }
 };
 
+export const currentPushEndpoint = async (): Promise<string | undefined> => {
+  if (!pushSupported()) {
+    return undefined;
+  }
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = await registration?.pushManager.getSubscription();
+  return subscription?.endpoint;
+};
+
+export const subscribedBrowsers = async () =>
+  await read(api.push.browsers.$get(), "subscribed browsers");
+
 export const sendTestNotification = async (): Promise<number> => {
-  const { sent } = await read(api.push.test.$post(), "test notification");
+  const endpoint = await currentPushEndpoint();
+  if (!endpoint) {
+    throw new Error("This browser is not subscribed to notifications.");
+  }
+  const { sent } = await read(
+    api.push.test.$post({ json: { endpoint } }),
+    "test notification"
+  );
   return sent;
+};
+
+export const removePushBrowser = async (endpoint: string): Promise<void> => {
+  await complete(
+    api.push.unsubscribe.$post({ json: { endpoint } }),
+    "remove browser notifications"
+  );
 };

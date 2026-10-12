@@ -8,6 +8,7 @@ import { writeJson } from "../config";
 export interface Subscription {
   endpoint: string;
   keys: { p256dh: string; auth: string };
+  origin?: string;
 }
 
 interface VapidKeys {
@@ -55,6 +56,7 @@ const parseSubscription = (raw: unknown): Subscription => {
   const s = (raw ?? {}) as {
     endpoint?: unknown;
     keys?: { p256dh?: unknown; auth?: unknown };
+    origin?: unknown;
   };
   if (!str(s.endpoint)) {
     throw new InvalidSubscriptionError("subscription needs an endpoint");
@@ -74,9 +76,24 @@ const parseSubscription = (raw: unknown): Subscription => {
       "subscription needs keys.p256dh and keys.auth"
     );
   }
+  let origin: string | undefined;
+  if (s.origin !== undefined) {
+    try {
+      const address = new URL(String(s.origin));
+      if (address.protocol !== "http:" && address.protocol !== "https:") {
+        throw new Error("unsupported protocol");
+      }
+      ({ origin } = address);
+    } catch {
+      throw new InvalidSubscriptionError(
+        "subscription origin must be an HTTP or HTTPS URL"
+      );
+    }
+  }
   return {
     endpoint: s.endpoint,
     keys: { auth: s.keys.auth, p256dh: s.keys.p256dh },
+    ...(origin === undefined ? {} : { origin }),
   };
 };
 
@@ -142,6 +159,14 @@ export class Push {
     return [...this.load().subscriptions];
   }
 
+  /** Browser addresses for Settings; encryption keys stay on the server. */
+  browsers(): Pick<Subscription, "endpoint" | "origin">[] {
+    return this.load().subscriptions.map(({ endpoint, origin }) => ({
+      endpoint,
+      origin,
+    }));
+  }
+
   /** Adds a browser's subscription, replacing any with the same endpoint. */
   subscribe(raw: unknown): void {
     const sub = parseSubscription(raw);
@@ -163,10 +188,12 @@ export class Push {
     this.save();
   }
 
-  /** Sends to every subscription; resolves to how many accepted it. Never rejects. */
-  async send(message: PushMessage): Promise<number> {
+  /** Sends to every subscription, or just the supplied endpoint; resolves to how many accepted it. */
+  async send(message: PushMessage, endpoint?: string): Promise<number> {
     const data = this.load();
-    const subs = data.subscriptions;
+    const subs = data.subscriptions.filter(
+      (sub) => endpoint === undefined || sub.endpoint === endpoint
+    );
     if (subs.length === 0) {
       return 0;
     }

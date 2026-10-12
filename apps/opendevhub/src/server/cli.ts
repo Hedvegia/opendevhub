@@ -29,6 +29,7 @@ import { LinkStore } from "./db/links";
 import { ProjectStore } from "./db/projects";
 import { ProvenanceStore } from "./db/provenance";
 import { TaskStore } from "./db/tasks";
+import { TodoStore } from "./db/todos";
 import { Checks } from "./environments/checks";
 import { Containers } from "./environments/containers";
 import { Credentials } from "./environments/credentials";
@@ -462,6 +463,7 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
     forgejo: new Forgejo(new FileForgejoSettings(dir)),
     forgejoPresets: new ForgejoPresetStore(db),
     jiraPresets: new JiraPresetStore(db),
+    todos: new TodoStore(db),
     jira: new Jira(new FileJiraSettings(dir)),
     links,
     ocr,

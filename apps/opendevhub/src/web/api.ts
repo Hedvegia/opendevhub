@@ -891,6 +891,43 @@ export const saveProjectLinks = (projectId: string, links: ProjectLinks) =>
     "save project links"
   );
 
+export const fetchTodos = (projectId: string, signal?: AbortSignal) =>
+  read(
+    project.todos.$get(
+      { param: projectParam(projectId) },
+      { init: { cache: "no-store", signal } }
+    ),
+    "to-do list"
+  );
+
+export const addTodo = (projectId: string, text: string) =>
+  read(
+    project.todos.$post({ json: { text }, param: projectParam(projectId) }),
+    "add to-do"
+  );
+
+export const updateTodo = (
+  projectId: string,
+  id: number,
+  changes: { text?: string; done?: boolean }
+) =>
+  read(
+    project.todos[":todo"].$patch({
+      json: changes,
+      param: { ...projectParam(projectId), todo: String(id) },
+    }),
+    "update to-do"
+  );
+
+export const removeTodo = async (projectId: string, id: number) => {
+  await complete(
+    project.todos[":todo"].$delete({
+      param: { ...projectParam(projectId), todo: String(id) },
+    }),
+    "delete to-do"
+  );
+};
+
 export const fetchGitSetup = () =>
   read(
     api.settings.git.$get(undefined, { init: { cache: "no-store" } }),

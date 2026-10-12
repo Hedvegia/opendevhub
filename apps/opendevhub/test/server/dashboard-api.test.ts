@@ -14,7 +14,9 @@ import {
   ForgejoPresetStore,
   JiraPresetStore,
 } from "../../src/server/db/filter-presets";
+import { ProjectStore } from "../../src/server/db/projects";
 import { ProvenanceStore } from "../../src/server/db/provenance";
+import { TodoStore } from "../../src/server/db/todos";
 import { CommandError } from "../../src/server/environments/containers";
 import { EditorUnavailableError } from "../../src/server/environments/editors";
 import {
@@ -337,13 +339,19 @@ function setup(webDir?: string) {
   } satisfies OnboardingPort;
   const push = {
     publicKey: vi.fn(() => "BPubKey"),
+    browsers: vi.fn(() => [
+      {
+        endpoint: "https://push.example.com/1",
+        origin: "http://localhost:7777",
+      },
+    ]),
     subscribe: vi.fn((raw: unknown) => {
       if (!(raw as { endpoint?: unknown }).endpoint) {
         throw new InvalidSubscriptionError("subscription needs an endpoint");
       }
     }),
     unsubscribe: vi.fn((_endpoint: string) => {}),
-    send: vi.fn(async (_m: PushMessage) => 2),
+    send: vi.fn(async (_m: PushMessage, _endpoint?: string) => 1),
   } satisfies PushPort;
   // Rescanning after a write discovers the new project.
   hub.environments.rescan.mockImplementation(async () =>
@@ -1095,15 +1103,25 @@ describe("dashboard API", () => {
     ).toBe(200);
     expect(push.unsubscribe).toHaveBeenCalledWith(sub.endpoint);
 
-    await expect((await post("/api/push/test")).json()).resolves.toStrictEqual({
-      sent: 2,
+    await expect(
+      (await app.request("/api/push/browsers")).json()
+    ).resolves.toStrictEqual(push.browsers());
+    expect((await post("/api/push/test")).status).toBe(400);
+    expect(push.send).not.toHaveBeenCalled();
+    await expect(
+      (await post("/api/push/test", { endpoint: sub.endpoint })).json()
+    ).resolves.toStrictEqual({
+      sent: 1,
     });
-    expect(push.send).toHaveBeenCalledWith({
-      tag: "test",
-      title: "opendevhub",
-      body: "Notifications work.",
-      url: "/",
-    });
+    expect(push.send).toHaveBeenCalledWith(
+      {
+        tag: "test",
+        title: "opendevhub",
+        body: "Notifications work.",
+        url: "/",
+      },
+      sub.endpoint
+    );
   });
 
   it("GET /api/projects returns the snapshot without passwords", async () => {
@@ -2695,5 +2713,84 @@ describe("Hono RPC contract", () => {
         .status
     ).toBe(400);
     expect(hub.reviews.review).not.toHaveBeenCalled();
+  });
+});
+
+describe("to-do endpoints", () => {
+  const withTodos = () => {
+    const base = setup();
+    const db = openDatabase(":memory:");
+    new ProjectStore(db).upsertAll([
+      {
+        devcontainerPath: "/src/demo/.devcontainer/devcontainer.json",
+        id: "demo",
+        name: "demo",
+        path: "/src/demo",
+      },
+    ]);
+    return createDashboardApp({
+      store: base.store,
+      hub: base.hub,
+      onboarding: base.onboarding,
+      push: base.push,
+      cleanup: base.cleanup,
+      checks: base.checks,
+      todos: new TodoStore(db, () => 1000),
+    });
+  };
+  const send = (
+    app: ReturnType<typeof createDashboardApp>,
+    method: string,
+    url: string,
+    body: unknown
+  ) =>
+    app.request(url, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("adds, lists, checks off and deletes items", async () => {
+    const app = withTodos();
+    const added = await send(app, "POST", "/api/projects/demo/todos", {
+      text: "  Ship it  ",
+    });
+    await expect(added.json()).resolves.toStrictEqual({
+      createdAt: 1000,
+      done: false,
+      id: 1,
+      text: "Ship it",
+    });
+    const checked = await send(app, "PATCH", "/api/projects/demo/todos/1", {
+      done: true,
+    });
+    expect(checked.status).toBe(200);
+    const list = await app.request("/api/projects/demo/todos");
+    await expect(list.json()).resolves.toStrictEqual({
+      todos: [{ createdAt: 1000, done: true, id: 1, text: "Ship it" }],
+    });
+    expect(
+      (await app.request("/api/projects/demo/todos/1", { method: "DELETE" }))
+        .status
+    ).toBe(200);
+    expect(
+      (await app.request("/api/projects/demo/todos/1", { method: "DELETE" }))
+        .status
+    ).toBe(404);
+  });
+
+  it("answers 400 for empty text, 404 for an unknown project and 412 without a store", async () => {
+    const app = withTodos();
+    expect(
+      (await send(app, "POST", "/api/projects/demo/todos", { text: " " }))
+        .status
+    ).toBe(400);
+    expect(
+      (await send(app, "POST", "/api/projects/nope/todos", { text: "x" }))
+        .status
+    ).toBe(404);
+    expect((await setup().app.request("/api/projects/demo/todos")).status).toBe(
+      412
+    );
   });
 });

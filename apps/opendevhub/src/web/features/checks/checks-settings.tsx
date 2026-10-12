@@ -70,7 +70,7 @@ export const ChecksSettings = ({ projectId }: { projectId: string }) => {
     <section className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col">
-          <h3 className="font-semibold">Checks</h3>
+          <h2 className="font-semibold">Checks</h2>
           <p className={muted}>
             {config
               ? `Run from Review before publishing · ${SOURCE_LABEL[config.source]}`

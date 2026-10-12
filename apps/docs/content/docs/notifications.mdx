@@ -16,8 +16,10 @@ Each permission and question gets its own notification. Clicking one takes you t
 
 Notifications arrive while the dashboard tab is closed, as long as the browser is running. opendevhub sends them by Web Push through the browser vendor's push service (Google's for Chrome, Edge and Brave, Mozilla's for Firefox, Apple's for Safari), so it needs internet access to that service. The contents are end-to-end encrypted. If it can't reach the service, the terminal says so.
 
-To check the setup, use **Send test notification** in `Ctrl/⌘ K`.
+To check the setup, use **Send test notification** in Settings → Notifications or `Ctrl/⌘ K`. The test sends only to the browser and address you're using.
 
 ## Per browser and address
 
 Notifications are enabled per browser and address: opening the dashboard on another host name or port (`127.0.0.1` instead of `localhost`, or `--port`) means enabling them again there. The keys and subscriptions are in `~/.local/state/opendevhub/push.json`.
+
+Stopping a server doesn't remove its browser subscription. If you enabled notifications on several ports, you can receive several alerts from the same browser. Settings → Notifications lists **Subscribed browsers** with their addresses and marks the current subscription as **This browser**. Remove old entries there to stop delivery to them. Older subscriptions appear as **Unknown address** until that address is opened again; you can remove them too. Opening an old address with notifications still enabled subscribes it again; turn notifications off at that address to keep it disabled.

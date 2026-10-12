@@ -3,7 +3,7 @@ import { PlusIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -14,6 +14,7 @@ import {
   saveProjectPorts,
 } from "../../api";
 import { Chip, muted } from "../../components/page";
+import { Tip } from "../../components/tip";
 
 const MAX_PORT = 65_535;
 
@@ -26,10 +27,8 @@ interface PortListProps {
   projectId: string;
   /** Tells the two lists apart in the query cache and in element ids. */
   kind: "ports" | "host-ports";
-  title: string;
+  title: ReactNode;
   description: ReactNode;
-  /** Shown between the description and the list. */
-  notice?: ReactNode;
   placeholder: string;
   inputLabel: string;
   removeLabel: (port: number) => string;
@@ -46,7 +45,6 @@ const PortList = ({
   kind,
   title,
   description,
-  notice,
   placeholder,
   inputLabel,
   removeLabel,
@@ -87,10 +85,9 @@ const PortList = ({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col">
-        <h3 className="font-semibold">{title}</h3>
+        <h2 className="flex items-center gap-2 font-semibold">{title}</h2>
         <p className={muted}>{description}</p>
       </div>
-      {notice}
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -180,7 +177,42 @@ export const HostPortsSettings = ({ projectId }: { projectId: string }) => (
   <PortList
     projectId={projectId}
     kind="host-ports"
-    title="Host ports"
+    title={
+      <>
+        Host ports
+        <Tip
+          label={
+            <div className="flex max-w-sm flex-col gap-2">
+              <p className="font-semibold">
+                Containers get full access to these ports
+              </p>
+              <p>
+                Every process in the project&apos;s containers, including agents
+                and dependencies, can use whatever listens on a host port. A
+                Chrome debugging port gives full control of that browser, its
+                cookies and logins.
+              </p>
+              <p>
+                For Chrome, start a separate instance with its own profile, e.g.{" "}
+                <code className="font-mono break-all">
+                  --remote-debugging-port=9222
+                  --user-data-dir=~/.opendevhub-chrome
+                </code>
+                , never your everyday profile.
+              </p>
+            </div>
+          }
+        >
+          <button
+            type="button"
+            aria-label="Host ports container access warning"
+            className="text-warn focus-visible:outline-ring rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            <TriangleAlertIcon className="size-4" />
+          </button>
+        </Tip>
+      </>
+    }
     description={
       <>
         Reachable inside every environment of this project at{" "}
@@ -188,27 +220,6 @@ export const HostPortsSettings = ({ projectId }: { projectId: string }) => (
         answered by <code className="font-mono">localhost</code> on this
         machine. Running containers pick them up right away.
       </>
-    }
-    notice={
-      <Alert>
-        <TriangleAlertIcon />
-        <AlertTitle>Containers get full access to these ports</AlertTitle>
-        <AlertDescription>
-          <p>
-            Every process in the project&apos;s containers, including agents and
-            dependencies, can use whatever listens on a host port. A Chrome
-            debugging port gives full control of that browser, its cookies and
-            logins.
-          </p>
-          <p>
-            For Chrome, start a separate instance with its own profile, e.g.{" "}
-            <code className="font-mono">
-              --remote-debugging-port=9222 --user-data-dir=~/.opendevhub-chrome
-            </code>
-            , never your everyday profile.
-          </p>
-        </AlertDescription>
-      </Alert>
     }
     placeholder="9222"
     inputLabel="Host port to reach from containers"

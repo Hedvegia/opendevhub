@@ -16,6 +16,7 @@ import type { EventStore } from "./db/events";
 import type { ForgejoPresetStore, JiraPresetStore } from "./db/filter-presets";
 import type { LinkStore } from "./db/links";
 import type { ProvenanceStore } from "./db/provenance";
+import type { TodoStore } from "./db/todos";
 import type { Checks } from "./environments/checks";
 import type { Environments } from "./environments/environments";
 import type { Checkouts } from "./git/checkouts";
@@ -110,7 +111,7 @@ export interface DashboardHub {
 
 export type PushPort = Pick<
   Push,
-  "publicKey" | "subscribe" | "unsubscribe" | "send"
+  "publicKey" | "browsers" | "subscribe" | "unsubscribe" | "send"
 >;
 
 export interface DashboardDeps {
@@ -176,6 +177,8 @@ export interface DashboardDeps {
   >;
   /** Saved Tickets page views; absent in tests that don't need them. */
   jiraPresets?: Pick<JiraPresetStore, "list" | "create" | "update" | "remove">;
+  /** Each project's to-do list; absent in tests that don't need it. */
+  todos?: Pick<TodoStore, "list" | "add" | "update" | "remove">;
   jira?: Pick<
     Jira,
     "view" | "save" | "tickets" | "ticket" | "catalog" | "columns"

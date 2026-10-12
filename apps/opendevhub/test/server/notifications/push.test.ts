@@ -101,6 +101,46 @@ describe(Push, () => {
     expect(push.subscriptions()).toStrictEqual([]);
   });
 
+  it("lists browser addresses without keys and keeps older subscriptions readable", () => {
+    const { push, make } = setup();
+    push.subscribe(sub(1));
+    push.subscribe({ ...sub(2), origin: "http://localhost:7828" });
+    expect(make().browsers()).toStrictEqual([
+      { endpoint: sub(1).endpoint, origin: undefined },
+      { endpoint: sub(2).endpoint, origin: "http://localhost:7828" },
+    ]);
+    push.subscribe({ ...sub(1), origin: "http://localhost:7777" });
+    expect(make().browsers()[1]).toStrictEqual({
+      endpoint: sub(1).endpoint,
+      origin: "http://localhost:7777",
+    });
+    expect(() => push.subscribe({ ...sub(3), origin: "file:///tmp" })).toThrow(
+      InvalidSubscriptionError
+    );
+  });
+
+  it("targets a test to one browser and stops delivering to removed addresses", async () => {
+    const { push, send, make } = setup();
+    push.subscribe(sub(1));
+    push.subscribe(sub(2));
+    push.subscribe(sub(3));
+    await expect(push.send(permNotice, sub(2).endpoint)).resolves.toBe(1);
+    expect(
+      send.mock.calls.map(([subscription]) => subscription.endpoint)
+    ).toStrictEqual([sub(2).endpoint]);
+    await expect(
+      push.send(permNotice, "https://push.example.com/missing")
+    ).resolves.toBe(0);
+    expect(send).toHaveBeenCalledTimes(1);
+    push.unsubscribe(sub(1).endpoint);
+    push.unsubscribe(sub(3).endpoint);
+    send.mockClear();
+    await expect(make().send(permNotice)).resolves.toBe(1);
+    expect(
+      send.mock.calls.map(([subscription]) => subscription.endpoint)
+    ).toStrictEqual([sub(2).endpoint]);
+  });
+
   it("sends the notice as JSON to every subscription with TTL, urgency and VAPID details", async () => {
     const { push, send } = setup();
     push.subscribe(sub(1));

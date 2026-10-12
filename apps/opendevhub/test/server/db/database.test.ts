@@ -49,6 +49,7 @@ describe("openDatabase", () => {
       "events",
       "forgejo_filter_presets",
       "jira_filter_presets",
+      "project_todos",
       "projects",
       "pull_requests",
       "reviews",

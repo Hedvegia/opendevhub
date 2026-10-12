@@ -248,6 +248,16 @@ DROP TABLE reviews;
 ALTER TABLE reviews_new RENAME TO reviews;
 CREATE INDEX reviews_pull ON reviews (pull_request_id, created_at);
 `,
+  `
+CREATE TABLE project_todos (
+  id         INTEGER PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects (id),
+  text       TEXT NOT NULL,
+  done_at    INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX project_todos_project ON project_todos (project_id, id);
+`,
 ];
 
 export class NewerDatabaseError extends Error {

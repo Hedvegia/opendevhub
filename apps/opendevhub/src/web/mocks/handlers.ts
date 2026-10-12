@@ -16,7 +16,11 @@ import type {
   OcrSettingsInput,
   OcrTestResult,
 } from "../../shared/ocr";
-import type { DashboardSnapshot, ProjectLinks } from "../../shared/types";
+import type {
+  DashboardSnapshot,
+  ProjectLinks,
+  ProjectTodo,
+} from "../../shared/types";
 import {
   activityPage,
   provenanceOf,
@@ -132,6 +136,11 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
     },
   ];
   const projectLinks = new Map<string, ProjectLinks>();
+  let todos: ProjectTodo[] = [
+    { createdAt: 0, done: true, id: 1, text: "Set up the staging database" },
+    { createdAt: 0, done: false, id: 2, text: "Rotate the Stripe API key" },
+    { createdAt: 0, done: false, id: 3, text: "Write the release notes" },
+  ];
   const defaultLinks: ProjectLinks = {
     forgejoRepository: "acme/web",
     jiraBoard: { id: 1, name: "ACME Sprint Board" },
@@ -422,6 +431,7 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
       HttpResponse.json({ error: "push is not mocked" }, { status: 404 })
     ),
     http.post("/api/push/test", () => HttpResponse.json({ sent: 1 })),
+    http.get("/api/push/browsers", () => HttpResponse.json([])),
     http.post("/api/push/unsubscribe", ok),
 
     // Settings
@@ -508,6 +518,29 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
       const links = (await request.json()) as ProjectLinks;
       projectLinks.set(String(params.id), links);
       return HttpResponse.json(links);
+    }),
+    http.get("/api/projects/:id/todos", () => HttpResponse.json({ todos })),
+    http.post("/api/projects/:id/todos", async ({ request }) => {
+      const { text } = (await request.json()) as { text: string };
+      const todo: ProjectTodo = {
+        createdAt: Date.now(),
+        done: false,
+        id: Math.max(0, ...todos.map((t) => t.id)) + 1,
+        text,
+      };
+      todos = [...todos, todo];
+      return HttpResponse.json(todo);
+    }),
+    http.patch("/api/projects/:id/todos/:todo", async ({ params, request }) => {
+      const changes = (await request.json()) as Partial<ProjectTodo>;
+      todos = todos.map((t) =>
+        String(t.id) === params.todo ? { ...t, ...changes } : t
+      );
+      return HttpResponse.json(todos.find((t) => String(t.id) === params.todo));
+    }),
+    http.delete("/api/projects/:id/todos/:todo", ({ params }) => {
+      todos = todos.filter((t) => String(t.id) !== params.todo);
+      return HttpResponse.json({ ok: true });
     }),
     http.get("/api/projects/:id/checks", () => HttpResponse.json(checksView)),
     http.get("/api/projects/:id/spec", () => HttpResponse.json(specView)),

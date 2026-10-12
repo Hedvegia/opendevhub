@@ -107,6 +107,7 @@ export const createCoreRoutes = (deps: DashboardDeps) => {
       ok(c, async (id) => void (await requireNodes().remove(id)))
     )
     .get("/api/push/key", (c) => c.json({ publicKey: push.publicKey() }, 200))
+    .get("/api/push/browsers", (c) => c.json(push.browsers(), 200))
     .post("/api/push/subscribe", validateJson(bodies.subscription), (c) =>
       ok(c, (_id) => {
         const b = c.req.valid("json");
@@ -119,14 +120,17 @@ export const createCoreRoutes = (deps: DashboardDeps) => {
         return push.unsubscribe(str(b.endpoint) ?? "");
       })
     )
-    .post("/api/push/test", (c) =>
+    .post("/api/push/test", validateJson(bodies.pushTest), (c) =>
       json(c, async () => ({
-        sent: await push.send({
-          body: "Notifications work.",
-          tag: "test",
-          title: "opendevhub",
-          url: "/",
-        }),
+        sent: await push.send(
+          {
+            body: "Notifications work.",
+            tag: "test",
+            title: "opendevhub",
+            url: "/",
+          },
+          c.req.valid("json").endpoint
+        ),
       }))
     )
     .get("/api/events", (c) =>
