@@ -10,7 +10,7 @@ import type {
   TaskView,
   VariantView,
 } from "../../../shared/types";
-import { taskHref } from "../../../shared/urls";
+import { chatHref, taskHref } from "../../../shared/urls";
 import type { TaskTab } from "../../../shared/urls";
 import { workspaceFolderOf } from "../../derive";
 import type { Tone } from "../../derive";
@@ -191,8 +191,9 @@ export const pickPrompts = (
 };
 
 /**
- * The "created by" chip on a conversation row, linking to the task page: the task's variant (with its model when there
- * are several), the AI review it runs, a conversation started on its own here, or one started in opencode.
+ * The "created by" chip on a conversation row: the task's variant (with its model when there are several) or the AI
+ * review it runs, linking to the task page; or for a chat, that it is one (started here or in opencode), linking to
+ * its chat view.
  */
 export const taskChip = (
   view: ProjectView,
@@ -202,23 +203,21 @@ export const taskChip = (
   | undefined => {
   const found = variantOf(view, s);
   if (!found) {
-    return undefined;
-  }
-  const { task, variant } = found;
-  const to = taskPath(view.project.id, task.id);
-  if (task.kind === "manual") {
-    return s.task?.adopted
+    const chat = s.chat ? view.chats.find((c) => c.id === s.chat) : undefined;
+    if (!chat) {
+      return undefined;
+    }
+    const to = chatHref(view.project.id, chat.id);
+    return chat.origin === "opencode"
       ? {
           label: "started in opencode",
           title: "Found in opencode; started outside opendevhub",
           to,
         }
-      : {
-          label: "started here",
-          title: "Started on its own in opendevhub",
-          to,
-        };
+      : { label: "chat", title: `Chat: ${chat.title}`, to };
   }
+  const { task, variant } = found;
+  const to = taskPath(view.project.id, task.id);
   if (task.kind === "review") {
     return { label: "AI review", title: task.title, to };
   }

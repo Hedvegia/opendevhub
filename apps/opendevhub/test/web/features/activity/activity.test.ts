@@ -10,6 +10,7 @@ import {
   mergeEvents,
   originLabel,
   pullLabel,
+  chatOrigin,
   sessionOrigin,
 } from "../../../../src/web/features/activity/activity";
 
@@ -173,7 +174,7 @@ describe("created-by origins", () => {
     });
   });
 
-  it("tells sessions of a variant, started here, and found in opencode apart", () => {
+  it("tells sessions of a variant and of a review apart, and chats started here and in opencode", () => {
     const ref = { discarded: false, id: "tsk_1", n: 2 };
     expect(sessionOrigin({ ...ref, kind: "task" }, "Add login")).toStrictEqual({
       by: "variant",
@@ -181,23 +182,34 @@ describe("created-by origins", () => {
       task: "tsk_1",
       title: "Add login",
     });
-    expect(sessionOrigin({ ...ref, kind: "manual" }, "Fix")).toStrictEqual({
+    expect(
+      sessionOrigin({ ...ref, kind: "review" }, "AI review")
+    ).toStrictEqual({
       by: "session",
-      kind: "manual",
+      kind: "review",
       task: "tsk_1",
+      title: "AI review",
+    });
+    const chat = {
+      createdAt: 1,
+      id: "c_1",
+      origin: "opencode" as const,
+      step: "session" as const,
+      title: "Fix",
+    };
+    const found = chatOrigin(chat);
+    expect(found).toStrictEqual({
+      by: "chat",
+      chat: "c_1",
+      opencode: true,
       title: "Fix",
     });
-    const adopted = sessionOrigin(
-      { ...ref, adopted: true, kind: "manual" },
-      "Fix"
+    expect(originLabel(found).text).toBe("Started in opencode");
+    expect(originLabel(chatOrigin({ ...chat, origin: "hub" })).text).toBe(
+      "Started here"
     );
-    expect(adopted).toStrictEqual({
-      adopted: true,
-      by: "session",
-      kind: "manual",
-      task: "tsk_1",
-      title: "Fix",
-    });
-    expect(originLabel(adopted).text).toBe("Started in opencode");
+    expect(
+      originLabel({ by: "manual", chat: { id: "c_1", title: "Fix" } }).text
+    ).toBe("Chat: Fix");
   });
 });

@@ -35,6 +35,7 @@ function snap(statuses: Record<string, SessionStatus>): DashboardSnapshot {
     projects: [
       {
         tasks: [],
+        chats: [],
         project: {
           id: "p",
           name: "demo",
@@ -165,6 +166,7 @@ describe("worktree helpers", () => {
     runtime: Partial<ProjectView["runtime"]> = {}
   ): ProjectView => ({
     tasks: [],
+    chats: [],
     project: {
       id: "demo-1",
       name: "demo",

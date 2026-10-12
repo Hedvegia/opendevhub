@@ -19,6 +19,7 @@ import {
 } from "./config";
 import type { Config } from "./config";
 import { createDashboardApp } from "./dashboard-api";
+import { ChatStore } from "./db/chats";
 import { CheckoutStore } from "./db/checkouts";
 import { openStateDatabase } from "./db/database";
 import { EnvironmentStore } from "./db/environments";
@@ -261,7 +262,8 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
   let roots = config.roots ?? [];
   const db = openStateDatabase(stateDir());
   const projects = new ProjectStore(db);
-  const tasks = new TaskStore(db);
+  const chats = new ChatStore(db);
+  const tasks = new TaskStore(db, Date.now, () => chats.invalidate());
   const checkouts = new CheckoutStore(db);
   const environments = new EnvironmentStore(db);
   const links = new LinkStore(db);
@@ -269,7 +271,9 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
   events.pruneOld();
   // The jobs that were setting these variants up died with the previous process.
   tasks.failInterrupted();
+  chats.failInterrupted();
   const store = new StateStore({
+    chats,
     checkouts,
     environments,
     events,
@@ -316,6 +320,7 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
     store,
     projects,
     tasks,
+    chats,
     checkouts,
     links,
     containers,

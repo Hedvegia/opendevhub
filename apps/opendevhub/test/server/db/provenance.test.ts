@@ -161,12 +161,12 @@ describe("ProvenanceStore", () => {
   it("walks a pull request, a review task and its review back to the authoring task", () => {
     const { provenance, links, tasks } = setup();
     const pull = links.pull(PR);
-    const reviewTask = tasks.startManual({
+    const reviewTask = tasks.startReview({
       createdAt: 2000,
       directory: "/w",
       envId: project.id,
       projectId: project.id,
-      reviewOf: pull?.id,
+      reviewOf: pull?.id ?? 0,
       sessionId: "ses_r",
       title: "AI review: PR #12",
     });
@@ -241,6 +241,39 @@ describe("ProvenanceStore", () => {
     expect(() => provenance.of("session", "nope")).toThrow(NotFoundError);
     expect(() => provenance.of("worktree", "999")).toThrow(NotFoundError);
     expect(() => provenance.of("variant", "garbage")).toThrow(NotFoundError);
+  });
+
+  it("walks a chat's session up through its worktree and branch to the project, linking to the chat", () => {
+    const s = setup();
+    const rows = s.checkouts.recordCreated(
+      project.id,
+      { branch: "dark-mode", path: `${WT}/dark-mode` },
+      { by: "manual" },
+      USER
+    );
+    const chat = s.chats.insert({
+      branchId: rows.branch.id,
+      createdAt: 1000,
+      directory: `${WT}/dark-mode`,
+      origin: "opencode",
+      projectId: project.id,
+      sessionId: "ses_c",
+      step: "session",
+      title: "Dark mode",
+      worktreeId: rows.worktree.id,
+    });
+    const p = s.provenance.of("session", "ses_c");
+    expect(lines(p.trail)).toStrictEqual([
+      "project demo",
+      "branch dark-mode",
+      "worktree dark-mode",
+      "?chat Dark mode",
+      "session Conversation",
+    ]);
+    expect(p.trail.at(-1)?.href).toBe(`/chat/${project.id}/${chat.id}`);
+    expect(lines(s.provenance.of("chat", chat.id).trail).at(-1)).toBe(
+      "?chat Dark mode"
+    );
   });
 
   it("ends a variant's trail at the branch it works on, for the task page's breadcrumb", () => {

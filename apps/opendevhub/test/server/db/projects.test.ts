@@ -67,13 +67,13 @@ describe("ProjectStore", () => {
   it("marks a project missing instead of deleting it, keeping its tasks, and clears the mark when it returns", () => {
     const s = setup();
     s.projects.upsertAll([demo, other]);
-    s.tasks.startManual({
+    s.tasks.createTask({
       createdAt: 1000,
-      directory: "/workspaces/demo",
-      envId: demo.id,
+      id: "tsk_fix",
       projectId: demo.id,
-      sessionId: "ses_1",
+      prompt: "Fix",
       title: "Fix",
+      variants: [{}],
     });
     s.clock.now = 2000;
     s.projects.upsertAll([other]);

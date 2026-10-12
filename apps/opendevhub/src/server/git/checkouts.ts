@@ -152,7 +152,7 @@ export class Checkouts {
       if (!req.startSession) {
         return { worktree: created };
       }
-      const sessionId = await this.sessions
+      const started = await this.sessions
         .startSession(id, created.path, branch, req.prompt)
         .catch((error: unknown) => {
           this.envs.log(
@@ -161,7 +161,11 @@ export class Checkouts {
           );
           return undefined;
         });
-      return { sessionId, worktree: created };
+      return {
+        worktree: created,
+        ...(started ? { sessionId: started.sessionId } : {}),
+        ...(started?.chat ? { chat: started.chat } : {}),
+      };
     });
   }
 

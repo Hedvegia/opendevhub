@@ -26,15 +26,27 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { jiraTaskPrompt } from "../../../shared/jira";
 import { branchSlug, deriveTitle, taskBranches } from "../../../shared/tasks";
-import type { Isolation, ModelsInfo, TaskWhere } from "../../../shared/types";
-import { createTask, fetchModels } from "../../api";
+import type {
+  Isolation,
+  ModelsInfo,
+  NewTaskBody,
+  TaskVariantSpec,
+  TaskWhere,
+} from "../../../shared/types";
+import {
+  createDraft,
+  createTask,
+  editDraft,
+  fetchModels,
+  startDraft,
+} from "../../api";
 import { Choice } from "../../components/choice";
 import { useDash } from "../../dashboard-context";
 import type { NewTaskDraft } from "../../dashboard-context";
 import { useNavigate } from "../../routing";
 import { nodeChoices } from "../nodes/nodes";
 import { projectFlags } from "../projects/project-actions";
-import { specUnavailable, taskPath } from "./tasks";
+import { modelKey, specUnavailable, taskPath } from "./tasks";
 import { EMPTY_ROW, rowsToVariants, VariantRows } from "./variant-rows";
 import type { VariantRow } from "./variant-rows";
 
@@ -66,6 +78,8 @@ const TaskForm = ({
 }) => {
   const { snapshot, act } = useDash();
   const jira = draft?.jira;
+  const plan = draft?.plan;
+  const saved = draft?.draft;
   const navigate = useNavigate();
   const [prompt, setPrompt] = useState(
     () => draft?.prompt ?? (jira ? jiraTaskPrompt(jira) : "")
@@ -74,13 +88,19 @@ const TaskForm = ({
     () =>
       draft?.title ?? (jira ? `${jira.key}: ${jira.title}`.slice(0, 200) : "")
   );
-  const [branch, setBranch] = useState("");
-  const [base, setBase] = useState(draft?.base ?? "");
-  const [where, setWhere] = useState<TaskWhere>("worktree");
-  const [environment, setEnvironment] = useState<Isolation>();
-  const [node, setNode] = useState("local");
-  const [rows, setRows] = useState<VariantRow[]>([EMPTY_ROW]);
-  const [specFirst, setSpecFirst] = useState(false);
+  const [branch, setBranch] = useState(plan?.branch ?? "");
+  const [base, setBase] = useState(draft?.base ?? plan?.base ?? "");
+  const [where, setWhere] = useState<TaskWhere>(plan?.where ?? "worktree");
+  const [environment, setEnvironment] = useState<Isolation | undefined>(
+    plan?.environment
+  );
+  const [node, setNode] = useState(plan?.node ?? "local");
+  const [rows, setRows] = useState<VariantRow[]>(() =>
+    plan && plan.variants.length > 0
+      ? plan.variants.map(variantToRow)
+      : [EMPTY_ROW]
+  );
+  const [specFirst, setSpecFirst] = useState(plan?.spec === true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -138,15 +158,10 @@ const TaskForm = ({
         })
       : [];
 
-  const submit = (e?: FormEvent) => {
-    e?.preventDefault();
-    if (!view || !prompt.trim() || !canOpen || busy) {
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
+  /** What the form asks for, as a task request. */
+  const request = (): NewTaskBody => {
     const worktree = effectiveWhere === "worktree";
-    createTask(view.project.id, {
+    return {
       prompt,
       ...(jira ? { jira } : {}),
       ...(title.trim() ? { title: title.trim() } : {}),
@@ -157,16 +172,58 @@ const TaskForm = ({
       ...(worktree && base.trim() ? { base: base.trim() } : {}),
       ...(spec ? { spec: true as const } : {}),
       variants,
-    })
+    };
+  };
+
+  const run = (job: () => Promise<string | undefined>) => {
+    setBusy(true);
+    setError(undefined);
+    job()
       .then(
-        (result) => {
+        (task) => {
           // The variants are set up in the background; the task's page shows how far each one got.
           onClose();
-          void navigate(taskPath(view.project.id, result.task));
+          if (task && view) {
+            void navigate(taskPath(view.project.id, task));
+          }
         },
         (err) => setError(err instanceof Error ? err.message : String(err))
       )
       .finally(() => setBusy(false));
+  };
+
+  const submit = (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!view || !prompt.trim() || !canOpen || busy) {
+      return;
+    }
+    if (saved?.mode === "edit") {
+      saveDraft();
+      return;
+    }
+    const { id } = view.project;
+    run(async () => {
+      const started = saved
+        ? await startDraft(id, saved.task, request())
+        : await createTask(id, request());
+      return started.task;
+    });
+  };
+
+  /** Saves the form as a draft, or saves the draft being edited; nothing starts. */
+  const saveDraft = () => {
+    if (!view || (!prompt.trim() && !title.trim()) || busy) {
+      return;
+    }
+    const { id } = view.project;
+    run(async () => {
+      if (saved) {
+        await editDraft(id, saved.task, request());
+        return saved.task;
+      }
+      const drafted = await createDraft(id, request());
+      return drafted.task;
+    });
   };
 
   return (
@@ -181,7 +238,7 @@ const TaskForm = ({
       >
         <DialogHeader>
           <DialogTitle>
-            {jira ? `New task from ${jira.key}` : "New task"}
+            {dialogTitle(saved?.mode, jira?.key)}
             {view && (
               <span className="text-muted-foreground font-normal">
                 {" "}
@@ -413,12 +470,25 @@ const TaskForm = ({
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={!view || !prompt.trim() || !canOpen || busy}
-            >
-              {startLabel(busy, variants.length)}
-            </Button>
+            {saved?.mode !== "start" && (
+              <Button
+                type="button"
+                variant={saved?.mode === "edit" ? "default" : "outline"}
+                disabled={!view || (!prompt.trim() && !title.trim()) || busy}
+                title="Keep this task for later; nothing runs until you start it"
+                onClick={saveDraft}
+              >
+                {saved?.mode === "edit" ? "Save draft" : "Save as draft"}
+              </Button>
+            )}
+            {saved?.mode !== "edit" && (
+              <Button
+                type="submit"
+                disabled={!view || !prompt.trim() || !canOpen || busy}
+              >
+                {startLabel(busy, variants.length)}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -437,6 +507,26 @@ const notRunningMessage = (
     ? "opencode is not responding. Restart it from the project's menu."
     : "The project isn't running. Start it to run a task.";
 };
+
+const dialogTitle = (
+  mode: "start" | "edit" | undefined,
+  key: string | undefined
+): string => {
+  if (mode === "edit") {
+    return "Edit draft";
+  }
+  if (mode === "start") {
+    return "Start draft";
+  }
+  return key ? `New task from ${key}` : "New task";
+};
+
+/** A draft's variant as the form holds it. */
+const variantToRow = (v: TaskVariantSpec): VariantRow => ({
+  agent: v.agent ?? "",
+  model: modelKey(v.model),
+  variant: v.model?.variant ?? "",
+});
 
 const startLabel = (busy: boolean, variants: number): string => {
   if (busy) {

@@ -4,8 +4,9 @@ import type {
   ProvenanceStep,
 } from "../../shared/activity";
 import type { ModelRef } from "../../shared/types";
-import { taskHref } from "../../shared/urls";
+import { chatHref, taskHref } from "../../shared/urls";
 import { NotFoundError } from "../errors";
+import type { RawChat } from "./chats";
 import type { Db } from "./database";
 
 interface ProjectRow {
@@ -210,6 +211,9 @@ export class ProvenanceStore {
       case "session": {
         return this.sessionTrail(id, seen);
       }
+      case "chat": {
+        return this.chatTrail(this.chat(id));
+      }
       case "pull_request": {
         return this.pullTrail(this.pull(Number(id)), seen);
       }
@@ -246,7 +250,7 @@ export class ProvenanceStore {
     return [this.projectStep(this.project(t.project_id)), self];
   }
 
-  /** A manual or review task has one implicit variant, which the trail leaves out. */
+  /** A review task has one implicit variant, which the trail leaves out. */
   private variantTrail(v: VariantRow, seen: Set<string>): ProvenanceStep[] {
     const task = this.task(v.task_id);
     const trail = this.taskTrail(task, seen);
@@ -331,7 +335,19 @@ export class ProvenanceStore {
       .prepare("SELECT * FROM variants WHERE session_id = ?")
       .get(sessionId) as VariantRow | undefined;
     if (!v) {
-      throw new NotFoundError(sessionId, "session");
+      const chat = this.db
+        .prepare("SELECT * FROM chats WHERE session_id = ?")
+        .get(sessionId) as RawChat | undefined;
+      if (!chat || chat.origin === "internal") {
+        throw new NotFoundError(sessionId, "session");
+      }
+      return [
+        ...this.chatTrail(chat),
+        step("session", sessionId, "Conversation", {
+          href: chatHref(chat.project_id, chat.id),
+          removed: chat.session_removed_at !== null,
+        }),
+      ];
     }
     const task = this.task(v.task_id);
     const worktree =
@@ -345,6 +361,23 @@ export class ProvenanceStore {
       ...(worktree ? [this.worktreeStep(worktree)] : []),
       ...(env?.kind === "task" ? [this.environmentStep(env)] : []),
       this.sessionStep(v, task),
+    ];
+  }
+
+  /** A chat: its project, then the branch and worktree it runs in when that is a worktree. */
+  private chatTrail(c: RawChat): ProvenanceStep[] {
+    const worktree =
+      c.worktree_id === null ? undefined : this.worktree(c.worktree_id);
+    const branch = c.branch_id ?? worktree?.branch_id ?? null;
+    return [
+      this.projectStep(this.project(c.project_id)),
+      ...(branch === null ? [] : [this.branchStep(this.branch(branch))]),
+      ...(worktree ? [this.worktreeStep(worktree)] : []),
+      step("chat", c.id, c.title || "Chat", {
+        href: chatHref(c.project_id, c.id),
+        removed: c.session_removed_at !== null || c.archived_at !== null,
+        ...(c.origin === "opencode" ? { unmanaged: true } : {}),
+      }),
     ];
   }
 
@@ -603,6 +636,16 @@ export class ProvenanceStore {
     return this.db
       .prepare("SELECT * FROM variants WHERE task_id = ? AND n = ?")
       .get(taskId, n) as VariantRow | undefined;
+  }
+
+  private chat(id: string): RawChat {
+    const row = this.db.prepare("SELECT * FROM chats WHERE id = ?").get(id) as
+      | RawChat
+      | undefined;
+    if (!row || row.origin === "internal") {
+      throw new NotFoundError(id, "chat");
+    }
+    return row;
   }
 
   private branch(id: number): BranchRow {

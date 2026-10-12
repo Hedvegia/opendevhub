@@ -45,6 +45,7 @@ function view(
 ): ProjectView {
   return {
     tasks,
+    chats: [],
     project: {
       id: "p 1",
       name: "demo",
@@ -223,16 +224,19 @@ describe(checkouts, () => {
     ).toStrictEqual(["t2"]);
   });
 
-  it("marks a manual task found in opencode as adopted", () => {
+  it("marks a task made from a chat, and never puts a draft in Needs you", () => {
     const v = view(
+      [session("e", "/workspaces/demo", { task: ref("t4", 1) })],
       [
-        session("e", "/workspaces/demo", {
-          task: { ...ref("t4", 1), adopted: true, kind: "manual" },
-        }),
-      ],
-      [task("t4", [{ sessionId: "e" }], { kind: "manual" })]
+        task("t4", [{ sessionId: "e" }], { fromChat: "c_1" }),
+        task("t6", [], { state: "draft" }),
+      ]
     );
-    expect(projectTasks(v)[0].adopted).toBe(true);
+    const [made, draft] = projectTasks(v).toSorted((a, b) =>
+      a.task.localeCompare(b.task)
+    );
+    expect(made.fromChat).toBe(true);
+    expect(draft).toMatchObject({ attention: false, state: "draft" });
   });
 
   it("lists failed starts and ended tasks of either kind", () => {
@@ -246,7 +250,7 @@ describe(checkouts, () => {
         }),
         task("t5", [{ sessionId: "gone", sessionRemoved: true }], {
           createdAt: 1,
-          kind: "manual",
+          kind: "review",
           state: "ended",
         }),
       ]

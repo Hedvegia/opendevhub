@@ -1,5 +1,7 @@
 import type { StartStep, TaskState } from "../../shared/types";
 
+export const RESTART_ERROR = "interrupted: opendevhub restarted";
+
 /** Steps a variant passes through before its session is created. */
 const SETUP_STEPS: ReadonlySet<StartStep> = new Set([
   "queued",
@@ -27,6 +29,9 @@ const live = (v: VariantState): boolean =>
   v.discarded_at === null;
 
 export const taskState = (variants: readonly VariantState[]): TaskState => {
+  if (variants.length === 0) {
+    return "draft";
+  }
   if (
     variants.some(
       (v) => settingUp(v) || (v.step === "failed" && v.discarded_at === null)

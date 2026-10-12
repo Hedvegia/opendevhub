@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 import type { ForgejoPullDetails } from "../../../shared/forgejo";
+import { chatHref } from "../../../shared/urls";
 import { sendPrompt, startSession } from "../../api";
 import { Choice } from "../../components/choice";
 import { Note } from "../../components/page";
@@ -77,23 +78,28 @@ export const ForgejoHandoff = ({
     setError(undefined);
     try {
       let id = session;
+      let chat: string | undefined;
       if (id) {
         await sendPrompt(projectId, id, prompt);
       } else {
-        id = await startSession(
+        const started = await startSession(
           projectId,
           directory,
           `PR #${details.pull.number}: ${details.pull.title}`.slice(0, 200),
           prompt
         );
+        id = started.sessionId;
+        ({ chat } = started);
       }
       const target = project.sessions.find((s) => s.id === id);
       onClose();
-      void navigate(
-        target
-          ? sessionPath(project, target)
-          : `/p/${encodeURIComponent(projectId)}?session=${encodeURIComponent(id)}`
-      );
+      let to = `/p/${encodeURIComponent(projectId)}?session=${encodeURIComponent(id)}`;
+      if (target) {
+        to = sessionPath(project, target);
+      } else if (chat) {
+        to = chatHref(projectId, chat);
+      }
+      void navigate(to);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

@@ -334,9 +334,9 @@ describe("api", () => {
         mergeIntoBase("p", "/w", "main", true)
       ).resolves.toMatchObject({ branch: "x" });
       await sendPrompt("p", "ses/1", "fix");
-      await expect(startSession("p", "/w", "Review", "look")).resolves.toBe(
-        "ses_9"
-      );
+      await expect(
+        startSession("p", "/w", "Review", "look")
+      ).resolves.toMatchObject({ sessionId: "ses_9" });
       await removeWorktree("p", "/w", false, true);
       expect(
         fetchMock.mock.calls.map(([u, i]) => [u, JSON.parse(String(i?.body))])

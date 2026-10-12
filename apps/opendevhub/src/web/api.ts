@@ -8,7 +8,11 @@ import type {
 } from "../shared/forgejo";
 import type { ImageSide } from "../shared/images";
 import { jiraQueryValues } from "../shared/jira";
-import type { JiraSettingsInput, JiraTicketQuery } from "../shared/jira";
+import type {
+  JiraSettingsInput,
+  JiraTaskSource,
+  JiraTicketQuery,
+} from "../shared/jira";
 import type { StackId } from "../shared/stacks";
 import type {
   ChatStartRequest,
@@ -18,6 +22,7 @@ import type {
   DashboardSnapshot,
   FormAnswer,
   LogEvent,
+  MakeTaskRequest,
   PermissionDecision,
   PublishRequest,
   ReviewMode,
@@ -434,7 +439,7 @@ export const startSession = async (
     }),
     "start session"
   );
-  return created.sessionId;
+  return created;
 };
 
 export const openInEditor = (
@@ -612,11 +617,110 @@ export const sendPrompt = async (
   );
 };
 
-/** Starts a chat from Chat's start composer: a task in a new worktree, or a conversation in a checkout. */
+/** Starts a chat from Chat's start composer, in a new worktree or one of the project's checkouts. */
 export const startChat = (projectId: string, request: ChatStartRequest) =>
   read(
     project.chat.$post({ param: projectParam(projectId), json: request }),
     "start chat"
+  );
+
+const chatParam = (projectId: string, chat: string) => ({
+  ...projectParam(projectId),
+  chat: encodeURIComponent(chat),
+});
+
+/** A chat the snapshot doesn't list (archived, removed, or not yet listed), or the task that adopted it. */
+export const fetchChat = (projectId: string, chat: string) =>
+  read(
+    project.chats[":chat"].$get({ param: chatParam(projectId, chat) }),
+    "chat"
+  );
+
+/** Hides a chat from every list; its conversation keeps running. */
+export const archiveChat = async (projectId: string, chat: string) => {
+  await complete(
+    project.chats[":chat"].archive.$post({ param: chatParam(projectId, chat) }),
+    "archive chat"
+  );
+};
+
+/** Make task's brief, drafted from the chat's own conversation without adding to it. */
+export const fetchChatBrief = (
+  projectId: string,
+  chat: string,
+  signal?: AbortSignal
+) =>
+  read(
+    project.chats[":chat"].brief.$get(
+      { param: chatParam(projectId, chat) },
+      { init: { signal } }
+    ),
+    "draft the brief"
+  );
+
+/** The ticket keys and pull requests Make task suggests for a chat. */
+export const fetchChatSuggestions = (projectId: string, chat: string) =>
+  read(
+    project.chats[":chat"].suggestions.$get({
+      param: chatParam(projectId, chat),
+    }),
+    "suggestions"
+  );
+
+/** Makes a task of a chat in a worktree: the task adopts it as variant 1. */
+export const makeTask = (
+  projectId: string,
+  chat: string,
+  body: MakeTaskRequest
+) =>
+  read(
+    project.chats[":chat"].task.$post({
+      param: chatParam(projectId, chat),
+      json: body,
+    }),
+    "make task"
+  );
+
+/** Saves a task as a draft: nothing runs until it starts. */
+export const createDraft = (projectId: string, req: NewTaskBody) =>
+  read(
+    project.drafts.$post({ param: projectParam(projectId), json: req }),
+    "save draft"
+  );
+
+/** A draft from a Jira ticket, titled from it with its description as the brief. */
+export const draftFromTicket = (projectId: string, jira: JiraTaskSource) =>
+  read(
+    project.drafts.ticket.$post({
+      param: projectParam(projectId),
+      json: { jira },
+    }),
+    "create draft"
+  );
+
+/** Changes a draft without starting it. */
+export const editDraft = async (
+  projectId: string,
+  task: string,
+  req: NewTaskBody
+) => {
+  await complete(
+    project.tasks[":task"].draft.$put({
+      param: { ...projectParam(projectId), task: encodeURIComponent(task) },
+      json: req,
+    }),
+    "save draft"
+  );
+};
+
+/** Starts a draft: its variants are added to the same task. */
+export const startDraft = (projectId: string, task: string, req: NewTaskBody) =>
+  read(
+    project.tasks[":task"].start.$post({
+      param: { ...projectParam(projectId), task: encodeURIComponent(task) },
+      json: req,
+    }),
+    "start task"
   );
 
 /** Sends what the composer holds; the hub decides whether it's a hub command, an opencode command or a prompt. */

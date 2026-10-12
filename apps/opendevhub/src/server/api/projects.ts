@@ -174,16 +174,14 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
       ok(c, (id) => hub.environments.removeEnv(id, c.req.param("env") ?? ""))
     )
     .post("/api/projects/:id/sessions", validateJson(bodies.session), (c) =>
-      json(c, async (id) => {
+      json(c, (id) => {
         const b = c.req.valid("json");
-        return {
-          sessionId: await hub.sessions.startSession(
-            id,
-            str(b.directory) ?? "",
-            str(b.title),
-            str(b.prompt)
-          ),
-        };
+        return hub.sessions.startSession(
+          id,
+          str(b.directory) ?? "",
+          str(b.title),
+          str(b.prompt)
+        );
       })
     )
     .get("/api/projects/:id/sessions/:sid", async (c) => {
@@ -232,6 +230,26 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
     )
     .post("/api/projects/:id/chat", validateJson(bodies.chat), (c) =>
       json(c, (id) => hub.chat.start(id, c.req.valid("json")))
+    )
+    .get("/api/projects/:id/chats/:chat", (c) =>
+      json(c, (id) => hub.chat.lookup(id, c.req.param("chat") ?? ""))
+    )
+    .post("/api/projects/:id/chats/:chat/archive", (c) =>
+      ok(c, (id) => hub.chat.archive(id, c.req.param("chat") ?? ""))
+    )
+    .get("/api/projects/:id/chats/:chat/brief", (c) =>
+      json(c, (id) => hub.chat.brief(id, c.req.param("chat") ?? ""))
+    )
+    .get("/api/projects/:id/chats/:chat/suggestions", (c) =>
+      json(c, (id) => hub.chat.suggestions(id, c.req.param("chat") ?? ""))
+    )
+    .post(
+      "/api/projects/:id/chats/:chat/task",
+      validateJson(bodies.makeTask),
+      (c) =>
+        json(c, (id) =>
+          hub.chat.makeTask(id, c.req.param("chat") ?? "", c.req.valid("json"))
+        )
     )
     .get(
       "/api/projects/:id/composer/commands",
@@ -292,6 +310,38 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
         const b = c.req.valid("json");
         return hub.tasks.startTask(id, b);
       })
+    )
+    .post("/api/projects/:id/drafts", validateJson(bodies.task), (c) =>
+      json(c, (id) => hub.tasks.createDraft(id, c.req.valid("json")))
+    )
+    .post(
+      "/api/projects/:id/drafts/ticket",
+      validateJson(bodies.draftFromTicket),
+      (c) => json(c, (id) => hub.tasks.draftFromTicket(id, c.req.valid("json")))
+    )
+    .put(
+      "/api/projects/:id/tasks/:task/draft",
+      validateJson(bodies.task),
+      (c) =>
+        ok(c, (id) =>
+          hub.tasks.editDraft(
+            id,
+            c.req.param("task") ?? "",
+            c.req.valid("json")
+          )
+        )
+    )
+    .post(
+      "/api/projects/:id/tasks/:task/start",
+      validateJson(bodies.task),
+      (c) =>
+        json(c, (id) =>
+          hub.tasks.startDraft(
+            id,
+            c.req.param("task") ?? "",
+            c.req.valid("json")
+          )
+        )
     )
     .delete("/api/projects/:id/tasks/:task/starting", (c) =>
       ok(c, (id) => hub.tasks.dismissStarting(id, c.req.param("task") ?? ""))

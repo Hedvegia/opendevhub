@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -43,6 +44,7 @@ describe("openDatabase", () => {
     expect(schemaVersion(db)).toBe(MIGRATIONS.length);
     expect(tables(db)).toStrictEqual([
       "branches",
+      "chats",
       "environments",
       "events",
       "forgejo_filter_presets",
@@ -118,5 +120,104 @@ describe("migrate", () => {
     db.close();
     expect(() => openStateDatabase(dir)).toThrow(NewerDatabaseError);
     expect(() => openStateDatabase(dir)).toThrow(/newer opendevhub/u);
+  });
+});
+
+describe("migration 2: manual tasks become chats", () => {
+  it("turns each manual task into a chat, keeps other tasks and events, and frees its branch", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("PRAGMA foreign_keys = ON");
+    migrate(db, MIGRATIONS.slice(0, 1));
+    db.exec(`
+      INSERT INTO projects (id, path, name, devcontainer_path, first_seen_at) VALUES ('p', '/src/p', 'p', '/d', 1);
+      INSERT INTO tasks (id, project_id, kind, title, created_at) VALUES
+        ('tsk_A', 'p', 'manual', 'Found in opencode', 10),
+        ('tsk_B', 'p', 'manual', 'Started here', 20),
+        ('tsk_C', 'p', 'manual', 'In a worktree', 30),
+        ('tsk_T', 'p', 'task', 'A real task', 40);
+      UPDATE tasks SET archived_at = 25 WHERE id = 'tsk_B';
+      INSERT INTO variants (task_id, n, env_id, directory, branch, step, session_id) VALUES
+        ('tsk_A', 1, NULL, '/w', NULL, 'session', 'ses_a'),
+        ('tsk_B', 1, NULL, '/w', NULL, 'session', 'ses_b'),
+        ('tsk_C', 1, NULL, '/w/x', 'x', 'session', 'ses_c'),
+        ('tsk_T', 1, NULL, '/w/t', 't', 'session', 'ses_t');
+      UPDATE variants SET session_removed_at = 15 WHERE task_id = 'tsk_A';
+      INSERT INTO branches (id, project_id, name, created_by, created_by_task, created_by_variant, created_at)
+        VALUES (1, 'p', 'x', 'manual', 'tsk_C', 1, 30);
+      INSERT INTO worktrees (id, project_id, branch_id, path, created_by, created_at) VALUES (1, 'p', 1, '/w/x', 'manual', 30);
+      INSERT INTO events (at, project_id, actor_type, verb, object_type, object_id, task_id) VALUES
+        (10, 'p', 'system', 'session.adopted', 'session', 'ses_a', 'tsk_A'),
+        (20, 'p', 'user', 'session.started', 'session', 'ses_b', 'tsk_B');
+    `);
+    migrate(db);
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
+    expect(
+      db
+        .prepare(
+          `SELECT id, session_id, origin, title, directory, branch, branch_id, worktree_id, created_at,
+           session_removed_at, archived_at FROM chats ORDER BY id`
+        )
+        .all()
+    ).toEqual([
+      {
+        archived_at: null,
+        branch: null,
+        branch_id: null,
+        created_at: 10,
+        directory: "/w",
+        id: "c_tsk_A",
+        origin: "opencode",
+        session_id: "ses_a",
+        session_removed_at: 15,
+        title: "Found in opencode",
+        worktree_id: null,
+      },
+      {
+        archived_at: 25,
+        branch: null,
+        branch_id: null,
+        created_at: 20,
+        directory: "/w",
+        id: "c_tsk_B",
+        origin: "hub",
+        session_id: "ses_b",
+        session_removed_at: null,
+        title: "Started here",
+        worktree_id: null,
+      },
+      {
+        archived_at: null,
+        branch: "x",
+        branch_id: 1,
+        created_at: 30,
+        directory: "/w/x",
+        id: "c_tsk_C",
+        origin: "hub",
+        session_id: "ses_c",
+        session_removed_at: null,
+        title: "In a worktree",
+        worktree_id: 1,
+      },
+    ]);
+    expect(db.prepare("SELECT id, kind FROM tasks ORDER BY id").all()).toEqual([
+      { id: "tsk_T", kind: "task" },
+    ]);
+    expect(
+      db.prepare("SELECT task_id FROM variants ORDER BY task_id").all()
+    ).toEqual([{ task_id: "tsk_T" }]);
+    expect(
+      db
+        .prepare(
+          "SELECT created_by, created_by_task, created_by_variant FROM branches"
+        )
+        .get()
+    ).toEqual({
+      created_by: "manual",
+      created_by_task: null,
+      created_by_variant: null,
+    });
+    expect(
+      (db.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number }).n
+    ).toBe(2);
   });
 });

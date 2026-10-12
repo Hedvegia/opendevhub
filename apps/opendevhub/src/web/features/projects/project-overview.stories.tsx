@@ -46,9 +46,14 @@ export const TaskRuntime = meta.story({
   parameters: { route: "/p/acme-web/t/tsk_rate/runtime" },
 });
 
-/** A conversation started on its own: no variant switcher, no Compare tab. */
-export const ManualTask = meta.story({
-  parameters: { route: "/p/acme-web/t/tsk_dark" },
+/** A task made from a chat: one variant, so no variant switcher and no Compare tab. */
+export const TaskFromChat = meta.story({
+  parameters: { route: "/p/billing-api/t/tsk_round" },
+});
+
+/** A draft: its brief, ticket and plan instead of the tabs, with Start and Edit. */
+export const DraftTask = meta.story({
+  parameters: { route: "/p/acme-web/t/tsk_sso" },
 });
 
 /** A task whose variants are still being set up; one failed. */

@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import type { EnvironmentView, ProjectView } from "../../../shared/types";
+import { chatHref } from "../../../shared/urls";
 import {
   createEnv,
   createWorktree,
@@ -56,16 +57,18 @@ export const useCheckoutActions = (view: ProjectView) => {
     [report]
   );
 
-  /** Starts a conversation in the checkout; its manual task's page opens once the dashboard lists it. */
+  /** Starts a chat in the checkout and opens its view. */
   const newSession = (c: Checkout) =>
     busy(`session:${c.directory}`, async () => {
-      const id = await startSession(
+      const started = await startSession(
         view.project.id,
         c.directory,
         c.worktree?.branch
       );
       await navigate(
-        `/p/${encodeURIComponent(view.project.id)}?session=${encodeURIComponent(id)}`
+        started.chat
+          ? chatHref(view.project.id, started.chat)
+          : `/p/${encodeURIComponent(view.project.id)}?session=${encodeURIComponent(started.sessionId)}`
       );
     });
 

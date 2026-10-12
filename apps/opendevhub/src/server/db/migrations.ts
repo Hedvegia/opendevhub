@@ -1,8 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 
 /**
- * The schema, one SQL script per version: `MIGRATIONS[i]` takes the database from version i to i + 1. Until the
- * first release there is only migration 1, and each change edits it in place; afterwards, append a new one.
+ * The schema, one SQL script per version: `MIGRATIONS[i]` takes the database from version i to i + 1. Append a new
+ * one for each change; never edit one that has shipped.
  */
 export const MIGRATIONS: readonly string[] = [
   `
@@ -172,6 +172,53 @@ CREATE TABLE forgejo_filter_presets (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+`,
+  `
+CREATE TABLE chats (
+  id                 TEXT PRIMARY KEY,
+  project_id         TEXT NOT NULL REFERENCES projects (id),
+  session_id         TEXT,
+  env_id             TEXT REFERENCES environments (id),
+  directory          TEXT,
+  branch             TEXT,
+  branch_id          INTEGER REFERENCES branches (id),
+  worktree_id        INTEGER REFERENCES worktrees (id),
+  origin             TEXT NOT NULL CHECK (origin IN ('hub', 'opencode', 'internal')),
+  title              TEXT NOT NULL,
+  step               TEXT NOT NULL,
+  error              TEXT,
+  created_at         INTEGER NOT NULL,
+  session_removed_at INTEGER,
+  archived_at        INTEGER,
+  adopted_task       TEXT,
+  adopted_variant    INTEGER,
+  FOREIGN KEY (adopted_task, adopted_variant) REFERENCES variants (task_id, n)
+);
+CREATE INDEX chats_project ON chats (project_id, archived_at);
+CREATE UNIQUE INDEX chats_session ON chats (session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX chats_worktree ON chats (worktree_id) WHERE worktree_id IS NOT NULL;
+
+ALTER TABLE tasks ADD COLUMN plan TEXT;
+
+INSERT INTO chats (id, project_id, session_id, env_id, directory, branch, branch_id, worktree_id, origin, title, step,
+                   error, created_at, session_removed_at, archived_at)
+SELECT 'c_' || t.id, t.project_id, v.session_id, v.env_id, v.directory, v.branch,
+  COALESCE(v.branch_id, (SELECT b.id FROM branches b WHERE b.project_id = t.project_id AND b.name = v.branch)),
+  COALESCE(v.worktree_id, (SELECT w.id FROM worktrees w WHERE w.project_id = t.project_id AND w.path = v.directory
+                           AND w.removed_at IS NULL ORDER BY w.id DESC LIMIT 1)),
+  CASE WHEN EXISTS (SELECT 1 FROM events e WHERE e.object_type = 'session' AND e.object_id = v.session_id
+                    AND e.verb = 'session.adopted') THEN 'opencode' ELSE 'hub' END,
+  t.title, v.step, v.error, t.created_at, v.session_removed_at, t.archived_at
+FROM tasks t JOIN variants v ON v.task_id = t.id
+WHERE t.kind = 'manual';
+
+UPDATE branches SET created_by_task = NULL, created_by_variant = NULL
+WHERE created_by_task IN (SELECT id FROM tasks WHERE kind = 'manual');
+UPDATE tasks SET proposed_in = NULL WHERE proposed_in IN (SELECT id FROM tasks WHERE kind = 'manual');
+UPDATE tasks SET implemented_in = NULL WHERE implemented_in IN (SELECT id FROM tasks WHERE kind = 'manual');
+UPDATE reviews SET task_id = NULL WHERE task_id IN (SELECT id FROM tasks WHERE kind = 'manual');
+DELETE FROM variants WHERE task_id IN (SELECT id FROM tasks WHERE kind = 'manual');
+DELETE FROM tasks WHERE kind = 'manual';
 `,
 ];
 

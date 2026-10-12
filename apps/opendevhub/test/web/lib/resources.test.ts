@@ -32,6 +32,7 @@ const env = (id: string, path: string): EnvironmentView =>
 
 const view: ProjectView = {
   tasks: [],
+  chats: [],
   project: {
     id: "p",
     name: "demo",

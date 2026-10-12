@@ -17,7 +17,7 @@ import type { RawAgent, RawModel } from "../opencode/client";
 import { hubCommandOf } from "../sessions/message";
 
 const PROMPT_MAX = 100_000;
-const TITLE_LIMIT = 200;
+export const TITLE_LIMIT = 200;
 /** Provider ids, model ids, model variants and agent names. */
 const NAME = /^[A-Za-z0-9._:/@-]{1,200}$/u;
 
@@ -163,15 +163,18 @@ export const parseJiraTaskSource = (value: unknown): JiraTaskSource => {
   };
 };
 
-/** Validates `POST …/tasks`; unknown fields are ignored. */
+/** Validates `POST …/tasks`; unknown fields are ignored. A draft may leave the prompt empty when it has a title. */
 export const parseTaskRequest = (
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  options: { draft?: boolean } = {}
 ): TaskRequest => {
   const jira =
     body.jira === undefined ? undefined : parseJiraTaskSource(body.jira);
   const prompt = str(body.prompt)?.trim() ?? "";
-  if (!prompt) {
-    throw new InvalidRequestError("the prompt is empty");
+  if (!prompt && !(options.draft && str(body.title)?.trim())) {
+    throw new InvalidRequestError(
+      options.draft ? "a draft needs a title or a brief" : "the prompt is empty"
+    );
   }
   if (prompt.length > PROMPT_MAX) {
     throw new InvalidRequestError(

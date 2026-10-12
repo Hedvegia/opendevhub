@@ -6,7 +6,7 @@ import type {
   TaskState,
   Worktree,
 } from "../../../shared/types";
-import { taskHref } from "../../../shared/urls";
+import { chatHref, taskHref } from "../../../shared/urls";
 import type { TaskTab } from "../../../shared/urls";
 import {
   envOfDirectory,
@@ -83,6 +83,9 @@ export const sessionPath = (
       ...(own && own !== session.id ? { thread: session.id } : {}),
     });
   }
+  if (session.chat) {
+    return chatHref(view.project.id, session.chat);
+  }
   const c = checkoutOf(view, session.directory);
   return c
     ? checkoutPath(view.project.id, c.target)
@@ -142,8 +145,8 @@ export interface ProjectTask {
   updatedAt: number;
   /** The variant whose conversation waits on the user, which its link selects. */
   waiting?: number;
-  /** A manual task whose session was found in opencode rather than started by opendevhub. */
-  adopted?: true;
+  /** Made from a chat, which became its variant 1. */
+  fromChat?: true;
   /** The checkouts its sessions run in. */
   directories: string[];
 }
@@ -169,9 +172,7 @@ export const projectTasks = (view: ProjectView): ProjectTask[] =>
         updatedAt: Math.max(t.createdAt, ...sessions.map((s) => s.updatedAt)),
         variants: t.variants.length,
         ...(waiting === undefined ? {} : { waiting }),
-        ...(t.kind === "manual" && sessions.some((s) => s.task?.adopted)
-          ? { adopted: true as const }
-          : {}),
+        ...(t.fromChat ? { fromChat: true as const } : {}),
       };
     })
     .toSorted((a, b) => b.updatedAt - a.updatedAt);
@@ -244,7 +245,7 @@ export const sessionRedirect = (
   sessionId: string
 ): string => {
   const session = view.sessions.find((s) => s.id === sessionId);
-  if (session?.task) {
+  if (session?.task || session?.chat) {
     return sessionPath(view, session);
   }
   for (const t of view.tasks) {
@@ -253,17 +254,31 @@ export const sessionRedirect = (
       return taskHref(view.project.id, t.id, { v: v.n });
     }
   }
+  const chat = view.chats.find((c) => c.sessionId === sessionId);
+  if (chat) {
+    return chatHref(view.project.id, chat.id);
+  }
   return checkoutPath(view.project.id, target);
 };
 
-/** The Tasks page's filters: what needs the user, and each state. */
-export type TaskFilter = "all" | "attention" | "running" | "idle" | "ended";
+/** The Tasks page's filters: what needs the user, each state, and drafts. */
+export type TaskFilter =
+  | "all"
+  | "attention"
+  | "running"
+  | "idle"
+  | "ended"
+  | "draft";
 
 export const matchesTaskFilter = (t: ProjectTask, f: TaskFilter): boolean => {
-  const ended = t.state === "ended";
+  const draft = t.state === "draft";
+  const ended = t.state === "ended" || draft;
   switch (f) {
     case "all": {
       return true;
+    }
+    case "draft": {
+      return draft;
     }
     case "attention": {
       return t.attention && !ended;
@@ -275,7 +290,7 @@ export const matchesTaskFilter = (t: ProjectTask, f: TaskFilter): boolean => {
       return !t.running && !t.attention && !ended;
     }
     case "ended": {
-      return ended;
+      return t.state === "ended";
     }
     default: {
       return false;

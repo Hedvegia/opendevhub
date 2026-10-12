@@ -66,6 +66,7 @@ import { SpecSection } from "../specs/spec-panel";
 import { specQuery } from "../specs/spec-queries";
 import { PHASE_LABEL, specSessions, taskProgress } from "../specs/specs";
 import { formatUsage, taskUsage } from "../usage/usage";
+import { DraftTask } from "./draft-task";
 import { TaskPageCtx, useTaskPage } from "./task-context";
 import { SpecChain, TaskReviews, VariantTable } from "./task-hub";
 import {
@@ -210,6 +211,9 @@ export const ProjectTask = () => {
       </Empty>
     );
   }
+  if (record.state === "draft") {
+    return <DraftTask view={view} task={record} />;
+  }
   const variant = selectedVariant(record, params.get("v"));
   const tabs = taskTabs(record);
   const base = taskHref(view.project.id, record.id);
@@ -268,6 +272,11 @@ export const ProjectTask = () => {
         <Chip variant={record.state === "running" ? "secondary" : "outline"}>
           {record.state}
         </Chip>
+        {record.fromChat && (
+          <Chip variant="outline" title="Made from a chat, its variant 1">
+            from chat
+          </Chip>
+        )}
         {record.ticket && (
           <Chip variant="outline" asChild>
             <Link to={`/jira/${encodeURIComponent(record.ticket.key)}`}>
@@ -569,7 +578,6 @@ export const TaskCompare = () => {
 };
 
 const KIND_LABEL: Record<TaskView["kind"], string> = {
-  manual: "Conversation",
   review: "AI review",
   task: "Task",
 };

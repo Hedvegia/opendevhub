@@ -41,8 +41,8 @@ export const SessionView = ({
   checkout: Checkout;
   session: SessionSummary;
   showTask?: boolean;
-  /** A conversation the composer's `/new` started in this checkout. */
-  onStarted?: (sessionId: string) => void;
+  /** A conversation the composer's `/new` started in this checkout, with its chat. */
+  onStarted?: (sessionId: string, chat?: string) => void;
   /** More chips for the header. */
   chips?: ReactNode;
   /** More buttons for the header's end. */
@@ -84,7 +84,7 @@ export const SessionView = ({
           message
         );
         if (result.kind === "new") {
-          onStarted?.(result.sessionId);
+          onStarted?.(result.sessionId, result.chat);
         } else {
           // Shows the message at once instead of at the next refresh.
           void queryClient.invalidateQueries({

@@ -153,7 +153,7 @@ const webSessions: SessionSummary[] = [
     directory: WEB_ISOLATED_WORKTREE,
     envId: "acme-web-dark",
     id: "ses_run01",
-    task: { discarded: false, id: "tsk_dark", kind: "manual", n: 1 },
+    chat: "c_dark",
     model: { id: "claude-sonnet-5-5", providerID: "anthropic" },
     projectId: "acme-web",
     status: "running",
@@ -165,7 +165,7 @@ const webSessions: SessionSummary[] = [
     cost: 0.08,
     directory: WEB_WORKSPACE,
     id: "ses_form01",
-    task: { discarded: false, id: "tsk_form", kind: "manual", n: 1 },
+    chat: "c_form",
     pending: {
       forms: [
         {
@@ -202,7 +202,7 @@ const webSessions: SessionSummary[] = [
     cost: 0.31,
     directory: WEB_WORKSPACE,
     id: "ses_idle01",
-    task: { discarded: false, id: "tsk_idle", kind: "manual", n: 1 },
+    chat: "c_idle",
     projectId: "acme-web",
     status: "idle",
     title: "Explain the session middleware",
@@ -306,7 +306,10 @@ export const webProject: ProjectView = {
         branch: "feat/dark-mode",
         branchId: 2,
         id: 2,
-        createdBy: { by: "unmanaged" },
+        createdBy: {
+          by: "manual",
+          chat: { id: "c_dark", title: "Dark mode toggle in settings" },
+        },
         head: "1a2b3c4",
         hostPath: "/home/dev/code/.worktrees/acme-web/dark-mode",
         path: WEB_ISOLATED_WORKTREE,
@@ -314,23 +317,80 @@ export const webProject: ProjectView = {
     ],
   },
   sessions: webSessions,
+  chats: [
+    {
+      branch: "feat/dark-mode",
+      createdAt: ago(HOUR),
+      directory: WEB_ISOLATED_WORKTREE,
+      envId: "acme-web-dark",
+      id: "c_dark",
+      origin: "hub",
+      sessionId: "ses_run01",
+      status: "running",
+      step: "session",
+      title: "Dark mode toggle in settings",
+      updatedAt: ago(30_000),
+      worktreeId: 2,
+    },
+    {
+      createdAt: ago(20 * MINUTE),
+      directory: WEB_WORKSPACE,
+      envId: "acme-web",
+      id: "c_form",
+      origin: "opencode",
+      pending: webSessions.find((x) => x.id === "ses_form01")?.pending,
+      sessionId: "ses_form01",
+      status: "needs-answer",
+      step: "session",
+      title: "Plan rate limiting rollout",
+      updatedAt: ago(5 * MINUTE),
+    },
+    {
+      createdAt: ago(4 * HOUR),
+      directory: WEB_WORKSPACE,
+      envId: "acme-web",
+      id: "c_idle",
+      origin: "hub",
+      sessionId: "ses_idle01",
+      status: "idle",
+      step: "session",
+      title: "Explain the session middleware",
+      updatedAt: ago(3 * HOUR),
+    },
+    {
+      branch: "feat/billing-export",
+      createdAt: ago(MINUTE),
+      id: "c_new",
+      log: ["Creating worktree feat/billing-export"],
+      origin: "hub",
+      step: "worktree",
+      title: "Export invoices as CSV",
+    },
+  ],
   tasks: [
     {
-      createdAt: ago(3 * HOUR),
-      id: "tsk_old",
-      kind: "manual",
-      state: "ended",
-      title: "Try the new eslint config",
-      variants: [
-        {
-          directory: WEB_WORKSPACE,
-          envId: "acme-web",
-          n: 1,
-          sessionId: "ses_gone01",
-          sessionRemoved: true,
-          step: "session",
-        },
-      ],
+      brief:
+        "Let users sign in with the company's Okta. Keep password login for now.",
+      createdAt: ago(5 * HOUR),
+      id: "tsk_sso",
+      jira: {
+        description:
+          "Let users sign in with the company's Okta. Keep password login for now.",
+        instanceUrl: "https://acme.atlassian.net",
+        key: "ACME-131",
+        title: "Single sign-on with Okta",
+      },
+      kind: "task",
+      plan: {
+        variants: [
+          { model: { id: "claude-opus-5-5", providerID: "anthropic" } },
+          { model: { id: "gpt-6", providerID: "openai" } },
+        ],
+        where: "worktree",
+      },
+      state: "draft",
+      title: "ACME-131: Single sign-on with Okta",
+      variants: [],
     },
     {
       createdAt: ago(2 * HOUR),
@@ -377,22 +437,6 @@ export const webProject: ProjectView = {
         },
       ],
     },
-    ...(
-      [
-        ["tsk_dark", "ses_run01", WEB_ISOLATED_WORKTREE, "acme-web-dark"],
-        ["tsk_form", "ses_form01", WEB_WORKSPACE, "acme-web"],
-        ["tsk_idle", "ses_idle01", WEB_WORKSPACE, "acme-web"],
-      ] as const
-    ).map(([id, sessionId, directory, envId]) => ({
-      createdAt: webSessions.find((x) => x.id === sessionId)?.updatedAt ?? 0,
-      id,
-      kind: "manual" as const,
-      state: "running" as const,
-      title: webSessions.find((x) => x.id === sessionId)?.title ?? "",
-      variants: [
-        { directory, envId, n: 1, sessionId, step: "session" as const },
-      ],
-    })),
     {
       createdAt: ago(MINUTE),
       id: "tsk_search",
@@ -497,9 +541,13 @@ export const apiProject: ProjectView = {
     tokens: 200_000 * variant,
     updatedAt: ago(variant * 20 * MINUTE),
   })),
+  chats: [],
   tasks: [
     {
+      brief:
+        "JPY has no minor unit, so invoices must round to whole yen before tax.",
       createdAt: ago(HOUR),
+      fromChat: "c_round",
       id: "tsk_round",
       kind: "task",
       state: "running",
@@ -537,6 +585,7 @@ export const stoppedProject: ProjectView = {
   },
   sessions: [],
   tasks: [],
+  chats: [],
 };
 
 export const brokenProject: ProjectView = {
@@ -558,6 +607,7 @@ export const brokenProject: ProjectView = {
   },
   sessions: [],
   tasks: [],
+  chats: [],
 };
 
 export const nodes: NodeView[] = [

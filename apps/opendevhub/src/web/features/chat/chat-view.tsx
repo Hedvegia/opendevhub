@@ -1,29 +1,60 @@
+import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
-import { ArrowUpRightIcon } from "lucide-react";
+import { ArchiveIcon, FileDiffIcon, ListTodoIcon } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
+import type { ChatView as Chat, ProjectView } from "../../../shared/types";
+import { taskHref } from "../../../shared/urls";
+import { archiveChat, fetchChat } from "../../api";
 import { Chip, Empty, muted } from "../../components/page";
 import { useDash } from "../../dashboard-context";
-import { Link, Navigate, useSearchParams } from "../../routing";
+import { Link, Navigate, useNavigate } from "../../routing";
+import { CheckoutProvider } from "../checkouts/checkout-context";
+import { checkoutOf } from "../checkouts/checkouts";
+import { ProjectReview } from "../review/project-review";
 import { SessionView } from "../sessions/session-page";
-import { taskOf, taskPath } from "../tasks/tasks";
-import { conversationCheckout, VariantWaiting } from "../tasks/variant-waiting";
-import { chatPath, chatVariant } from "./chat";
+import { startStepLabel } from "../tasks/tasks";
+import { conversationCheckout } from "../tasks/variant-waiting";
+import { chatOf, chatPath, isTaskId, makeTaskBlocked } from "./chat";
 import { ChatColumn } from "./chat-start";
+import { MakeTaskDialog } from "./make-task-dialog";
 
 /**
- * One chat: its task's conversation full-width and full-height, with a header naming the task, project and checkout
- * and a link to the task page for its changes, terminal and runtime. `?session=` is a conversation `/new` started here; the page
- * moves on to its chat once the snapshot knows its task.
+ * One chat: its conversation full-width and full-height, with a header naming it, its project and checkout, and
+ * offering its Changes, Make task and Archive. A task id in place of the chat's (an old link) opens the task; a chat a
+ * task adopted opens that task with its variant selected.
  */
 export const ChatView = () => {
-  const { projectId = "", task: taskId = "" } = useParams({ strict: false });
+  const { projectId = "", chat: chatId = "" } = useParams({ strict: false });
   const { snapshot } = useDash();
-  const [params, setParams] = useSearchParams();
+  const view = snapshot?.projects.find((v) => v.project.id === projectId);
+  const listed = view && chatOf(view, chatId);
+  const lookup = useQuery({
+    enabled: !!view && !listed && !isTaskId(chatId),
+    queryFn: () => fetchChat(projectId, chatId),
+    queryKey: ["chat", projectId, chatId],
+    retry: false,
+  });
 
-  if (!snapshot) {
+  if (isTaskId(chatId)) {
+    return <Navigate replace to={taskHref(projectId, chatId)} />;
+  }
+  if (!snapshot || (view && !listed && lookup.isPending)) {
     return (
       <ChatColumn centred={false}>
         <Skeleton className="h-8 w-2/3" />
@@ -31,15 +62,24 @@ export const ChatView = () => {
       </ChatColumn>
     );
   }
-  const view = snapshot.projects.find((v) => v.project.id === projectId);
-  const task = view && taskOf(view, taskId);
-  const variant = task && chatVariant(task);
-  if (!view || !task || !variant) {
+  const found = lookup.data;
+  if (found && "adoptedBy" in found) {
+    return (
+      <Navigate
+        replace
+        to={taskHref(projectId, found.adoptedBy.task, {
+          v: found.adoptedBy.n,
+        })}
+      />
+    );
+  }
+  const chat = listed ?? (found && "chat" in found ? found.chat : undefined);
+  if (!view || !chat) {
     return (
       <ChatColumn centred={false}>
         <Empty title="Chat not found">
           <p className={muted}>
-            It was archived, or its project is no longer registered.
+            It doesn&apos;t exist, or its project is no longer registered.
           </p>
           <Button asChild variant="outline">
             <Link to="/chat">New chat</Link>
@@ -48,70 +88,204 @@ export const ChatView = () => {
       </ChatColumn>
     );
   }
+  return <ChatPage key={chat.id} view={view} chat={chat} />;
+};
 
-  const started = params.get("session");
-  const next = started
-    ? view.sessions.find((s) => s.id === started)?.task?.id
+const ChatPage = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
+  const navigate = useNavigate();
+  const session = chat.sessionId
+    ? view.sessions.find((s) => s.id === chat.sessionId)
     : undefined;
-  if (next && next !== task.id) {
-    return <Navigate replace to={chatPath(view.project.id, next)} />;
-  }
-
-  const session = variant.sessionId
-    ? view.sessions.find((s) => s.id === variant.sessionId)
-    : undefined;
-  const directory = session?.directory ?? variant.directory;
+  const directory = session?.directory ?? chat.directory;
   const checkout = directory
     ? conversationCheckout(view, directory)
     : undefined;
   const checkoutLabel =
+    chat.branch ??
     checkout?.worktree?.branch ??
     checkout?.label ??
-    variant.branch ??
     "New worktree";
-
   const chips = (
     <>
       <Chip>{view.project.name}</Chip>
       <Chip>{checkoutLabel}</Chip>
+      {chat.archived && <Chip>archived</Chip>}
     </>
   );
-  const openTask = (
-    <Button asChild variant="outline" size="sm">
-      <Link to={taskPath(view.project.id, task.id)}>
-        <span className="max-sm:sr-only">Open task</span> <ArrowUpRightIcon />
-      </Link>
-    </Button>
-  );
+  const actions = <ChatActions view={view} chat={chat} />;
 
   return (
     <ChatColumn centred={false}>
       {session && checkout ? (
         <SessionView
-          key={session.id}
           view={view}
           checkout={checkout}
           session={session}
           chips={chips}
-          actions={openTask}
-          onStarted={(id) => setParams({ session: id }, { replace: true })}
+          actions={actions}
+          onStarted={(_, next) => {
+            if (next) {
+              void navigate(chatPath(view.project.id, next));
+            }
+          }}
         />
       ) : (
         <>
-          <header className="flex min-w-0 items-center gap-2 border-b pb-2">
+          <header className="flex min-w-0 flex-wrap items-center gap-2 border-b pb-2">
             <h1 className="min-w-0 truncate text-base font-semibold">
-              {task.title || "Untitled chat"}
+              {chat.title || "Untitled chat"}
             </h1>
             <div className="flex min-w-0 items-center gap-1.5 text-xs max-md:hidden">
               {chips}
             </div>
-            <div className="ml-auto shrink-0">{openTask}</div>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              {actions}
+            </div>
           </header>
           <div className="mx-auto w-full max-w-3xl">
-            <VariantWaiting view={view} variant={variant} details />
+            <ChatWaiting chat={chat} />
           </div>
         </>
       )}
     </ChatColumn>
+  );
+};
+
+/** A chat without a conversation to show: how far its new worktree got, that it failed, or that it is gone. */
+export const ChatWaiting = ({ chat }: { chat: Chat }) => {
+  if (chat.sessionRemoved) {
+    return (
+      <Empty title="Conversation removed">
+        <p className={muted}>
+          This chat&apos;s conversation is gone from opencode.
+        </p>
+      </Empty>
+    );
+  }
+  if (chat.step === "failed") {
+    return (
+      <Empty title="The chat could not start">
+        {chat.error && (
+          <p className="text-destructive max-w-prose text-sm break-words">
+            {chat.error}
+          </p>
+        )}
+        {chat.log && chat.log.length > 0 && <SetupLog lines={chat.log} />}
+        <Button asChild variant="outline">
+          <Link to="/chat">Back to Chat</Link>
+        </Button>
+      </Empty>
+    );
+  }
+  const progress = chat.sessionId
+    ? "Opening the conversation…"
+    : `${startStepLabel(chat.step)}…`;
+  return (
+    <Empty title="Starting the chat">
+      <p className={muted}>{progress}</p>
+      {chat.log && chat.log.length > 0 && <SetupLog lines={chat.log} />}
+    </Empty>
+  );
+};
+
+const SetupLog = ({ lines }: { lines: string[] }) => (
+  <pre className="bg-muted/50 text-muted-foreground max-h-48 w-full overflow-auto rounded-md px-3 py-2 text-left font-mono text-xs leading-relaxed whitespace-pre-wrap">
+    {lines.join("\n")}
+  </pre>
+);
+
+/** The chat header's buttons: its checkout's changes in a sheet, Make task, and Archive. */
+const ChatActions = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
+  const navigate = useNavigate();
+  const [changes, setChanges] = useState(false);
+  const [making, setMaking] = useState(false);
+  const [error, setError] = useState<string>();
+  const checkout = chat.directory
+    ? checkoutOf(view, chat.directory)
+    : undefined;
+  const blocked = makeTaskBlocked(view, chat);
+
+  const archive = async () => {
+    try {
+      await archiveChat(view.project.id, chat.id);
+      await navigate("/chat");
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : String(error_));
+    }
+  };
+
+  return (
+    <>
+      {error && <span className="text-destructive text-xs">{error}</span>}
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!checkout}
+        onClick={() => setChanges(true)}
+      >
+        <FileDiffIcon /> <span className="max-sm:sr-only">Changes</span>
+      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* A disabled button gets no pointer events, so its tooltip hangs on a wrapper. */}
+          <span tabIndex={blocked ? 0 : undefined}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={blocked !== undefined}
+              onClick={() => setMaking(true)}
+            >
+              <ListTodoIcon /> <span className="max-sm:sr-only">Make task</span>
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {blocked ?? "Turn this chat into a task, keeping its conversation"}
+        </TooltipContent>
+      </Tooltip>
+      {!chat.archived && (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Archive chat"
+          title="Archive: hide this chat; its conversation keeps running"
+          onClick={() => void archive()}
+        >
+          <ArchiveIcon />
+        </Button>
+      )}
+      {checkout && (
+        <Sheet open={changes} onOpenChange={setChanges}>
+          <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-4xl">
+            <SheetHeader>
+              <SheetTitle>Changes</SheetTitle>
+              <SheetDescription>
+                {checkout.worktree
+                  ? "The branch's commits against its base, and what isn't committed yet."
+                  : "What isn't committed yet in the main checkout."}
+              </SheetDescription>
+            </SheetHeader>
+            <div className="px-4 pb-4">
+              <CheckoutProvider
+                value={{
+                  checkout,
+                  view,
+                  ...(chat.sessionId ? { sessionId: chat.sessionId } : {}),
+                }}
+              >
+                <ProjectReview />
+              </CheckoutProvider>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+      {making && (
+        <MakeTaskDialog
+          view={view}
+          chat={chat}
+          onClose={() => setMaking(false)}
+        />
+      )}
+    </>
   );
 };

@@ -474,6 +474,7 @@ describe("usage", () => {
       expect(heard).toHaveBeenCalledTimes(1);
       const [task] = store.snapshot().projects[0].tasks;
       expect(task).toStrictEqual({
+        brief: "Fix login",
         createdAt: 5,
         id: T1,
         kind: "task",

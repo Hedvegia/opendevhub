@@ -22,9 +22,10 @@ const CHIPS: { id: TaskFilter; label: string }[] = [
   { id: "running", label: "Working" },
   { id: "idle", label: "Idle" },
   { id: "ended", label: "Ended" },
+  { id: "draft", label: "Drafts" },
 ];
 
-/** The tasks of every project that aren't archived, grouped by project. */
+/** The tasks of every project that aren't archived, grouped by project, with drafts in their own group first. */
 export const TasksPage = () => {
   const { snapshot } = useDash();
   const [params, setParams] = useSearchParams();
@@ -57,7 +58,7 @@ export const TasksPage = () => {
       (n, g) => n + g.tasks.filter((t) => matchesTaskFilter(t, f)).length,
       0
     );
-  const shown = groups
+  const filtered = groups
     .filter((g) => !project || g.view.project.id === project)
     .map((g) => ({
       ...g,
@@ -66,7 +67,12 @@ export const TasksPage = () => {
           matchesTaskFilter(t, status) &&
           matches(q, t.title, g.view.project.name)
       ),
-    }))
+    }));
+  const drafts = filtered.flatMap((g) =>
+    g.tasks.filter((t) => t.state === "draft").map((t) => ({ t, view: g.view }))
+  );
+  const shown = filtered
+    .map((g) => ({ ...g, tasks: g.tasks.filter((t) => t.state !== "draft") }))
     .filter((g) => g.tasks.length > 0);
 
   let body;
@@ -74,12 +80,11 @@ export const TasksPage = () => {
     body = (
       <Empty title="No tasks">
         <p className={muted}>
-          Open a project and start a task, or a conversation in one of its
-          checkouts.
+          Open a project and start a task, or make one from a chat.
         </p>
       </Empty>
     );
-  } else if (shown.length === 0) {
+  } else if (shown.length === 0 && drafts.length === 0) {
     body = <p className={muted}>No tasks match these filters.</p>;
   } else {
     body = shown.map(({ view, tasks }) => (
@@ -142,6 +147,19 @@ export const TasksPage = () => {
         />
       </div>
 
+      {drafts.length > 0 && (
+        <Section title="Drafts" hint={drafts.length}>
+          <ul>
+            {drafts.map(({ t, view }) => (
+              <TaskRow key={t.task} projectId={view.project.id} task={t}>
+                <p className="text-muted-foreground px-4 pb-2 pl-9 text-xs">
+                  {view.project.name}
+                </p>
+              </TaskRow>
+            ))}
+          </ul>
+        </Section>
+      )}
       {body}
     </Page>
   );

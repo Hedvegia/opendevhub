@@ -5,6 +5,7 @@ import { CleanupTargets } from "./git/cleanup-targets";
 import { ReviewActions } from "./git/review-actions";
 import { Chat } from "./sessions/chat";
 import { Sessions } from "./sessions/sessions";
+import { CheckoutSetup } from "./tasks/checkout-setup";
 import { Tasks } from "./tasks/tasks";
 
 /** What the Hub does for its projects, one module per concern; all of them act on the same Environments. */
@@ -22,9 +23,10 @@ export const createHub = (deps: HubDeps): Hub => {
   const environments = new Environments(deps);
   const sessions = new Sessions(deps, environments);
   const checkouts = new Checkouts(deps, environments, sessions);
-  const tasks = new Tasks(deps, environments);
+  const setup = new CheckoutSetup(deps, environments);
+  const tasks = new Tasks(deps, environments, setup);
   return {
-    chat: new Chat(deps, sessions, tasks),
+    chat: new Chat(deps, environments, sessions, setup, tasks),
     checkouts,
     cleanupTargets: new CleanupTargets(deps, environments, checkouts),
     environments,

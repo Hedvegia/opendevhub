@@ -1,3 +1,4 @@
+import { ChatStore } from "../../src/server/db/chats";
 import { CheckoutStore } from "../../src/server/db/checkouts";
 import { openDatabase } from "../../src/server/db/database";
 import { EnvironmentStore } from "../../src/server/db/environments";
@@ -16,18 +17,21 @@ import type {
 /** A fresh in-memory database with its stores. */
 export const memoryStores = (now?: () => number) => {
   const db = openDatabase(":memory:");
+  const chats = new ChatStore(db, now);
   return {
+    chats,
     checkouts: new CheckoutStore(db, now),
     db,
     environments: new EnvironmentStore(db, now),
     links: new LinkStore(db, now),
     projects: new ProjectStore(db, now),
-    tasks: new TaskStore(db, now),
+    tasks: new TaskStore(db, now, () => chats.invalidate()),
   };
 };
 
 /** What a `StateStore` reads from the database, from one in-memory database. */
 export const stateStores = (dbs = memoryStores()) => ({
+  chats: dbs.chats,
   environments: dbs.environments,
   links: dbs.links,
   tasks: dbs.tasks,

@@ -80,6 +80,17 @@ export const TaskConversation = () => {
               </Link>
             </>
           )}
+          {selected.chat && (
+            <>
+              , a{" "}
+              <Link
+                to={sessionPath(view, selected)}
+                className="underline-offset-4 hover:underline"
+              >
+                chat
+              </Link>
+            </>
+          )}
           .{" "}
           <Button
             variant="link"
@@ -143,12 +154,12 @@ const Threads = (props: {
                     at={s.updatedAt}
                     className="text-muted-foreground text-xs whitespace-nowrap"
                   />
-                  {other && (
+                  {(other || s.chat) && (
                     <Link
                       to={sessionPath(view, s)}
                       className="text-muted-foreground hover:text-foreground text-xs hover:underline"
                     >
-                      Its task
+                      {s.chat ? "Open chat" : "Its task"}
                     </Link>
                   )}
                 </li>

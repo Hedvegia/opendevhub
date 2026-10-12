@@ -153,16 +153,19 @@ const toWorktree = (r: RawWorktree): WorktreeRecord => ({
   ...(r.removed_at === null ? {} : { removedAt: r.removed_at }),
 });
 
-/** A worktree's creator as the snapshot shows it; a variant's task title is looked up by the caller. */
+/** A worktree's creator as the snapshot shows it; a variant's task title and a chat are looked up by the caller. */
 export const creatorView = (
   c: Creator,
-  extra: { title?: string; url?: string }
+  extra: { title?: string; url?: string; chat?: { id: string; title: string } }
 ): CheckoutCreator => {
   if (c.by === "variant") {
     return { by: "variant", n: c.n, task: c.task, title: extra.title ?? "" };
   }
   if (c.by === "pull") {
     return { by: "pull", ...(extra.url ? { url: extra.url } : {}) };
+  }
+  if (c.by === "manual" && extra.chat) {
+    return { by: "manual", chat: extra.chat };
   }
   return { by: c.by };
 };

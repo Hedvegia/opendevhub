@@ -1,4 +1,5 @@
 import type { NodeId, Project, ProjectId } from "../../shared/types";
+import type { ChatStore } from "../db/chats";
 import type { CheckoutStore } from "../db/checkouts";
 import type { LinkStore } from "../db/links";
 import type { ProjectStore } from "../db/projects";
@@ -142,6 +143,8 @@ export interface HubDeps {
   projects: ProjectStore;
   /** Tasks and their variants, the only record of which session belongs to which task. */
   tasks: TaskStore;
+  /** Chats: the sessions no variant owns. */
+  chats: ChatStore;
   /** Branches and worktrees: who made them, and what a branch was published as. */
   checkouts: CheckoutStore;
   /** Tickets, pull requests and AI reviews, and their links to tasks and branches. */

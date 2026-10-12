@@ -1,4 +1,5 @@
 import type { EnvId, ProjectId } from "../../shared/types";
+import type { ChatStore } from "../db/chats";
 import type { TaskStore } from "../db/tasks";
 import type { RawSession } from "../opencode/client";
 
@@ -15,26 +16,32 @@ export interface ReconcileInput {
   sessions: RawSession[];
   /** The branch checked out in a directory, when it is a worktree. */
   branchOf: (directory: string) => string | undefined;
+  /** The worktree row and branch row of a directory, when opendevhub recorded it. */
+  rowsOf?: (directory: string) => { branchId?: number; worktreeId?: number };
   /** Asks opencode about one session; the listing holds only the newest ones. */
   lookup: (sessionId: string) => Promise<Presence>;
 }
 
-/**
- * Brings the tasks in line with an environment's sessions after a successful listing: adopts top-level sessions
- * without a task as manual tasks (except in directories where opendevhub is creating a session), lets manual tasks'
- * titles follow their sessions, and marks variants' sessions removed or back. Adoption and titles happen before
- * the first await, so the sessions the listing reports already have their tasks.
- */
-export const reconcileTasks = async (
+export interface ReconcileStores {
   tasks: Pick<
     TaskStore,
-    | "sessionRef"
-    | "isClaimed"
-    | "adoptSession"
-    | "setManualTitle"
-    | "liveSessionsIn"
-    | "markSessionsGone"
-  >,
+    "sessionRef" | "isClaimed" | "liveSessionsIn" | "markSessionsGone"
+  >;
+  chats: Pick<
+    ChatStore,
+    "hasSession" | "insert" | "setTitle" | "liveSessionsIn" | "markSessionsGone"
+  >;
+}
+
+/**
+ * Brings tasks and chats in line with an environment's sessions after a successful listing: records top-level
+ * sessions that neither a variant nor a chat has as chats from opencode (except in directories where opendevhub is
+ * creating a session), lets chats' titles follow their sessions, and marks variants' and chats' sessions removed or
+ * back. Adoption and titles happen before the first await, so the sessions the listing reports already have their
+ * owners.
+ */
+export const reconcileSessions = async (
+  { tasks, chats }: ReconcileStores,
   input: ReconcileInput
 ): Promise<void> => {
   const { envId, projectId } = input;
@@ -43,11 +50,11 @@ export const reconcileTasks = async (
   );
   for (const s of listed) {
     const title = s.title?.trim() || "Untitled session";
-    const ref = tasks.sessionRef(s.id);
-    if (ref) {
-      if (ref.kind === "manual") {
-        tasks.setManualTitle(s.id, title);
-      }
+    if (tasks.sessionRef(s.id)) {
+      continue;
+    }
+    if (chats.hasSession(s.id)) {
+      chats.setTitle(s.id, title);
       continue;
     }
     const { directory } = s.location;
@@ -55,23 +62,30 @@ export const reconcileTasks = async (
       // Its creator is about to attach it; a later pass adopts it if that never happens.
       continue;
     }
-    tasks.adoptSession({
-      branch: input.branchOf(directory),
+    const branch = input.branchOf(directory);
+    const rows = input.rowsOf?.(directory) ?? {};
+    chats.insert({
       createdAt: s.time.created,
       directory,
       envId,
+      origin: "opencode",
       projectId,
       sessionId: s.id,
+      step: "session",
       title,
+      ...(branch ? { branch } : {}),
+      ...(rows.branchId === undefined ? {} : { branchId: rows.branchId }),
+      ...(rows.worktreeId === undefined ? {} : { worktreeId: rows.worktreeId }),
     });
   }
   const present = new Set(listed.map((s) => s.id));
   const archived = new Set(
     input.sessions.filter((s) => s.time.archived !== undefined).map((s) => s.id)
   );
-  const unlisted = tasks
-    .liveSessionsIn(envId)
-    .filter((id) => !present.has(id) && !archived.has(id));
+  const unlisted = [
+    ...tasks.liveSessionsIn(envId),
+    ...chats.liveSessionsIn(envId),
+  ].filter((id) => !present.has(id) && !archived.has(id));
   if (unlisted.length > 0) {
     const answers = await Promise.all(
       unlisted.map((id, i) =>
@@ -85,4 +99,5 @@ export const reconcileTasks = async (
     }
   }
   tasks.markSessionsGone(envId, present);
+  chats.markSessionsGone(envId, present);
 };

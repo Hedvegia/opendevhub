@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-import type { ProjectView } from "../../shared/types";
+import type { DashboardSnapshot, ProjectView } from "../../shared/types";
 import { Count, StatusDot, TONE_LABEL } from "../components/status";
 import { useDash } from "../dashboard-context";
 import {
@@ -56,6 +56,12 @@ import {
   projectCounts,
   projectTone,
 } from "../derive";
+import {
+  chatNeedsYou,
+  chatPath,
+  chatTone,
+  recentChats,
+} from "../features/chat/chat";
 import {
   checkoutCounts,
   checkoutPath,
@@ -147,6 +153,52 @@ const CheckoutItems = ({ view }: { view: ProjectView }) => {
   );
 };
 
+/** The most recently active chats across projects, under Chat, marked when one waits on the user. */
+const RecentChats = ({ snapshot }: { snapshot: DashboardSnapshot }) => {
+  const location = useLocation();
+  const chats = recentChats(snapshot);
+  if (chats.length === 0) {
+    return null;
+  }
+  return (
+    <SidebarMenuSub>
+      {chats.map(({ chat, projectId, projectName }) => {
+        const to = chatPath(projectId, chat.id);
+        const needsYou = chatNeedsYou(chat);
+        return (
+          <SidebarMenuSubItem key={chat.id}>
+            <SidebarMenuSubButton
+              asChild
+              isActive={location.pathname === to}
+              title={`${chat.title || "Untitled chat"} — ${projectName}${needsYou ? " — needs you" : ""}`}
+            >
+              <Link to={to}>
+                <StatusDot
+                  tone={needsYou ? "attention" : chatTone(chat)}
+                  label={needsYou ? "Needs you" : undefined}
+                />
+                <span className="min-w-0 flex-1 truncate">
+                  {chat.title || "Untitled chat"}
+                </span>
+                <span className="text-muted-foreground max-w-20 shrink-0 truncate text-xs">
+                  {projectName}
+                </span>
+              </Link>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+        );
+      })}
+      <SidebarMenuSubItem>
+        <SidebarMenuSubButton asChild isActive={location.pathname === "/chats"}>
+          <Link to="/chats">
+            <span className="text-muted-foreground text-xs">Show all</span>
+          </Link>
+        </SidebarMenuSubButton>
+      </SidebarMenuSubItem>
+    </SidebarMenuSub>
+  );
+};
+
 const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
   const {
     snapshot,
@@ -169,7 +221,14 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
   if (!snapshot) {
     return null;
   }
-  const counts = attentionCounts(snapshot);
+  // Tasks counts the conversations of tasks; chats are marked under Chat.
+  const counts = attentionCounts({
+    ...snapshot,
+    projects: snapshot.projects.map((v) => ({
+      ...v,
+      sessions: v.sessions.filter((s) => s.task),
+    })),
+  });
   const projects = [...snapshot.projects]
     .toSorted((a, b) => a.project.name.localeCompare(b.project.name))
     .filter((v) => matches(filter, v.project.name, v.project.path));
@@ -199,7 +258,7 @@ const AppSidebar = ({ onSearch }: { onSearch: () => void }) => {
             <NavItem to="/" end>
               <LayoutGridIcon /> Overview
             </NavItem>
-            <NavItem to="/chat">
+            <NavItem to="/chat" sub={<RecentChats snapshot={snapshot} />}>
               <MessageSquareIcon /> Chat
             </NavItem>
             <NavItem

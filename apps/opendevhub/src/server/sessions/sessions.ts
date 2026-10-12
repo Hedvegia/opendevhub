@@ -98,12 +98,12 @@ export class Sessions {
       attachments?: PromptAttachments;
       model?: ModelRef;
     } = {}
-  ): Promise<string> {
+  ): Promise<{ sessionId: string; chat?: string }> {
     const project = this.envs.requireProject(id);
     this.envs.checkDirectory(id, directory);
     const env = this.envs.envForDirectory(project, directory);
     const client = this.envs.opencodeClient(env.id);
-    const session = await this.createManual(
+    const { session, chat } = await this.createOutsideTask(
       project,
       env.id,
       client,
@@ -121,11 +121,11 @@ export class Sessions {
       );
     }
     this.envs.reconcile(env.id);
-    return session.id;
+    return { sessionId: session.id, ...(chat ? { chat } : {}) };
   }
 
   /**
-   * Starts a conversation in a checkout, owned by a manual task, with a composer message as its first turn: a
+   * Starts a chat in a checkout with a composer message as its first turn: a
    * command the checkout has, or a prompt. The message is resolved first, so that a bad mention starts nothing.
    * Hub commands are the caller's to refuse.
    */
@@ -133,7 +133,7 @@ export class Sessions {
     id: ProjectId,
     directory: string,
     request: ComposerSendRequest
-  ): Promise<string> {
+  ): Promise<{ sessionId: string; chat: string }> {
     const project = this.envs.requireProject(id);
     this.envs.checkDirectory(id, directory);
     const env = this.envs.envForDirectory(project, directory);
@@ -143,7 +143,7 @@ export class Sessions {
       directory,
       request
     );
-    const session = await this.createManual(
+    const { session, chat } = await this.createOutsideTask(
       project,
       env.id,
       client,
@@ -167,13 +167,16 @@ export class Sessions {
           message.attachments
         ));
     this.envs.reconcile(env.id);
-    return session.id;
+    if (!chat) {
+      throw new Error(`the conversation ${session.id} has no chat`);
+    }
+    return { chat, sessionId: session.id };
   }
 
   /**
    * Text generated in a checkout without adding to a session's history: in the given idle session of that
-   * checkout, or in a new empty session titled `title` that stays around to follow up in. With `reviewOf` (a pull
-   * request row), the new session gets a review task instead of a manual one.
+   * checkout, or in a new empty session titled `title` that stays around to follow up in. The new session is an
+   * internal chat, never listed; with `reviewOf` (a pull request row), it gets a review task instead.
    */
   async generateIn(
     id: ProjectId,
@@ -205,13 +208,13 @@ export class Sessions {
     }
     const env = this.envs.envForDirectory(project, directory);
     const client = this.envs.opencodeClient(env.id);
-    const session = await this.createManual(
+    const { session } = await this.createOutsideTask(
       project,
       env.id,
       client,
       directory,
       options.title,
-      { reviewOf: options.reviewOf }
+      { internal: true, reviewOf: options.reviewOf }
     );
     this.envs.reconcile(env.id);
     const text = await client.generate(
@@ -224,49 +227,85 @@ export class Sessions {
   }
 
   /**
-   * Creates a session outside a task and its manual task (a review task with `reviewOf`), before anything reconciles
-   * the environment: the directory is claimed meanwhile, so that reconcile doesn't adopt the session first.
+   * Creates a session outside a task and records its owner before anything reconciles the environment: a chat
+   * (`internal` when it only generates text), or a review task with `reviewOf`. The directory is claimed
+   * meanwhile, so that reconcile doesn't adopt the session first.
    */
-  private async createManual(
+  private async createOutsideTask(
     project: Project,
     envId: EnvId,
     client: OpencodeClient,
     directory: string,
     title: string | undefined,
-    options: { reviewOf?: number; model?: ModelRef } = {}
-  ): Promise<RawSession> {
-    const { reviewOf, model } = options;
-    const { tasks, store } = this.deps;
+    options: { reviewOf?: number; model?: ModelRef; internal?: boolean } = {}
+  ): Promise<{ session: RawSession; chat?: string }> {
+    const { reviewOf, model, internal } = options;
+    const { tasks, chats } = this.deps;
     const release = tasks.claim(envId, directory);
     try {
       const session = await client.createSession(directory, {
         title,
         ...(model ? { model } : {}),
       });
-      const ws = this.envs.workspaceFolder(project);
-      const branch =
-        directory === ws
-          ? undefined
-          : (store.environment(envId)?.worktree.branch ??
-            store
-              .runtime(project.id)
-              .worktrees?.find((w) => w.path === directory)?.branch);
-      tasks.startManual({
-        branch,
-        createdAt:
-          (session.time as RawSession["time"] | undefined)?.created ??
-          (this.deps.now ?? Date.now)(),
+      const createdAt =
+        (session.time as RawSession["time"] | undefined)?.created ??
+        (this.deps.now ?? Date.now)();
+      const named =
+        session.title?.trim() || title?.trim() || "Untitled session";
+      const where = this.checkoutOf(project, envId, directory);
+      if (reviewOf !== undefined) {
+        tasks.startReview({
+          createdAt,
+          directory,
+          envId,
+          projectId: project.id,
+          reviewOf,
+          sessionId: session.id,
+          title: named,
+          ...(where.branch ? { branch: where.branch } : {}),
+        });
+        return { session };
+      }
+      const chat = chats.insert({
+        createdAt,
         directory,
         envId,
+        origin: internal ? "internal" : "hub",
         projectId: project.id,
         sessionId: session.id,
-        title: session.title?.trim() || title?.trim() || "Untitled session",
-        ...(reviewOf === undefined ? {} : { reviewOf }),
+        step: "session",
+        title: named,
+        ...where,
       });
-      return session;
+      return { chat: chat.id, session };
     } finally {
       release();
     }
+  }
+
+  /** The branch, branch row and worktree row of one of the project's checkouts; none for the main checkout. */
+  private checkoutOf(
+    project: Project,
+    envId: EnvId,
+    directory: string
+  ): { branch?: string; branchId?: number; worktreeId?: number } {
+    if (directory === this.envs.workspaceFolder(project)) {
+      return {};
+    }
+    const { store, checkouts } = this.deps;
+    const env = store.environment(envId);
+    const branch =
+      env?.worktree.branch ??
+      store.runtime(project.id).worktrees?.find((w) => w.path === directory)
+        ?.branch;
+    const row = checkouts
+      .worktreesOf(project.id)
+      .find((w) => w.path === directory && w.node === env?.node);
+    return {
+      ...(branch ? { branch } : {}),
+      ...(row ? { worktreeId: row.id } : {}),
+      ...(row?.branchId === undefined ? {} : { branchId: row.branchId }),
+    };
   }
 
   /** Deletes one of the project's sessions with its subagents, stopping it first when it isn't idle. */
@@ -403,7 +442,11 @@ export class Sessions {
           model: request.model,
         }
       );
-      return { kind: "new", sessionId: started };
+      return {
+        kind: "new",
+        sessionId: started.sessionId,
+        ...(started.chat ? { chat: started.chat } : {}),
+      };
     }
     if (request.model && !sameModel(request.model, session.model)) {
       await client.switchModel(sessionId, request.model, directory);

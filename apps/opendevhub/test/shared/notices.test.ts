@@ -12,6 +12,7 @@ import type {
 interface S {
   status: SessionStatus;
   task?: SessionSummary["task"];
+  chat?: string;
   permissions?: PendingPermission[];
   forms?: PendingForm[];
 }
@@ -24,6 +25,7 @@ function snap(sessions: Record<string, S>): DashboardSnapshot {
     projects: [
       {
         tasks: [],
+        chats: [],
         project: {
           id: "p",
           name: "demo",
@@ -45,6 +47,7 @@ function snap(sessions: Record<string, S>): DashboardSnapshot {
           updatedAt: 1,
           status: s.status,
           ...(s.task ? { task: s.task } : {}),
+          ...(s.chat ? { chat: s.chat } : {}),
           ...(s.permissions || s.forms
             ? {
                 pending: {
@@ -98,6 +101,21 @@ describe(diffForNotifications, () => {
         snap({ a: { status: "needs-permission", permissions: [perm("r1")] } })
       )
     ).toStrictEqual([]);
+  });
+
+  it("points a notice at the session's task, else its chat", () => {
+    const [chat, task] = diffForNotifications(
+      snap({ a: { status: "running" }, b: { status: "running" } }),
+      snap({
+        a: { chat: "c_1", status: "idle" },
+        b: {
+          status: "idle",
+          task: { discarded: false, id: "tsk_1", kind: "task", n: 2 },
+        },
+      })
+    );
+    expect(chat.url).toBe("/chat/p/c_1");
+    expect(task.url).toBe("/p/p/t/tsk_1?v=2");
   });
 
   it("notifies a new permission with Allow once / Reject data", () => {

@@ -18,7 +18,7 @@ import type {
   JiraSettingsInput,
   JiraTaskSource,
 } from "../shared/jira";
-import type { DashboardSnapshot } from "../shared/types";
+import type { DashboardSnapshot, TaskPlan } from "../shared/types";
 import {
   fetchJiraSettings,
   saveJiraSettings,
@@ -47,6 +47,10 @@ export interface NewTaskDraft {
   title?: string;
   base?: string;
   jira?: JiraTaskSource;
+  /** A draft task to start (its variants are added to it) or edit (saved, not started). */
+  draft?: { task: string; mode: "start" | "edit" };
+  /** A draft's plan, which the dialog's fields start from. */
+  plan?: TaskPlan;
 }
 
 interface DashboardContextValue {

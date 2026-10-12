@@ -50,6 +50,7 @@ import type {
 import {
   fetchJiraBoardColumns,
   fetchJiraCatalog,
+  draftFromTicket,
   fetchJiraTicket,
   fetchJiraTickets,
 } from "../../api";
@@ -653,7 +654,7 @@ export const JiraPage = () => {
   );
 };
 
-/** Starts a task from the ticket: the project first (a plain button when there is one), then the New task dialog. */
+/** Starts or drafts a task from the ticket: the project first (a plain button when there is one), then `onStart`. */
 const StartTask = (props: {
   label: string;
   primary: boolean;
@@ -703,7 +704,8 @@ export const JiraTicketPage = () => {
 };
 
 const TicketDetails = ({ ticketKey }: { ticketKey: string }) => {
-  const { snapshot, newTask } = useDash();
+  const { snapshot, newTask, report } = useDash();
+  const queryClient = useQueryClient();
   const [params] = useSearchParams();
   const { data, error, busy, loading, refresh } = useJiraResource<JiraTicket>(
     ["ticket", ticketKey],
@@ -763,6 +765,22 @@ const TicketDetails = ({ ticketKey }: { ticketKey: string }) => {
                 primary={!firstTask}
                 disabled={!!tooLarge}
                 onStart={(projectId) => newTask(projectId, { jira: source })}
+              />
+            )}
+            {source && (
+              <StartTask
+                label="Create draft"
+                primary={false}
+                disabled={!!tooLarge}
+                onStart={(projectId) =>
+                  void draftFromTicket(projectId, source)
+                    .then(() =>
+                      queryClient.invalidateQueries({
+                        queryKey: ["links", "ticket"],
+                      })
+                    )
+                    .catch(report)
+                }
               />
             )}
             <Button

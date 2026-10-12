@@ -203,7 +203,7 @@ describe("responding", () => {
   });
 });
 
-describe("manual tasks", () => {
+describe("sessions started outside a task", () => {
   async function started() {
     const s = setup();
     await s.hub.environments.rescan();
@@ -215,56 +215,60 @@ describe("manual tasks", () => {
     expect(tasks).toHaveLength(1);
     return tasks[0];
   };
+  const onlyChat = (s: Awaited<ReturnType<typeof started>>) => {
+    const chats = s.dbs.chats.listForProject(project.id);
+    expect(chats).toHaveLength(1);
+    return chats[0];
+  };
 
-  it("gives a session started in the main checkout a manual task, claiming the directory meanwhile", async () => {
+  it("records a session started in the main checkout as a chat, claiming the directory meanwhile", async () => {
     const s = await started();
     const claimed: boolean[] = [];
     s.client.createSession.mockImplementationOnce(async (directory) => {
       claimed.push(s.tasks.isClaimed(project.id, directory));
       return { id: "ses_m", location: { directory } };
     });
-    const id = await s.hub.sessions.startSession(
+    const started2 = await s.hub.sessions.startSession(
       project.id,
       "/workspaces/demo",
       "Look around"
     );
-    expect(id).toBe("ses_m");
+    expect(started2.sessionId).toBe("ses_m");
     expect(claimed).toStrictEqual([true]);
     expect(s.tasks.isClaimed(project.id, "/workspaces/demo")).toBeFalsy();
-    expect(onlyTask(s)).toMatchObject({
+    expect(onlyChat(s)).toMatchObject({
       createdAt: s.clock.now,
-      kind: "manual",
-      state: "running",
+      directory: "/workspaces/demo",
+      envId: project.id,
+      id: started2.chat,
+      origin: "hub",
+      sessionId: "ses_m",
+      step: "session",
       title: "Look around",
-      variants: [
-        {
-          directory: "/workspaces/demo",
-          envId: project.id,
-          n: 1,
-          sessionId: "ses_m",
-          step: "session",
-        },
-      ],
     });
-    expect(onlyTask(s).variants[0].branch).toBeUndefined();
+    expect(onlyChat(s).branch).toBeUndefined();
+    expect(s.tasks.listForProject(project.id)).toStrictEqual([]);
   });
 
-  it("records the branch of a new worktree started with a session", async () => {
+  it("records the branch and worktree of a new worktree started with a conversation", async () => {
     const s = await started();
     const path = "/workspaces/demo.worktrees/feature-login";
     s.worktrees.list.mockResolvedValue([{ branch: "feature/login", path }]);
-    await s.hub.checkouts.createWorktree(project.id, {
+    const created = await s.hub.checkouts.createWorktree(project.id, {
       branch: "feature/login",
       startSession: true,
     });
-    expect(onlyTask(s)).toMatchObject({
-      kind: "manual",
+    expect(onlyChat(s)).toMatchObject({
+      branch: "feature/login",
+      directory: path,
+      origin: "hub",
       title: "feature/login",
-      variants: [{ branch: "feature/login", directory: path }],
     });
+    expect(onlyChat(s).worktreeId).toBeDefined();
+    expect(created).toMatchObject({ chat: onlyChat(s).id });
   });
 
-  it("gives a new session made to generate text a manual task, but not a reused one", async () => {
+  it("records a new session made to generate text as an internal chat, and none for a reused one", async () => {
     const s = await started();
     const { sessionId } = await s.hub.sessions.generateIn(
       project.id,
@@ -272,11 +276,12 @@ describe("manual tasks", () => {
       "Write a commit message",
       { title: "Commit message" }
     );
-    expect(onlyTask(s)).toMatchObject({
-      kind: "manual",
+    expect(s.dbs.chats.bySession(sessionId)).toMatchObject({
+      origin: "internal",
       title: "Commit message",
-      variants: [{ sessionId }],
     });
+    expect(s.dbs.chats.listForProject(project.id)).toStrictEqual([]);
+    expect(s.tasks.listForProject(project.id)).toStrictEqual([]);
   });
 
   it("gives an AI review session, in a checkout or quick, a review task of its pull request", async () => {
@@ -302,13 +307,13 @@ describe("manual tasks", () => {
     expect(s.links.forPull(pull.url).reviewTasks).toHaveLength(2);
   });
 
-  it("leaves no task or claim behind when opencode refuses the session", async () => {
+  it("leaves no chat or claim behind when opencode refuses the session", async () => {
     const s = await started();
     s.client.createSession.mockRejectedValueOnce(new Error("down"));
     await expect(
       s.hub.sessions.startSession(project.id, "/workspaces/demo")
     ).rejects.toThrow("down");
-    expect(s.tasks.listForProject(project.id)).toStrictEqual([]);
+    expect(s.dbs.chats.listForProject(project.id)).toStrictEqual([]);
     expect(s.tasks.isClaimed(project.id, "/workspaces/demo")).toBeFalsy();
   });
 });
@@ -466,7 +471,7 @@ describe("composer", () => {
     const { hub, client } = await started();
     await expect(
       hub.sessions.sendMessage(project.id, "ses_1", { text: "/new look at it" })
-    ).resolves.toStrictEqual({ kind: "new", sessionId: "ses_new" });
+    ).resolves.toMatchObject({ kind: "new", sessionId: "ses_new" });
     expect(client.createSession).toHaveBeenCalledWith(ws, { title: undefined });
     expect(client.prompt).toHaveBeenCalledWith(
       "ses_new",

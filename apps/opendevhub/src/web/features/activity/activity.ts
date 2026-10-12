@@ -4,7 +4,7 @@ import type {
   Actor,
   EventVerb,
 } from "../../../shared/activity";
-import type { SessionTaskRef } from "../../../shared/types";
+import type { ChatView, SessionTaskRef } from "../../../shared/types";
 import { checkoutPath } from "../checkouts/checkouts";
 import { forgejoRoute } from "../forgejo/forgejo";
 import { taskPath } from "../tasks/tasks";
@@ -55,6 +55,11 @@ const branch = (e: ActivityEvent): string =>
 const sessionOf = (e: ActivityEvent): string =>
   e.taskTitle ? `“${e.taskTitle}”` : "a conversation";
 
+const chatOf = (e: ActivityEvent): string => {
+  const title = str(e.data?.title);
+  return title ? `chat “${title}”` : "a chat";
+};
+
 /**
  * One sentence per verb. Typed by `EventVerb`, so a verb added without a renderer fails to compile; the test suite
  * checks the same at runtime against `EVENT_VERBS`.
@@ -69,6 +74,13 @@ export const EVENT_TEXT: Record<EventVerb, (e: ActivityEvent) => string> = {
     const remote = str(e.data?.remote);
     return `${actorLabel(e.actor)} published branch ${branch(e)}${remote ? ` to ${remote}` : ""}`;
   },
+  "chat.adopted": (e) =>
+    `${actorLabel(e.actor)} made ${task(e)} from ${chatOf(e)}`,
+  "chat.archived": (e) => `${actorLabel(e.actor)} archived ${chatOf(e)}`,
+  "chat.discovered": (e) =>
+    `opendevhub found ${chatOf(e)}, started in opencode`,
+  "chat.removed": (e) => `The conversation of ${chatOf(e)} is gone`,
+  "chat.started": (e) => `${actorLabel(e.actor)} started ${chatOf(e)}`,
   "environment.created": (e) =>
     `${actorLabel(e.actor)} created a container${e.taskTitle ? ` for ${task(e)}` : ""}`,
   "environment.removed": (e) =>
@@ -99,10 +111,12 @@ export const EVENT_TEXT: Record<EventVerb, (e: ActivityEvent) => string> = {
       ? `${actorLabel(e.actor)} started a conversation for ${task(e)}`
       : `${actorLabel(e.actor)} started the conversation of variant ${variantN(e)} of ${task(e)}`,
   "task.archived": (e) => `${actorLabel(e.actor)} archived ${task(e)}`,
+  "task.drafted": (e) => `${actorLabel(e.actor)} drafted task ${task(e)}`,
   "task.ended": (e) =>
     e.taskTitle ? `Task “${e.taskTitle}” ended` : "A task ended",
   "task.started": (e) => {
     const variants = num(e.data?.variants) ?? 1;
+    // Manual tasks became chats; their old events still say so.
     if (e.data?.kind === "manual") {
       return `${actorLabel(e.actor)} started conversation ${task(e)}`;
     }
@@ -113,6 +127,8 @@ export const EVENT_TEXT: Record<EventVerb, (e: ActivityEvent) => string> = {
   },
   "ticket.linked": (e) =>
     `${e.taskTitle ? `“${e.taskTitle}”` : "A task"} was started from ${str(e.data?.key) ?? "a ticket"}`,
+  "variant.added": (e) =>
+    `${actorLabel(e.actor)} added variant ${variantN(e)} to ${task(e)}`,
   "variant.discarded": (e) =>
     `${actorLabel(e.actor)} discarded variant ${variantN(e)} of ${task(e)}`,
   "variant.failed": (e) => {
@@ -194,34 +210,28 @@ export const filterKey = (filter: ActivityFilter): string =>
     filter.entity ? `${filter.entity.type}:${filter.entity.id}` : "",
   ].join("|");
 
-/** What made a session, worktree, branch or environment, as the chip shows it; a `CheckoutCreator` is one. */
+/** What made a session, chat, worktree, branch or environment, as the chip shows it; a `CheckoutCreator` is one. */
 export type Origin =
   | { by: "variant"; task: string; n: number; title: string; kind?: "task" }
-  | {
-      by: "session";
-      task: string;
-      title: string;
-      kind: "manual" | "review";
-      /** A manual task whose session was found in opencode rather than started here. */
-      adopted?: true;
-    }
-  | { by: "manual" }
+  | { by: "session"; task: string; title: string; kind: "review" }
+  | { by: "chat"; chat: string; title: string; opencode?: true }
+  | { by: "manual"; chat?: { id: string; title: string } }
   | { by: "pull"; url?: string }
   | { by: "unmanaged" };
 
-/** A session's task as an origin: its task and variant, or for a manual or review task the task itself. */
-export const sessionOrigin = (ref: SessionTaskRef, title: string): Origin => {
-  if (ref.kind === "task") {
-    return { by: "variant", n: ref.n, task: ref.id, title };
-  }
-  return {
-    by: "session",
-    kind: ref.kind,
-    task: ref.id,
-    title,
-    ...(ref.adopted ? { adopted: true as const } : {}),
-  };
-};
+/** A session's task as an origin: its task and variant, or for a review task the task itself. */
+export const sessionOrigin = (ref: SessionTaskRef, title: string): Origin =>
+  ref.kind === "task"
+    ? { by: "variant", n: ref.n, task: ref.id, title }
+    : { by: "session", kind: "review", task: ref.id, title };
+
+/** Who started a chat: opendevhub, or opencode directly. */
+export const chatOrigin = (chat: ChatView): Origin => ({
+  by: "chat",
+  chat: chat.id,
+  title: chat.title,
+  ...(chat.origin === "opencode" ? { opencode: true as const } : {}),
+});
 
 /** The chip's text, and where it links. */
 export const originLabel = (
@@ -235,13 +245,15 @@ export const originLabel = (
       };
     }
     case "session": {
-      if (origin.kind === "review") {
-        return { text: "AI review" };
-      }
-      return { text: origin.adopted ? "Started in opencode" : "Started here" };
+      return { text: "AI review" };
+    }
+    case "chat": {
+      return { text: origin.opencode ? "Started in opencode" : "Started here" };
     }
     case "manual": {
-      return { text: "Created here" };
+      return origin.chat
+        ? { text: `Chat: ${origin.chat.title || "Untitled chat"}` }
+        : { text: "Created here" };
     }
     case "pull": {
       const internal = origin.url

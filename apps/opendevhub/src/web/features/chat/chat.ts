@@ -1,13 +1,13 @@
 import type {
   ChatTarget,
+  ChatView,
   DashboardSnapshot,
   ProjectView,
-  TaskView,
-  VariantView,
 } from "../../../shared/types";
+import { chatHref } from "../../../shared/urls";
 import { workspaceFolderOf } from "../../derive";
+import type { Tone } from "../../derive";
 import { checkouts } from "../checkouts/checkouts";
-import { defaultVariant } from "../tasks/tasks";
 
 /** The project the start composer picks on this browser, as long as it is still registered. */
 export const LAST_PROJECT_KEY = "opendevhub.chat.project";
@@ -18,9 +18,101 @@ export const NEW_WORKTREE = "worktree";
 export const WORKTREES_UNAVAILABLE =
   "The project's container has no worktrees folder; rebuild it to enable worktrees.";
 
-/** A chat's own page: the task's conversation full-width. */
-export const chatPath = (projectId: string, task: string): string =>
-  `/chat/${encodeURIComponent(projectId)}/${encodeURIComponent(task)}`;
+/** A chat's own page: its conversation full-width. */
+export const chatPath = chatHref;
+
+/** How many chats the sidebar lists under Chat. */
+export const RECENT_CHATS = 10;
+
+/** A task id, as old chat links carried in place of the chat's. */
+export const isTaskId = (id: string): boolean => id.startsWith("tsk_");
+
+export const chatOf = (view: ProjectView, chat: string): ChatView | undefined =>
+  view.chats.find((c) => c.id === chat);
+
+/** When a chat was last active: its session's last update, else its creation. */
+export const chatActivity = (chat: ChatView): number =>
+  chat.updatedAt ?? chat.createdAt;
+
+/** Waiting on a permission or a question. */
+export const chatNeedsYou = (chat: ChatView): boolean =>
+  (chat.pending?.permissions.length ?? 0) + (chat.pending?.forms.length ?? 0) >
+  0;
+
+/** A chat's dot: waiting on the user, working, idle, or not started yet. */
+export const chatTone = (chat: ChatView): Tone => {
+  if (chatNeedsYou(chat)) {
+    return "attention";
+  }
+  if (chat.step === "failed") {
+    return "error";
+  }
+  if (chat.status === "running" || chat.step !== "session") {
+    return "running";
+  }
+  return chat.status ? "ok" : "off";
+};
+
+/** A chat with the project it belongs to. */
+export interface ListedChat {
+  chat: ChatView;
+  projectId: string;
+  projectName: string;
+}
+
+/** Every project's chats, most recently active first; only `projectId`'s when given. */
+export const allChats = (
+  snapshot: DashboardSnapshot,
+  projectId?: string
+): ListedChat[] =>
+  snapshot.projects
+    .filter((v) => projectId === undefined || v.project.id === projectId)
+    .flatMap((v) =>
+      v.chats.map((chat) => ({
+        chat,
+        projectId: v.project.id,
+        projectName: v.project.name,
+      }))
+    )
+    .toSorted((a, b) => chatActivity(b.chat) - chatActivity(a.chat));
+
+/** The chats the sidebar lists: the most recently active, across projects. */
+export const recentChats = (
+  snapshot: DashboardSnapshot,
+  limit = RECENT_CHATS
+): ListedChat[] => allChats(snapshot).slice(0, limit);
+
+/** A project's chats run in one checkout, most recently active first. */
+export const checkoutChats = (
+  view: ProjectView,
+  directory: string
+): ChatView[] =>
+  view.chats
+    .filter((c) => c.directory === directory)
+    .toSorted((a, b) => chatActivity(b) - chatActivity(a));
+
+/** Runs in the project's main checkout rather than a worktree. */
+export const inMainCheckout = (view: ProjectView, chat: ChatView): boolean =>
+  !chat.branch || chat.directory === workspaceFolderOf(view);
+
+export const MAIN_CHECKOUT_TASK = "Only chats in a worktree can become tasks.";
+
+/** Why Make task is off for a chat; undefined when it can make one. */
+export const makeTaskBlocked = (
+  view: ProjectView,
+  chat: ChatView
+): string | undefined => {
+  if (chat.adoptedBy) {
+    return "This chat already belongs to a task.";
+  }
+  if (!chat.sessionId || chat.sessionRemoved) {
+    return "This chat has no conversation.";
+  }
+  if (inMainCheckout(view, chat)) {
+    return MAIN_CHECKOUT_TASK;
+  }
+  return undefined;
+};
 
 export const readLastProject = (): string | undefined => {
   try {
@@ -94,7 +186,3 @@ export const chatTarget = (
     target: { directory: choice, kind: "checkout" },
   };
 };
-
-/** The variant a chat shows: the task page's default one. */
-export const chatVariant = (task: TaskView): VariantView | undefined =>
-  defaultVariant(task);

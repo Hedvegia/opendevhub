@@ -207,19 +207,22 @@ describe("TaskStore variants", () => {
     expect(s.tasks.bySession("ses_1")?.variant.n).toBe(1);
   });
 
-  it("takes over a session reconcile adopted before the variant attached it", () => {
+  it("takes over a session reconcile adopted as a chat before the variant attached it", () => {
     const s = setup();
     s.tasks.createTask(s.task());
-    const manual = s.tasks.adoptSession({
+    const stray = s.chats.insert({
       createdAt: 900,
       directory: "/w/ses_1",
       envId: project.id,
+      origin: "opencode",
       projectId: project.id,
       sessionId: "ses_1",
+      step: "session",
       title: "stray",
     });
     s.attach(T1, 1, "ses_1");
-    expect(s.tasks.get(manual)).toBeUndefined();
+    expect(s.chats.get(stray.id)).toBeUndefined();
+    expect(s.chats.hasSession("ses_1")).toBeFalsy();
     expect(s.tasks.sessionRef("ses_1")?.id).toBe(T1);
   });
 
@@ -244,64 +247,170 @@ describe("TaskStore variants", () => {
   });
 });
 
-describe("TaskStore manual tasks", () => {
-  const session = {
-    branch: "feat",
-    createdAt: 500,
-    directory: "/w/feat",
-    envId: project.id,
-    projectId: project.id,
-    sessionId: "ses_m",
-    title: "New session",
-  };
-
-  it("starts a manual task with one running variant", () => {
+describe("TaskStore review tasks", () => {
+  it("starts a review task with one running variant, once per session", () => {
     const s = setup();
-    const id = s.tasks.startManual(session);
+    const session = {
+      createdAt: 500,
+      directory: "/w/feat",
+      envId: project.id,
+      projectId: project.id,
+      reviewOf: s.links.ensurePull("https://forge.example/a/b/pulls/1").id,
+      sessionId: "ses_r",
+      title: "AI review",
+    };
+    s.events();
+    const id = s.tasks.startReview(session);
+    expect(s.tasks.startReview(session)).toBe(id);
     expect(s.tasks.get(id)).toMatchObject({
       createdAt: 500,
-      kind: "manual",
+      kind: "review",
       state: "running",
-      title: "New session",
+      variants: [{ n: 1, sessionId: "ses_r", step: "session" }],
+    });
+    expect(s.events()).toStrictEqual([
+      `task.started ${id} user`,
+      "session.started ses_r user",
+    ]);
+  });
+});
+
+describe("TaskStore drafts", () => {
+  const plan = {
+    variants: [{ agent: "plan" }, {}],
+    where: "worktree" as const,
+  };
+
+  it("records a draft with its plan and no variants, and starts it by adding variants to the same task", () => {
+    const s = setup();
+    s.tasks.createTask(s.task({ jira, plan, variants: [] }));
+    expect(s.tasks.get(T1)).toMatchObject({
+      plan,
+      prompt: "Fix the login",
+      state: "draft",
+      variants: [],
+    });
+    expect(s.events()).toStrictEqual([
+      `task.drafted ${T1} user`,
+      "ticket.linked 1 user",
+    ]);
+    expect(s.tasks.updateDraft(T1, { title: "Login" })).toBeTruthy();
+    expect(s.tasks.get(T1)?.title).toBe("Login");
+    expect(s.tasks.addVariants(T1, [{ agent: "plan" }, {}])).toStrictEqual([
+      1, 2,
+    ]);
+    const started = s.tasks.get(T1);
+    expect(started?.state).toBe("starting");
+    expect(started?.plan).toBeUndefined();
+    expect(started?.variants.map((v) => [v.n, v.step])).toStrictEqual([
+      [1, "queued"],
+      [2, "queued"],
+    ]);
+    expect(s.events()).toStrictEqual([
+      `task.started ${T1} user`,
+      `variant.added ${T1}/1 user`,
+      `variant.added ${T1}/2 user`,
+    ]);
+    // A started task is no longer a draft to edit.
+    expect(s.tasks.updateDraft(T1, { title: "x" })).toBeFalsy();
+  });
+
+  it("numbers variants added to a running task after its last", () => {
+    const s = setup();
+    s.tasks.createTask(s.task({ variants: [{}] }));
+    s.attach(T1, 1, "ses_1");
+    s.events();
+    expect(s.tasks.addVariants(T1, [{}, {}])).toStrictEqual([2, 3]);
+    expect(s.events()).toStrictEqual([
+      `variant.added ${T1}/2 user`,
+      `variant.added ${T1}/3 user`,
+    ]);
+  });
+});
+
+describe("TaskStore.adoptChat", () => {
+  const chatIn = (s: ReturnType<typeof setup>) => {
+    const wt = s.checkouts.recordCreated(
+      project.id,
+      { branch: "dark-mode", path: "/w/dark-mode" },
+      { by: "manual" },
+      variantActor(T1, 1)
+    );
+    return s.chats.insert({
+      branch: "dark-mode",
+      branchId: wt.branch.id,
+      createdAt: 900,
+      directory: "/w/dark-mode",
+      envId: project.id,
+      origin: "hub",
+      projectId: project.id,
+      sessionId: "ses_c",
+      step: "session",
+      title: "Dark mode chat",
+      worktreeId: wt.worktree.id,
+    });
+  };
+
+  it("makes the chat variant 1 of a new task, links the ticket and pull request, and records it once", () => {
+    const s = setup();
+    const chat = chatIn(s);
+    s.events();
+    s.tasks.adoptChat({
+      chat,
+      task: {
+        createdAt: 1000,
+        id: T2,
+        jira,
+        model: { id: "opus", providerID: "anthropic" },
+        prompt: "Add dark mode",
+        pullUrl: "https://forge.example/a/b/pulls/7",
+        specFirst: true,
+        title: "Dark mode",
+      },
+    });
+    expect(s.tasks.get(T2)).toMatchObject({
+      fromChat: chat.id,
+      kind: "task",
+      prompt: "Add dark mode",
+      spec: { first: true },
+      state: "running",
       variants: [
         {
-          branch: "feat",
-          directory: "/w/feat",
-          envId: project.id,
+          branch: "dark-mode",
+          directory: "/w/dark-mode",
+          model: { id: "opus", providerID: "anthropic" },
           n: 1,
-          sessionId: "ses_m",
+          sessionId: "ses_c",
+          spec: { phase: "propose" },
           step: "session",
         },
       ],
     });
-    expect(id).toMatch(/^tsk_/u);
-    expect(s.events()).toStrictEqual([
-      `task.started ${id} user`,
-      "session.started ses_m user",
+    expect(s.tasks.sessionRef("ses_c")).toMatchObject({ id: T2, n: 1 });
+    expect(s.chats.get(chat.id)?.adoptedBy).toStrictEqual({ n: 1, task: T2 });
+    expect(s.chats.listForProject(project.id)).toStrictEqual([]);
+    expect(s.links.taskLinks(project.id).get(T2)?.pullRequests).toMatchObject([
+      { url: "https://forge.example/a/b/pulls/7", variant: 1 },
     ]);
-  });
-
-  it("adopts a session once, however often it is asked", () => {
-    const s = setup();
-    const id = s.tasks.adoptSession(session);
-    expect(s.tasks.adoptSession(session)).toBe(id);
-    expect(s.tasks.startManual(session)).toBe(id);
-    expect(s.tasks.listForProject(project.id)).toHaveLength(1);
     expect(s.events()).toStrictEqual([
-      `task.started ${id} system`,
-      "session.adopted ses_m system",
+      `task.started ${T2} user`,
+      `chat.adopted ${chat.id} user`,
+      "ticket.linked 1 user",
+      "pull_request.linked 1 user",
     ]);
-  });
-
-  it("lets only a manual task's title follow its session", () => {
-    const s = setup();
-    const id = s.tasks.startManual(session);
-    s.tasks.createTask(s.task({ variants: [{}] }));
-    s.attach(T1, 1, "ses_t");
-    s.tasks.setManualTitle("ses_m", "Fix the flaky test");
-    s.tasks.setManualTitle("ses_t", "Renamed by opencode");
-    expect(s.tasks.get(id)?.title).toBe("Fix the flaky test");
-    expect(s.tasks.get(T1)?.title).toBe("Fix the login");
+    expect(() =>
+      s.tasks.adoptChat({
+        chat,
+        task: {
+          createdAt: 1000,
+          id: "tsk_01JA0000000000000000000003",
+          prompt: "",
+          specFirst: false,
+          title: "Again",
+        },
+      })
+    ).toThrow(/already belongs/u);
+    expect(s.tasks.get("tsk_01JA0000000000000000000003")).toBeUndefined();
   });
 });
 
@@ -464,7 +573,7 @@ describe("TaskStore lifecycle", () => {
     s.tasks.createTask(s.task({ variants: [{}] }));
     expect(heard).toHaveBeenCalledTimes(1);
     s.tasks.updateVariant(T1, 1, {}, variantActor(T1, 1));
-    s.tasks.setManualTitle("nope", "x");
+    s.tasks.updateDraft("nope", { title: "x" });
     expect(heard).toHaveBeenCalledTimes(1);
   });
 });

@@ -35,24 +35,24 @@ import {
   rememberProject,
 } from "./chat";
 
-/** How long a started chat waits for the snapshot to list its task before opening its view anyway. */
-const TASK_WAIT_MS = 10_000;
+/** How long a started chat waits for the snapshot to list it before opening its view anyway. */
+const CHAT_WAIT_MS = 10_000;
 
-/** A started task the page waits to see in the snapshot. */
+/** A started chat the page waits to see in the snapshot. */
 interface Waiting {
   projectId: string;
-  task: string;
+  chat: string;
   done: () => void;
 }
 
 const lists = (snapshot: DashboardSnapshot | undefined, w: Waiting) =>
   snapshot?.projects
     .find((v) => v.project.id === w.projectId)
-    ?.tasks.some((t) => t.id === w.task) === true;
+    ?.chats.some((c) => c.id === w.chat) === true;
 
 /**
  * Chat's start page: the composer centred on an empty page, with the project and the checkout it starts in.
- * The first message starts a task there, and the page moves on to that chat's view.
+ * The first message starts a chat there, and the page moves on to that chat's view.
  */
 export const ChatStart = () => {
   const { snapshot, openAddProject } = useDash();
@@ -62,7 +62,7 @@ export const ChatStart = () => {
   const waiting = useRef<Waiting>(undefined);
   const latest = useRef(snapshot);
 
-  // The view opens once the snapshot lists the new task, so it never says the chat doesn't exist.
+  // The view opens once the snapshot lists the new chat, so it shows the chat at once.
   useEffect(() => {
     latest.current = snapshot;
     const w = waiting.current;
@@ -105,17 +105,17 @@ export const ChatStart = () => {
   const { id } = view.project;
 
   const send = async (message: ComposerSendRequest) => {
-    const { task } = await startChat(id, { message, target });
+    const { chat } = await startChat(id, { message, target });
     rememberProject(id);
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, TASK_WAIT_MS);
+      const timer = setTimeout(resolve, CHAT_WAIT_MS);
       const w: Waiting = {
+        chat,
         done: () => {
           clearTimeout(timer);
           resolve();
         },
         projectId: id,
-        task,
       };
       waiting.current = w;
       if (lists(latest.current, w)) {
@@ -123,7 +123,7 @@ export const ChatStart = () => {
       }
     });
     waiting.current = undefined;
-    await navigate(chatPath(id, task), { replace: true });
+    await navigate(chatPath(id, chat), { replace: true });
     return undefined;
   };
 

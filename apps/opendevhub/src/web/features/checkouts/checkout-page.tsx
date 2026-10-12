@@ -5,7 +5,7 @@ import {
   GitBranchIcon,
   GitCompareIcon,
   KeyRoundIcon,
-  ListTodoIcon,
+  MessagesSquareIcon,
   PlayIcon,
   PlusIcon,
   ServerIcon,
@@ -19,7 +19,11 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import type { ForwardedPort, HostPortStatus } from "../../../shared/types";
+import type {
+  ChatView,
+  ForwardedPort,
+  HostPortStatus,
+} from "../../../shared/types";
 import { refreshWorktrees } from "../../api";
 import { CopyButton } from "../../components/copy-button";
 import { EnvBadge } from "../../components/env-badge";
@@ -42,6 +46,8 @@ import { checkoutResources } from "../../lib/resources";
 import { Link, Navigate, useNavigate } from "../../routing";
 import { ActivityButton } from "../activity/activity-button";
 import { ProvenanceBreadcrumb } from "../activity/provenance-breadcrumb";
+import { checkoutChats } from "../chat/chat";
+import { ChatRow } from "../chat/chat-rows";
 import { PublishedPr } from "../forgejo/published-pr";
 import { projectFlags, StartStopButton } from "../projects/project-actions";
 import { useProjectView } from "../projects/project-layout";
@@ -239,7 +245,7 @@ export const CheckoutPage = () => {
                 disabled={!!pending}
                 onClick={() => newSession(checkout)}
               >
-                <PlusIcon /> New conversation
+                <PlusIcon /> New chat
               </Button>
             ) : (
               startControl
@@ -280,7 +286,7 @@ export const CheckoutPage = () => {
 
       <TabBar label="Worktree">
         <TabLink to={base} end>
-          <ListTodoIcon className="size-4" /> Tasks{" "}
+          <MessagesSquareIcon className="size-4" /> Conversations{" "}
           <Count n={n.attention} tone="attention" />
           {n.attention === 0 && <Count n={n.running + n.idle} tone="muted" />}
         </TabLink>
@@ -306,7 +312,7 @@ export const CheckoutPage = () => {
   );
 };
 
-/** The tasks whose conversations run in this checkout, each linking to its task, and a way to start another. */
+/** The chats and tasks whose conversations run in this checkout, each linking to its view, and a way to start a chat. */
 export const CheckoutTasks = () => {
   const { view, checkout } = useCheckoutContext();
   const { newTask } = useDash();
@@ -318,16 +324,20 @@ export const CheckoutTasks = () => {
     () => checkoutTasks(view, checkout.directory),
     [view, checkout.directory]
   );
+  const allChats = useMemo(
+    () => checkoutChats(view, checkout.directory),
+    [view, checkout.directory]
+  );
 
-  if (all.length === 0) {
+  if (all.length === 0 && allChats.length === 0) {
     return canOpen ? (
-      <Empty title="No tasks in this checkout yet">
+      <Empty title="No conversations in this checkout yet">
         <p className={muted}>
-          Start a conversation in this checkout, or a task for the project.
+          Start a chat in this checkout, or a task for the project.
         </p>
         <div className="flex gap-2">
           <Button disabled={!!pending} onClick={() => newSession(checkout)}>
-            <PlusIcon /> New conversation
+            <PlusIcon /> New chat
           </Button>
           <Button variant="outline" onClick={() => newTask(view.project.id)}>
             New task
@@ -338,7 +348,7 @@ export const CheckoutTasks = () => {
       <Empty title="Not running">
         <p className={muted}>
           {own ? "Start this worktree's container" : "Start the container"} to
-          see this checkout&apos;s tasks.
+          see this checkout&apos;s conversations.
         </p>
         {!own && <StartStopButton view={view} />}
       </Empty>
@@ -346,22 +356,50 @@ export const CheckoutTasks = () => {
   }
 
   const shown = all.filter((t) => matches(query, t.title));
+  const chats = allChats.filter((c) => matches(query, c.title));
   const attention = shown.filter((t) => t.attention);
   const rest = shown.filter((t) => !t.attention);
   return (
     <div className="flex flex-col gap-5">
-      {all.length > FILTER_FROM && (
+      {all.length + allChats.length > FILTER_FROM && (
         <Input
           className="w-72 max-md:w-full"
-          placeholder="Filter tasks…"
+          placeholder="Filter conversations…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
       )}
       <Group title="Needs you" tasks={attention} tone="attention" />
+      <ChatGroup chats={chats} />
       <Group title="Tasks" tasks={rest} />
-      {shown.length === 0 && <p className={muted}>No tasks match.</p>}
+      {shown.length === 0 && chats.length === 0 && (
+        <p className={muted}>No conversations match.</p>
+      )}
     </div>
+  );
+};
+
+const ChatGroup = (props: { chats: ChatView[] }) => {
+  const view = useProjectView();
+  if (props.chats.length === 0) {
+    return null;
+  }
+  return (
+    <section>
+      <GroupTitle>
+        Chats{" "}
+        <span className="text-muted-foreground ml-1 font-medium">
+          {props.chats.length}
+        </span>
+      </GroupTitle>
+      <Card className="overflow-hidden py-0">
+        <ul>
+          {props.chats.map((c) => (
+            <ChatRow key={c.id} projectId={view.project.id} chat={c} />
+          ))}
+        </ul>
+      </Card>
+    </section>
   );
 };
 

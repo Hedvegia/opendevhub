@@ -72,6 +72,7 @@ describe.skipIf(!process.env.OPENDEVHUB_E2E)("e2e: cleanup", () => {
     const dbs = memoryStores();
     const store = new StateStore({
       tasks: dbs.tasks,
+      chats: dbs.chats,
       checkouts: dbs.checkouts,
       port: 0,
       environments: dbs.environments,
@@ -86,6 +87,7 @@ describe.skipIf(!process.env.OPENDEVHUB_E2E)("e2e: cleanup", () => {
       store,
       projects: dbs.projects,
       tasks: dbs.tasks,
+      chats: dbs.chats,
       checkouts: dbs.checkouts,
       links: dbs.links,
       containers,
@@ -237,7 +239,11 @@ describe.skipIf(!process.env.OPENDEVHUB_E2E)("e2e: cleanup", () => {
       );
 
       // The per-row button: removes a session the dashboard lists.
-      const listed = await hub.sessions.startSession(project.id, ws, "scratch");
+      const { sessionId: listed } = await hub.sessions.startSession(
+        project.id,
+        ws,
+        "scratch"
+      );
       await vi.waitFor(
         () =>
           expect(store.sessionsOf(project.id).map((s) => s.id)).toContain(

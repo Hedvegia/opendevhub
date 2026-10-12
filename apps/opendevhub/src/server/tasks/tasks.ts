@@ -1,43 +1,50 @@
-import {
-  deriveTitle,
-  taskBranches,
-  variantLabels,
-  variantTitle,
-} from "../../shared/tasks";
+import { deriveTitle, variantLabels, variantTitle } from "../../shared/tasks";
 import type {
-  ComposerSendRequest,
-  EnvWorktree,
   NodeId,
   PickResult,
   Project,
   ProjectId,
+  TaskPlan,
   TaskRequest,
   TaskResult,
   TaskStartSpec,
-  TaskVariantResult,
   TaskVariantSpec,
 } from "../../shared/types";
 import { USER, variantActor } from "../db/events";
-import type { VariantPatch } from "../db/tasks";
+import type { TaskRecord } from "../db/tasks";
 import { CommandError } from "../environments/containers";
 import type { Environments } from "../environments/environments";
-import { cleanLogLine } from "../environments/log-buffer";
 import type { HubDeps, NodeKit } from "../environments/ports";
 import { NotFoundError, UnavailableError } from "../errors";
-import { InvalidRequestError, validateBranch } from "../git/worktrees";
+import { InvalidRequestError } from "../git/worktrees";
 import { LOCAL_NODE } from "../nodes/host";
-import type { NodeRepoLayout } from "../nodes/repo";
 import type { OpencodeClient } from "../opencode/client";
 import { TASK_ID, newTaskId } from "../projects/ids";
-import { resolveMessage } from "../sessions/message";
-import type { ResolvedMessage } from "../sessions/message";
+import { CheckoutSetup, NO_WORKTREE_MOUNT } from "./checkout-setup";
+import type { FirstTurn, SetupSink } from "./checkout-setup";
 import { APPLY_COMMAND, PROPOSE_COMMAND } from "./openspec";
-import { parseTaskRequest } from "./request";
+import { TITLE_LIMIT, parseJiraTaskSource, parseTaskRequest } from "./request";
 
-/** A variant's first turn: an OpenSpec command or the prompt, or a composer message resolved in its checkout. */
-type FirstTurn =
-  | { command?: string; text: string }
-  | { message: ComposerSendRequest };
+/** A checked request to start variants, with what setting them up needs. */
+interface Prepared {
+  req: TaskRequest;
+  project: Project;
+  client: OpencodeClient;
+  node: NodeId;
+  remoteKit?: NodeKit;
+  base?: string;
+}
+
+/** What a draft keeps of a request so that Start can prefill its dialog. */
+const planOf = (req: TaskRequest): TaskPlan => ({
+  variants: req.variants,
+  where: req.where,
+  ...(req.branch ? { branch: req.branch } : {}),
+  ...(req.base ? { base: req.base } : {}),
+  ...(req.environment ? { environment: req.environment } : {}),
+  ...(req.node ? { node: req.node } : {}),
+  ...(req.spec ? { spec: true } : {}),
+});
 
 /** What a variant's session starts with: the prompt, the composer's message, `opsx-propose <prompt>`, or `opsx-apply <change>`. */
 const firstTurn = (req: TaskRequest): FirstTurn => {
@@ -50,16 +57,15 @@ const firstTurn = (req: TaskRequest): FirstTurn => {
   return req.message ? { message: req.message } : { text: req.prompt };
 };
 
-const NO_WORKTREE_MOUNT =
-  "this container was created before opendevhub mounted a worktrees folder — rebuild the container to enable worktrees";
-
 /** Tasks: one prompt run as one or more variants, each in its own worktree (and environment) or the main checkout. */
 export class Tasks {
   private readonly deps: HubDeps;
   private readonly envs: Environments;
-  constructor(deps: HubDeps, envs: Environments) {
+  private readonly setup: CheckoutSetup;
+  constructor(deps: HubDeps, envs: Environments, setup?: CheckoutSetup) {
     this.deps = deps;
     this.envs = envs;
+    this.setup = setup ?? new CheckoutSetup(deps, envs);
   }
 
   /**
@@ -116,12 +122,156 @@ export class Tasks {
     }
   }
 
+  /**
+   * Saves a draft: a task with the request's title, prompt (its brief), ticket and spec-first choice, and its
+   * variants and options kept as its plan; no variant is created and nothing is set up.
+   */
+  createDraft(id: ProjectId, body: Record<string, unknown>): { task: string } {
+    this.envs.requireProject(id);
+    const req = parseTaskRequest(body, { draft: true });
+    const now = (this.deps.now ?? Date.now)();
+    const task = newTaskId(now);
+    this.deps.tasks.createTask(
+      {
+        createdAt: now,
+        id: task,
+        plan: planOf(req),
+        projectId: id,
+        prompt: req.prompt,
+        title: req.title ?? deriveTitle(req.prompt),
+        variants: [],
+        ...(req.jira ? { jira: req.jira } : {}),
+        ...(req.spec ? { spec: req.spec } : {}),
+      },
+      USER
+    );
+    return { task };
+  }
+
+  /** A draft from a Jira ticket: titled from it, its description as the brief, linked to it, one default variant. */
+  draftFromTicket(
+    id: ProjectId,
+    body: Record<string, unknown>
+  ): { task: string } {
+    const jira = parseJiraTaskSource(body.jira);
+    return this.createDraft(id, {
+      jira,
+      prompt: jira.description.trim() || jira.title,
+      title: `${jira.key}: ${jira.title}`.slice(0, TITLE_LIMIT),
+      where: "worktree",
+    });
+  }
+
+  /** Changes a draft's title, brief, spec-first choice or plan. */
+  editDraft(id: ProjectId, task: string, body: Record<string, unknown>): void {
+    this.requireDraft(id, task);
+    const req = parseTaskRequest(body, { draft: true });
+    this.deps.tasks.updateDraft(task, {
+      plan: planOf(req),
+      prompt: req.prompt,
+      specFirst: req.spec !== undefined,
+      title: req.title ?? deriveTitle(req.prompt),
+    });
+  }
+
+  /**
+   * Starts a draft as the request asks: its title, brief and spec-first choice are updated, then its variants are
+   * added to the same task and set up in the background, as `startTask` does.
+   */
+  async startDraft(
+    id: ProjectId,
+    task: string,
+    body: Record<string, unknown>
+  ): Promise<TaskResult> {
+    const draft = this.requireDraft(id, task);
+    const prepared = await this.prepare(id, body);
+    const { req } = prepared;
+    const title = req.title ?? draft.title;
+    this.deps.tasks.updateDraft(task, {
+      prompt: req.prompt,
+      specFirst: req.spec !== undefined,
+      title,
+    });
+    const first = this.addRows(task, prepared);
+    void this.run(prepared, task, title, first).catch(() => undefined);
+    return { task, variants: [] };
+  }
+
+  /**
+   * Adds variants to a running task of kind `task` and sets them up in the background, each in a new worktree from
+   * `base` with `turn` as its first turn: Make task's extra variants.
+   */
+  async addVariants(
+    id: ProjectId,
+    task: string,
+    variants: TaskVariantSpec[],
+    options: { base?: string; spec: boolean }
+  ): Promise<void> {
+    const record = this.deps.tasks.get(task);
+    if (record?.projectId !== id || record.kind !== "task") {
+      throw new NotFoundError(task, "task");
+    }
+    const prepared = await this.prepare(id, {
+      prompt: record.prompt ?? record.title,
+      spec: options.spec,
+      title: record.title,
+      variants,
+      where: "worktree",
+      ...(options.base ? { base: options.base } : {}),
+    });
+    const first = this.addRows(task, prepared);
+    await this.run(prepared, task, record.title, first);
+  }
+
+  /** The project's draft `task`; throws when it isn't one. */
+  private requireDraft(id: ProjectId, task: string): TaskRecord {
+    this.envs.requireProject(id);
+    const record = TASK_ID.test(task) ? this.deps.tasks.get(task) : undefined;
+    if (record?.projectId !== id) {
+      throw new NotFoundError(task, "task");
+    }
+    if (record.state !== "draft") {
+      throw new InvalidRequestError("the task has already started");
+    }
+    return record;
+  }
+
   /** The checks a task request must pass before anything is created; then the job that sets it up. */
   private async beginTask(
     id: ProjectId,
     body: Record<string, unknown>,
     spec?: TaskStartSpec
   ): Promise<{ task: string; done: Promise<TaskResult> }> {
+    const prepared = await this.prepare(id, body, spec);
+    const { req, remoteKit, node } = prepared;
+    const now = (this.deps.now ?? Date.now)();
+    const task = newTaskId(now);
+    const title = req.title ?? deriveTitle(req.prompt);
+    this.deps.tasks.createTask(
+      {
+        createdAt: now,
+        id: task,
+        projectId: id,
+        prompt: req.prompt,
+        title,
+        variants: req.variants.map((v) => ({
+          ...v,
+          ...(remoteKit ? { node } : {}),
+        })),
+        ...(req.jira ? { jira: req.jira } : {}),
+        ...(req.spec ? { spec: req.spec } : {}),
+      },
+      USER
+    );
+    return { done: this.run(prepared, task, title, 1), task };
+  }
+
+  /** Checks a request to start variants: its fields, the node it runs on, the worktrees mount and the base. */
+  private async prepare(
+    id: ProjectId,
+    body: Record<string, unknown>,
+    spec?: TaskStartSpec
+  ): Promise<Prepared> {
     const parsed = parseTaskRequest(body);
     const req = spec ? { ...parsed, spec } : parsed;
     const client = this.envs.opencodeClient(id);
@@ -149,277 +299,67 @@ export class Tasks {
         );
       }
     }
-    const now = (this.deps.now ?? Date.now)();
-    const task = newTaskId(now);
-    const title = req.title ?? deriveTitle(req.prompt);
-    this.deps.tasks.createTask(
-      {
-        createdAt: now,
-        id: task,
-        projectId: id,
-        prompt: req.prompt,
-        title,
-        variants: req.variants.map((v) => ({
-          ...v,
-          ...(remoteKit ? { node } : {}),
-        })),
-        ...(req.jira ? { jira: req.jira } : {}),
-        ...(req.spec ? { spec: req.spec } : {}),
-      },
+    return {
+      client,
+      node,
+      project,
+      req,
+      ...(base ? { base } : {}),
+      ...(remoteKit ? { remoteKit } : {}),
+    };
+  }
+
+  /** Records the request's variants on an existing task; returns the first new variant's number. */
+  private addRows(task: string, { req, remoteKit, node }: Prepared): number {
+    const added = this.deps.tasks.addVariants(
+      task,
+      req.variants.map((v) => ({ ...v, ...(remoteKit ? { node } : {}) })),
       USER
     );
-    const done = this.runTask(project, client, req, {
-      base,
-      node,
-      remoteKit,
-      task,
-      title,
-    }).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      for (const v of this.deps.tasks.get(task)?.variants ?? []) {
-        if (v.step !== "failed" && !v.sessionId) {
-          this.deps.tasks.updateVariant(
-            task,
-            v.n,
-            { error: message, step: "failed" },
-            variantActor(task, v.n)
-          );
-        }
-      }
-      this.envs.log(id, `task ${title}: could not start: ${message}`);
-      throw error;
-    });
-    return { done, task };
+    return added[0] ?? 1;
   }
 
-  private async runTask(
-    project: Project,
-    client: OpencodeClient,
-    req: TaskRequest,
-    job: {
-      task: string;
-      title: string;
-      node: NodeId;
-      remoteKit?: NodeKit;
-      base?: string;
-    }
-  ): Promise<TaskResult> {
-    const { task, title, node, remoteKit } = job;
-    const { id } = project;
-    const { store } = this.deps;
-    const localIsolation = () =>
-      req.where === "worktree"
-        ? this.envs.isolationFor(project, req.environment)
-        : { isolated: false, notice: undefined };
-    const { isolated, notice } = remoteKit
-      ? { isolated: true, notice: undefined }
-      : localIsolation();
-    const of = req.variants.length;
-    const labels = variantLabels(req.variants);
-    const own: (EnvWorktree | undefined)[] = [];
-    const step = (i: number, patch: VariantPatch) =>
-      this.deps.tasks.updateVariant(
-        task,
-        i + 1,
-        patch,
-        variantActor(task, i + 1)
-      );
-    const results = await this.envs.withGitWhenFree(id, async (p) => {
-      const rt = store.runtime(id);
-      const ws = this.envs.workspaceFolder(p);
-      const root = rt.worktreeRoot;
-      let branches: string[] = [];
-      let remote:
-        | { layout: NodeRepoLayout; base: string; notice?: string }
-        | undefined;
-      if (req.where === "worktree") {
-        if (!remoteKit && !root?.mounted) {
-          throw new UnavailableError(NO_WORKTREE_MOUNT);
-        }
-        if (remoteKit) {
-          // oxlint-disable-next-line unicorn/no-array-for-each
-          req.variants.forEach((_, i) => step(i, { step: "pushing" }));
-          remote = await this.prepareRemote(p, ws, remoteKit, node, job.base);
-        }
-        const taken = new Set([
-          ...(await this.deps.git.localBranches(p, ws)),
-          ...(rt.worktrees ?? []).flatMap((w) => (w.branch ? [w.branch] : [])),
-          ...(remote && remoteKit
-            ? await remoteKit.repo.branches(remote.layout)
-            : []),
-        ]);
-        branches = taskBranches({
-          branch: req.branch,
-          taken,
-          title,
-          variants: req.variants,
-        }).map(validateBranch);
-      }
-      const variantResults: TaskVariantResult[] = [];
-      for (const [i, v] of req.variants.entries()) {
-        const branch = branches[i];
-        const result: TaskVariantResult = branch
-          ? { branch }
-          : { directory: ws };
-        if (notice) {
-          result.notice = notice;
-        }
-        if (remote?.notice) {
-          result.notice = remote.notice;
-        }
-        variantResults.push(result);
-        const onLine = (l: string) => this.variantLog(id, task, i, l);
-        try {
-          if (branch && remote && remoteKit) {
-            step(i, { branch, step: "worktree" });
-            const wt = await remoteKit.repo.addWorktree(
-              remote.layout,
-              branch,
-              remote.base
-            );
-            this.deps.checkouts.recordCreated(
-              id,
-              {
-                base: remote.base,
-                branch,
-                hostPath: wt.hostPath,
-                node,
-                path: wt.path,
-              },
-              { by: "variant", n: i + 1, task },
-              variantActor(task, i + 1)
-            );
-            result.directory = wt.path;
-            step(i, { directory: wt.path });
-            own[i] = wt;
-            continue;
-          }
-          if (branch) {
-            if (!root) {
-              throw new UnavailableError(NO_WORKTREE_MOUNT);
-            }
-            step(i, { branch, step: "worktree" });
-            const wt = await this.deps.worktrees.add(p, {
-              base: req.base,
-              branch,
-              onLine,
-              root,
-              workspaceFolder: ws,
-            });
-            this.deps.checkouts.recordCreated(
-              id,
-              {
-                branch,
-                path: wt.path,
-                ...(wt.hostPath ? { hostPath: wt.hostPath } : {}),
-                ...(wt.base ? { base: wt.base } : {}),
-              },
-              { by: "variant", n: i + 1, task },
-              variantActor(task, i + 1)
-            );
-            result.directory = wt.path;
-            step(i, { directory: wt.path });
-            if (isolated && wt.hostPath) {
-              own[i] = { branch, hostPath: wt.hostPath, path: wt.path };
-              continue;
-            }
-          }
-          step(i, { step: "session" });
-          await this.startVariant(
-            client,
-            { envId: id, n: i + 1, task },
-            result,
-            result.directory ?? ws,
-            variantTitle(title, labels[i], of),
-            v,
-            firstTurn(req)
-          );
-        } catch (error) {
-          this.variantFailed(id, title, i, branch, result, error);
-          step(i, { error: result.error, step: "failed" });
-        }
-      }
-      if (branches.length > 0 && !remote) {
-        const created = variantResults.flatMap((r) =>
-          r.branch && r.directory
-            ? [{ branch: r.branch, path: r.directory }]
-            : []
-        );
-        await this.deps.worktrees.list(p, ws, root).then(
-          (list) => this.envs.setWorktrees(id, list),
-          () => {
-            const known = rt.worktrees ?? [];
-            store.updateRuntime(id, {
-              worktrees: [
-                ...known,
-                ...created.filter((c) => !known.some((w) => w.path === c.path)),
-              ],
-            });
-          }
-        );
-      }
-      return variantResults;
-    });
-    await Promise.all(
-      own.map(async (worktree, i) => {
-        if (!worktree) {
-          return;
-        }
-        const result = results[i];
-        try {
-          const env = await this.envs
-            .ensureTaskEnv(project, worktree, node, {
-              task,
-              variant: i + 1,
-            })
-            .catch((error: unknown) => {
-              throw new Error(
-                `its container did not start: ${error instanceof Error ? error.message : String(error)}`
-              );
-            });
-          result.envId = env.id;
-          step(i, { envId: env.id, step: "session" });
-          await this.startVariant(
-            this.envs.opencodeClient(env.id),
-            { envId: env.id, n: i + 1, task },
-            result,
-            worktree.path,
-            variantTitle(title, labels[i], of),
-            req.variants[i],
-            firstTurn(req)
-          );
-        } catch (error) {
-          this.variantFailed(id, title, i, worktree.branch, result, error);
-          step(i, { error: result.error, step: "failed" });
-        }
-      })
-    );
-    const started = results.filter((r) => r.sessionId).length;
-    this.envs.log(
-      id,
-      `task ${title}: started ${started} of ${of} variant${of === 1 ? "" : "s"}`
-    );
-    this.envs.reconcile(id);
-    for (const r of results) {
-      if (r.envId) {
-        this.envs.reconcile(r.envId);
-      }
-    }
-    return { task, variants: results };
-  }
-
-  /** A line of a starting variant's setup: in the project's log and in the variant's own. */
-  private variantLog(
-    id: ProjectId,
+  /** Sets up the request's variants, numbered from `first`, and waits until each runs or failed. */
+  private async run(
+    prepared: Prepared,
     task: string,
-    i: number,
-    raw: string
-  ): void {
-    this.envs.log(id, raw);
-    const line = cleanLogLine(raw);
-    if (line) {
-      this.deps.store.appendStartingLog(task, i + 1, line);
-    }
+    title: string,
+    first: number
+  ): Promise<TaskResult> {
+    const { req, project, client, node, remoteKit, base } = prepared;
+    const labels = variantLabels(req.variants);
+    const of = req.variants.length;
+    const variants = await this.setup.run(project, client, {
+      label: `task ${title}`,
+      node,
+      slots: req.variants.map((v, i) => ({
+        sessionTitle: variantTitle(title, labels[i], of),
+        sink: this.variantSink(task, first + i),
+        spec: v,
+      })),
+      title,
+      turn: firstTurn(req),
+      where: req.where,
+      ...(base ? { base } : {}),
+      ...(remoteKit ? { remoteKit } : {}),
+      ...(req.branch ? { branch: req.branch } : {}),
+      ...(req.environment ? { environment: req.environment } : {}),
+    });
+    return { task, variants };
+  }
+
+  /** Where variant `n` of `task` reports its setup: its row, its log, and its session. */
+  private variantSink(task: string, n: number): SetupSink {
+    const actor = variantActor(task, n);
+    return {
+      actor,
+      attach: (session) =>
+        this.deps.tasks.attachSession(task, n, session, actor),
+      creator: { by: "variant", n, task },
+      log: (line) => this.deps.store.appendStartingLog(task, n, line),
+      step: (patch) => this.deps.tasks.updateVariant(task, n, patch, actor),
+      taskId: task,
+    };
   }
 
   /** The kit a task placed on `node` runs with; throws when the request or the node rules that out. */
@@ -447,112 +387,6 @@ export class Tasks {
       throw new UnavailableError(`node ${node} is unreachable`);
     }
     return kit;
-  }
-
-  /** The node's repository for the project, with the base pushed to it. */
-  private async prepareRemote(
-    p: Project,
-    ws: string,
-    kit: NodeKit,
-    node: NodeId,
-    requested: string | undefined
-  ): Promise<{ layout: NodeRepoLayout; base: string; notice?: string }> {
-    const base = requested ?? (await this.deps.git.currentBranch(p, ws));
-    if (!base) {
-      throw new InvalidRequestError(
-        "the main checkout is on a detached HEAD; choose a base branch for a task on another node"
-      );
-    }
-    const layout = kit.repo.layout(p, ws);
-    await kit.repo.ensure(layout);
-    await kit.repo.pushBase(p, layout, base);
-    this.envs.log(p.id, `task: pushed ${base} to node ${node}`);
-    const clean = await this.deps.git.isClean(p, ws);
-    return {
-      base,
-      layout,
-      ...(clean
-        ? {}
-        : {
-            notice: `uncommitted changes in the main checkout are not on node ${node}`,
-          }),
-    };
-  }
-
-  /**
-   * Creates a variant's session (recorded on the result and the variant's row at once) and sends its first turn:
-   * the prompt, the composer's message (resolved first, so that a bad mention leaves no session), or for a
-   * spec-first variant an OpenSpec command, checked first so that a missing command leaves no session. The directory is claimed meanwhile, so that reconcile doesn't adopt the session as a manual task.
-   */
-  private async startVariant(
-    client: OpencodeClient,
-    variant: { task: string; n: number; envId: string },
-    result: TaskVariantResult,
-    directory: string,
-    title: string,
-    v: TaskVariantSpec,
-    turn: FirstTurn
-  ): Promise<void> {
-    const resolved: ResolvedMessage =
-      "message" in turn
-        ? await resolveMessage(
-            () => client.commands(directory),
-            directory,
-            turn.message
-          )
-        : { attachments: {}, ...turn };
-    const { command } = resolved;
-    if (command && !("message" in turn)) {
-      const commands = await client.commands(directory);
-      if (!commands.some((c) => c.name === command)) {
-        throw new UnavailableError(
-          `opencode has no ${command} command here; run \`openspec init --tools opencode\` in the repository`
-        );
-      }
-    }
-    const { task, n, envId } = variant;
-    const release = this.deps.tasks.claim(envId, directory);
-    try {
-      const session = await client.createSession(directory, {
-        title,
-        ...(v.model ? { model: v.model } : {}),
-        ...(v.agent ? { agent: v.agent } : {}),
-      });
-      result.sessionId = session.id;
-      this.deps.tasks.attachSession(
-        task,
-        n,
-        { directory, envId, sessionId: session.id },
-        variantActor(task, n)
-      );
-    } finally {
-      release();
-    }
-    const { sessionId } = result;
-    const { attachments, text } = resolved;
-    await (command
-      ? client.command(sessionId, command, text, directory, attachments)
-      : client.prompt(sessionId, text, undefined, directory, attachments));
-  }
-
-  private variantFailed(
-    id: ProjectId,
-    title: string,
-    i: number,
-    branch: string | undefined,
-    result: TaskVariantResult,
-    err: unknown
-  ): void {
-    result.error = err instanceof Error ? err.message : String(err);
-    this.envs.log(
-      id,
-      `task ${title}: variant ${i + 1}${branch ? ` (${branch})` : ""} failed: ${result.error}`
-    );
-    if (err instanceof CommandError) {
-      for (const line of err.tail) {
-        this.envs.log(id, line);
-      }
-    }
   }
 
   /**

@@ -13,7 +13,8 @@ import type {
   WorktreeRoot,
 } from "../../shared/types";
 import { stateDir } from "../config";
-import { USER, variantActor } from "../db/events";
+import { USER } from "../db/events";
+import type { Actor } from "../db/events";
 import { BusyError, NotFoundError, UnavailableError } from "../errors";
 import { InvalidRequestError, mountArg, worktreeRoot } from "../git/worktrees";
 import type { ForwardTarget } from "../network/port-forwarder";
@@ -36,7 +37,7 @@ import {
   VOLUME_LABEL,
 } from "../opencode/runtime";
 import type { EnvRecord } from "../projects/state";
-import { reconcileTasks } from "../sessions/reconcile";
+import { reconcileSessions } from "../sessions/reconcile";
 import type { Presence } from "../sessions/reconcile";
 import {
   buildOverrideConfig,
@@ -86,6 +87,15 @@ export interface Env {
 
 export type TaskEnv = Env & { worktree: EnvWorktree };
 
+/** The checkout (a task variant or a chat) an environment is started for: where its steps and log lines go, and who acts. */
+export interface EnvSetup {
+  actor: Actor;
+  /** The task the environment is recorded for, when a variant asked for it. */
+  taskId?: string;
+  step: (step: "image" | "container") => void;
+  log: (line: string) => void;
+}
+
 /**
  * Every Environment's lifecycle (provision, connect, disconnect, stop, remove) and what each one holds while it
  * runs. The Hub's other modules reach environments through the methods under "For the Hub's modules".
@@ -119,8 +129,8 @@ export class Environments {
   >();
   /** Where each running environment's ports were last forwarded to, so they can be forwarded again when settings change. */
   private readonly forwardTargets = new Map<EnvId, ForwardTarget>();
-  /** The starting task variant an environment is being set up for, so its steps and log lines reach it. */
-  private readonly setups = new Map<EnvId, { task: string; variant: number }>();
+  /** The starting checkout (a task variant or a chat) an environment is being set up for, so its steps and log lines reach it. */
+  private readonly setups = new Map<EnvId, EnvSetup>();
   private defaultEnvFiles?: EnvFilesPort;
   /**
    * Task containers come up one at a time per node: concurrent `devcontainer up` calls race on the CLI's shared
@@ -546,7 +556,7 @@ export class Environments {
     project: Project,
     worktree: EnvWorktree,
     node: NodeId = LOCAL_NODE,
-    setup?: { task: string; variant: number }
+    setup?: EnvSetup
   ): Promise<TaskEnv> {
     const env = this.recordTaskEnv(project, worktree, node, setup);
     const rt = this.deps.store.runtime(env.id);
@@ -986,14 +996,14 @@ export class Environments {
   }
 
   /**
-   * Records a worktree's own environment (or returns the one it has), for the variant `setup` when one asked for it.
+   * Records a worktree's own environment (or returns the one it has), for the checkout `setup` when one asked for it.
    * A worktree without a row yet is recorded as unmanaged.
    */
   private recordTaskEnv(
     project: Project,
     worktree: EnvWorktree,
     node: NodeId = LOCAL_NODE,
-    setup?: { task: string; variant: number }
+    setup?: EnvSetup
   ): TaskEnv {
     const { store } = this.deps;
     const existing = store
@@ -1037,25 +1047,13 @@ export class Environments {
       worktreeId: row.id,
       ...(remote ? { node: remote } : {}),
     };
-    store.putEnvironment(
-      rec,
-      setup ? variantActor(setup.task, setup.variant) : USER,
-      setup?.task
-    );
+    store.putEnvironment(rec, setup?.actor ?? USER, setup?.taskId);
     return this.taskEnv(project, rec);
   }
 
-  /** Moves the starting variant an environment is set up for to its next step. */
+  /** Moves the starting checkout an environment is set up for to its next step. */
   private setupStep(env: Env, step: "image" | "container"): void {
-    const setup = this.setups.get(env.id);
-    if (setup) {
-      this.deps.tasks.updateVariant(
-        setup.task,
-        setup.variant,
-        { step },
-        variantActor(setup.task, setup.variant)
-      );
-    }
+    this.setups.get(env.id)?.step(step);
   }
 
   /**
@@ -1453,10 +1451,7 @@ export class Environments {
     if (!line) {
       return;
     }
-    const setup = this.setups.get(env.id);
-    if (setup) {
-      this.deps.store.appendStartingLog(setup.task, setup.variant, line);
-    }
+    this.setups.get(env.id)?.log(line);
     this.log(
       env.project.id,
       env.worktree ? `[${env.worktree.branch}] ${line}` : line
@@ -1826,8 +1821,25 @@ export class Environments {
         ]);
       },
       onRawSessions: (sessions) => {
-        // Before usage, which attributes spend to the tasks reconcile may adopt sessions into.
-        void reconcileTasks(this.deps.tasks, {
+        // Before usage, which attributes spend to the tasks that own sessions.
+        void reconcileSessions(this.deps, {
+          rowsOf: (directory) => {
+            const row = this.deps.checkouts
+              .worktreesOf(env.project.id)
+              .find(
+                (w) =>
+                  w.path === directory &&
+                  w.node === (env.node === LOCAL_NODE ? undefined : env.node)
+              );
+            return row
+              ? {
+                  worktreeId: row.id,
+                  ...(row.branchId === undefined
+                    ? {}
+                    : { branchId: row.branchId }),
+                }
+              : {};
+          },
           branchOf: (directory) =>
             env.worktree?.branch ??
             (directory === this.envDirectory(env)
@@ -1847,7 +1859,7 @@ export class Environments {
         }).catch((error: unknown) =>
           this.log(
             env.project.id,
-            `tasks: could not reconcile sessions: ${error instanceof Error ? error.message : String(error)}`
+            `sessions: could not reconcile: ${error instanceof Error ? error.message : String(error)}`
           )
         );
         this.deps.recordUsage?.(env.project.id, sessions);

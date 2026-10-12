@@ -442,7 +442,7 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
       })
     ),
     http.post("/api/projects/:id/sessions", () =>
-      HttpResponse.json({ sessionId: "ses_new03" })
+      HttpResponse.json({ chat: "c_idle", sessionId: "ses_new03" })
     ),
     http.get("/api/projects/:id/composer/commands", async () => {
       await wait();
@@ -460,7 +460,39 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
       });
     }),
     http.post("/api/projects/:id/chat", () =>
+      HttpResponse.json({ chat: "c_idle" })
+    ),
+    http.get("/api/projects/:id/chats/:chat/brief", async () => {
+      await wait();
+      return HttpResponse.json({
+        brief:
+          "## Goal\nA dark mode toggle in Settings that follows the system by default.\n\n## Decisions so far\n- Tailwind's `dark` class on `<html>`\n- Remember the choice in localStorage\n\n## Open questions\n- Should charts switch palettes too?",
+      });
+    }),
+    http.get("/api/projects/:id/chats/:chat/suggestions", () =>
+      HttpResponse.json({
+        pullRequests: [],
+        tickets: ["ACME-142"],
+      })
+    ),
+    http.post("/api/projects/:id/chats/:chat/task", () =>
       HttpResponse.json({ task: "tsk_new" })
+    ),
+    http.post("/api/projects/:id/chats/:chat/archive", ok),
+    http.get("/api/projects/:id/chats/:chat", ({ params }) =>
+      params.chat === "c_round"
+        ? HttpResponse.json({ adoptedBy: { n: 1, task: "tsk_round" } })
+        : HttpResponse.json({ error: "no such chat" }, { status: 404 })
+    ),
+    http.post("/api/projects/:id/drafts", () =>
+      HttpResponse.json({ task: "tsk_sso" })
+    ),
+    http.post("/api/projects/:id/drafts/ticket", () =>
+      HttpResponse.json({ task: "tsk_sso" })
+    ),
+    http.put("/api/projects/:id/tasks/:task/draft", ok),
+    http.post("/api/projects/:id/tasks/:task/start", ({ params }) =>
+      HttpResponse.json({ task: params.task, variants: [] })
     ),
     http.post("/api/projects/:id/sessions/:session/send", () =>
       HttpResponse.json({ kind: "prompt", queued: false })

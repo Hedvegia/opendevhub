@@ -43,6 +43,7 @@ describe.skipIf(!process.env.OPENDEVHUB_E2E)(
       const dbs = memoryStores();
       const store = new StateStore({
         tasks: dbs.tasks,
+        chats: dbs.chats,
         checkouts: dbs.checkouts,
         port: 0,
         environments: dbs.environments,
@@ -54,6 +55,7 @@ describe.skipIf(!process.env.OPENDEVHUB_E2E)(
         store,
         projects: dbs.projects,
         tasks: dbs.tasks,
+        chats: dbs.chats,
         checkouts: dbs.checkouts,
         links: dbs.links,
         containers,

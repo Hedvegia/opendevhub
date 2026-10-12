@@ -302,6 +302,7 @@ describe("draft storage", () => {
 describe("targets", () => {
   const view = {
     tasks: [],
+    chats: [],
     project: {
       id: "p",
       name: "demo",

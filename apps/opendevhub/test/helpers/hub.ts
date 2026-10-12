@@ -305,6 +305,7 @@ export function setup(
     port: 7777,
     environments: dbs.environments,
     tasks: dbs.tasks,
+    chats: dbs.chats,
     checkouts: dbs.checkouts,
     links: dbs.links,
   });
@@ -745,6 +746,7 @@ export function setup(
     store,
     projects: dbs.projects,
     tasks: dbs.tasks,
+    chats: dbs.chats,
     checkouts: dbs.checkouts,
     links: dbs.links,
     containers,
@@ -795,6 +797,7 @@ export function setup(
     dbs,
     environments: dbs.environments,
     tasks: dbs.tasks,
+    chats: dbs.chats,
     checkouts: dbs.checkouts,
     links: dbs.links,
     projects: dbs.projects,

@@ -1,4 +1,5 @@
 import type {
+  ChatView,
   DashboardSnapshot,
   EditorInfo,
   EnvId,
@@ -18,6 +19,7 @@ import type {
   Worktree,
 } from "../../shared/types";
 import { projectUrl } from "../../shared/urls";
+import type { ChatStore } from "../db/chats";
 import { creatorView } from "../db/checkouts";
 import type { CheckoutStore } from "../db/checkouts";
 import type { DurablePatch, EnvironmentStore } from "../db/environments";
@@ -32,6 +34,8 @@ export interface StoreOptions {
   port: number;
   /** Where tasks live; the snapshot lists them and sessions show theirs. */
   tasks: TaskStore;
+  /** Where chats live; the snapshot lists them and hides internal chats' sessions. Absent: no chats are listed. */
+  chats?: ChatStore;
   /** Who made each worktree, and its branch row; worktrees are listed without them when absent. */
   checkouts?: CheckoutStore;
   /** Each task's ticket and pull requests; tasks are listed without them when absent. */
@@ -93,6 +97,7 @@ export class StateStore {
   constructor(opts: StoreOptions) {
     this.opts = opts;
     opts.tasks.subscribe(() => this.emit());
+    opts.chats?.subscribe(() => this.emit());
     opts.checkouts?.subscribe(() => this.emit());
     opts.links?.subscribe(() => this.emit());
     for (const row of opts.environments.listLive()) {
@@ -167,12 +172,21 @@ export class StateStore {
 
   /** Keeps the last 30 lines of a starting variant's setup. */
   appendStartingLog(task: string, variant: number, line: string): void {
-    const key = `${task}/${variant}`;
+    this.appendSetupLog(`${task}/${variant}`, line);
+  }
+
+  /** Keeps the last 30 lines of a starting checkout's setup: `<task>/<n>` for a variant, the chat's id for a chat. */
+  appendSetupLog(key: string, line: string): void {
     this.setupLogs.set(
       key,
       [...(this.setupLogs.get(key) ?? []), line].slice(-30)
     );
     this.emit();
+  }
+
+  /** What `appendSetupLog` kept for `key`. */
+  setupLog(key: string): string[] | undefined {
+    return this.setupLogs.get(key);
   }
 
   /** The id of the task a session belongs to. */
@@ -187,16 +201,43 @@ export class StateStore {
       .map((t) => this.taskView(t, links?.get(t.id)));
   }
 
+  /** The project's chats as the snapshot lists them, with their sessions' status and their setup's log. */
+  chatsOf(id: ProjectId, sessions = this.sessionsOf(id)): ChatView[] {
+    const byId = new Map(sessions.map((s) => [s.id, s]));
+    return (this.opts.chats?.listForProject(id) ?? []).map((c) => {
+      const {
+        projectId: _projectId,
+        archivedAt: _archivedAt,
+        branchId: _branchId,
+        ...view
+      } = c;
+      const s = c.sessionId ? byId.get(c.sessionId) : undefined;
+      const log = c.step === "session" ? undefined : this.setupLogs.get(c.id);
+      return {
+        ...view,
+        ...(log ? { log } : {}),
+        ...(s
+          ? {
+              status: s.status,
+              updatedAt: s.updatedAt,
+              ...(s.pending ? { pending: s.pending } : {}),
+            }
+          : {}),
+      };
+    });
+  }
+
   private taskView(t: TaskRecord, links: TaskLinks = {}): TaskView {
     const {
       projectId: _projectId,
-      prompt: _prompt,
+      prompt,
       archivedAt: _archivedAt,
       ...view
     } = t;
     return {
       ...view,
       ...links,
+      ...(prompt ? { brief: prompt } : {}),
       variants: view.variants.map((v) => {
         const log =
           v.step === "session"
@@ -207,14 +248,21 @@ export class StateStore {
     };
   }
 
-  /** Sessions as listed, with their task; discarded variants are hidden, the way archiving would. */
+  /**
+   * Sessions as listed, with their task or chat; discarded variants are hidden, the way archiving would, and so are
+   * internal chats.
+   */
   private withTasks(list: SessionSummary[]): SessionSummary[] {
     return list.flatMap((s) => {
       const task = this.opts.tasks.sessionRef(s.id);
-      if (task?.discarded) {
+      if (task) {
+        return task.discarded ? [] : [{ ...s, task }];
+      }
+      const chat = this.opts.chats?.sessionChat(s.id);
+      if (chat?.origin === "internal") {
         return [];
       }
-      return [task ? { ...s, task } : s];
+      return [chat ? { ...s, chat: chat.id } : s];
     });
   }
 
@@ -391,6 +439,7 @@ export class StateStore {
               : runtime,
           sessions: this.sessionsOf(project.id),
           tasks: this.tasksOf(project.id),
+          chats: this.chatsOf(project.id),
           ...(isolation ? { isolation } : {}),
         };
       }),
@@ -431,11 +480,16 @@ export class StateStore {
       const branch =
         row.branchId === undefined ? undefined : branches.get(row.branchId);
       const { by } = row.createdBy;
+      const chat =
+        by === "manual" ? this.opts.chats?.byWorktree(row.id) : undefined;
       const createdBy = creatorView(row.createdBy, {
         ...(by === "variant"
           ? { title: this.opts.tasks.get(row.createdBy.task)?.title }
           : {}),
         ...(branch?.originUrl ? { url: branch.originUrl } : {}),
+        ...(chat && chat.origin === "hub"
+          ? { chat: { id: chat.id, title: chat.title } }
+          : {}),
       });
       return {
         ...w,

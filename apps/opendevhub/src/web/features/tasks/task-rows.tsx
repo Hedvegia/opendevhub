@@ -6,10 +6,10 @@ import { StatusDot } from "../../components/status";
 import { Link } from "../../routing";
 import type { ProjectTask } from "../checkouts/checkouts";
 
-/** What a task row says it holds: a conversation, an AI review, or its variants. */
+/** What a task row says it holds: a draft, an AI review, or its variants. */
 const taskSize = (t: ProjectTask): string => {
-  if (t.kind === "manual") {
-    return "conversation";
+  if (t.state === "draft") {
+    return "draft";
   }
   if (t.kind === "review") {
     return "AI review";
@@ -27,10 +27,7 @@ export const taskTone = (t: {
   return t.running ? "running" : "ok";
 };
 
-/**
- * One task, linking to its page: to the conversation that waits on the user when one does. A manual task found in
- * opencode says it started there.
- */
+/** One task, linking to its page: to the conversation that waits on the user when one does. */
 export const TaskRow = (props: {
   projectId: string;
   task: ProjectTask;
@@ -49,13 +46,13 @@ export const TaskRow = (props: {
             t.waiting === undefined ? {} : { v: t.waiting }
           )}
         >
-          <StatusDot tone={t.state === "ended" ? "off" : taskTone(t)} />
+          <StatusDot
+            tone={
+              t.state === "ended" || t.state === "draft" ? "off" : taskTone(t)
+            }
+          />
           <span className="flex-1 truncate">{t.title || "Task"}</span>
-          {t.adopted && (
-            <Chip title="Found in opencode; started outside opendevhub">
-              started in opencode
-            </Chip>
-          )}
+          {t.fromChat && <Chip title="Made from a chat">from chat</Chip>}
           <span className={muted}>
             {t.state === "starting" && "starting · "}
             {taskSize(t)}

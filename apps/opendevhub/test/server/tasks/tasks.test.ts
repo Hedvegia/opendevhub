@@ -1225,3 +1225,92 @@ describe("starting tasks in the background", () => {
     ).toThrow(NotFoundError);
   });
 });
+
+describe("draft tasks", () => {
+  async function started() {
+    const s = setup();
+    await s.hub.environments.rescan();
+    await s.hub.environments.start(project.id);
+    let n = 0;
+    s.client.createSession.mockImplementation(async (directory: string) => ({
+      id: `ses_${++n}`,
+      location: { directory },
+    }));
+    return s;
+  }
+  const jira = {
+    description: "Users want a dark theme",
+    instanceUrl: "https://jira.example.com",
+    key: "APP-42",
+    title: "Dark mode",
+  };
+
+  it("saves a draft with its plan and no variants, and starting it keeps its id and numbers variants from 1", async () => {
+    const s = await started();
+    const { task } = s.hub.tasks.createDraft(project.id, {
+      prompt: "Add dark mode",
+      title: "Dark mode",
+      variants: [{ agent: "plan" }, {}],
+    });
+    const snapshot = () =>
+      s.store.snapshot().projects[0].tasks.find((t) => t.id === task);
+    expect(snapshot()).toMatchObject({
+      brief: "Add dark mode",
+      plan: { variants: [{ agent: "plan" }, {}], where: "worktree" },
+      state: "draft",
+      variants: [],
+    });
+    expect(s.worktrees.add).not.toHaveBeenCalled();
+    expect(s.client.createSession).not.toHaveBeenCalled();
+    s.hub.tasks.editDraft(project.id, task, {
+      prompt: "Add a dark mode toggle",
+      title: "Dark mode toggle",
+      variants: [{}],
+    });
+    expect(snapshot()).toMatchObject({
+      brief: "Add a dark mode toggle",
+      plan: { variants: [{}] },
+      title: "Dark mode toggle",
+    });
+    const result = await s.hub.tasks.startDraft(project.id, task, {
+      prompt: "Add a dark mode toggle",
+      variants: [{ agent: "plan" }, {}],
+    });
+    expect(result.task).toBe(task);
+    await vi.waitFor(() =>
+      expect(s.tasks.get(task)?.variants.map((v) => v.step)).toStrictEqual([
+        "session",
+        "session",
+      ])
+    );
+    expect(s.tasks.get(task)?.variants.map((v) => v.n)).toStrictEqual([1, 2]);
+    expect(snapshot()?.plan).toBeUndefined();
+    await expect(
+      s.hub.tasks.startDraft(project.id, task, { prompt: "again" })
+    ).rejects.toThrow(/already started/u);
+    expect(() =>
+      s.hub.tasks.editDraft(project.id, task, { prompt: "x" })
+    ).toThrow(/already started/u);
+  });
+
+  it("drafts from a ticket, titled from it with its description as the brief, and the ticket lists the draft", async () => {
+    const s = await started();
+    const { task } = s.hub.tasks.draftFromTicket(project.id, { jira });
+    expect(s.tasks.get(task)).toMatchObject({
+      jira,
+      prompt: "Users want a dark theme",
+      state: "draft",
+      title: "APP-42: Dark mode",
+    });
+    expect(s.links.forTicket(jira.instanceUrl, jira.key).tasks).toMatchObject([
+      { id: task, state: "draft" },
+    ]);
+  });
+
+  it("refuses a draft with neither title nor brief", async () => {
+    const s = await started();
+    expect(() => s.hub.tasks.createDraft(project.id, { prompt: " " })).toThrow(
+      InvalidRequestError
+    );
+  });
+});

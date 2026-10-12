@@ -12,17 +12,20 @@ const meta = preview.meta({
     return () => localStorage.removeItem(PANEL_KEY);
   },
   component: App,
-  parameters: { route: "/chat/acme-web/tsk_rate" },
+  parameters: { route: "/chat/acme-web/c_dark" },
   title: "Pages/Chat/View",
 });
 
-/** The task's conversation full-width: the transcript, the permission card and the composer at the bottom. */
+/** A chat in a worktree, full-width: the transcript and the composer, with Changes and Make task in its header. */
 export const Conversation = meta.story({
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
-      await canvas.findByRole("link", { name: /open task/iu })
-    ).toHaveAttribute("href", "/p/acme-web/t/tsk_rate");
+      await canvas.findByRole("button", { name: /make task/iu })
+    ).toBeEnabled();
+    await expect(
+      canvas.getByRole("button", { name: /changes/iu })
+    ).toBeEnabled();
     // The first prompt opens the transcript; the newest is near the composer.
     await expect(
       await canvas.findByText(
@@ -54,7 +57,7 @@ export const Usage = meta.story({
 
 /** The agent asks a question: its card sits right above the composer. */
 export const Question = meta.story({
-  parameters: { route: "/chat/acme-web/tsk_form" },
+  parameters: { route: "/chat/acme-web/c_form" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
@@ -98,14 +101,52 @@ export const MobileSheet = meta.story({
 
 /** The new worktree is still being set up: the view shows how far it got instead of a conversation. */
 export const Starting = meta.story({
-  parameters: { route: "/chat/acme-web/tsk_search" },
+  parameters: { route: "/chat/acme-web/c_new" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText("No conversation yet")).toBeVisible();
+    await expect(await canvas.findByText("Starting the chat")).toBeVisible();
+    await expect(canvas.getByText("Creating the worktree…")).toBeVisible();
   },
 });
 
-/** A task that doesn't exist: the page says so and offers a new chat. */
+/** A chat in the main checkout: Make task is off, since only a chat in a worktree can become a task. */
+export const MainCheckout = meta.story({
+  parameters: { route: "/chat/acme-web/c_idle" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByRole("button", { name: /make task/iu })
+    ).toBeDisabled();
+  },
+});
+
+/** A chat a task adopted: its old link opens the task with variant 1 selected. */
+export const Adopted = meta.story({
+  parameters: { route: "/chat/billing-api/c_round" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByRole("heading", {
+        name: "Fix invoice rounding for JPY",
+      })
+    ).toBeVisible();
+  },
+});
+
+/** An old chat link keyed by a task opens the task. */
+export const OldTaskLink = meta.story({
+  parameters: { route: "/chat/acme-web/tsk_rate" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByRole("heading", {
+        name: "Add burst limit to the login rate limiter",
+      })
+    ).toBeVisible();
+  },
+});
+
+/** A chat that doesn't exist: the page says so and offers a new chat. */
 export const NotFound = meta.story({
   parameters: { route: "/chat/acme-web/missing" },
   play: async ({ canvasElement }) => {

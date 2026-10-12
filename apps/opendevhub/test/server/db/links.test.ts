@@ -286,7 +286,7 @@ describe("LinkStore reviews", () => {
   it("stores review runs with a review.run event and lists them newest first", () => {
     const { links, tasks, events, clock } = setup();
     const pull = links.ensurePull(PR);
-    const task = tasks.startManual({
+    const task = tasks.startReview({
       createdAt: 1000,
       directory: "/w",
       envId: project.id,

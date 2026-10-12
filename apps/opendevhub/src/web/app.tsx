@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 
 import { ChatStart } from "./features/chat/chat-start";
 import { ChatView } from "./features/chat/chat-view";
+import { ChatsPage } from "./features/chat/chats-page";
 import {
   CheckoutPage,
   CheckoutRuntime,
@@ -164,7 +165,8 @@ const routeTree = rootRoute.addChildren([
   shellRoute.addChildren([
     page("/", Overview),
     page("chat", ChatStart),
-    page("chat/$projectId/$task", ChatView),
+    page("chat/$projectId/$chat", ChatView),
+    page("chats", ChatsPage),
     page("tasks", TasksPage),
     // The Sessions page became Tasks; its status filter carries over.
     createRoute({

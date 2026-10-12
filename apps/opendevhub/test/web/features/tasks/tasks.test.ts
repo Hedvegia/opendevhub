@@ -73,6 +73,7 @@ const wt = (b: string) => `/workspaces/demo.worktrees/${b}`;
 function view(sessions: SessionSummary[], tasks: TaskView[] = []): ProjectView {
   return {
     tasks,
+    chats: [],
     project: {
       id: "p 1",
       name: "demo",
@@ -114,15 +115,26 @@ describe("task sessions", () => {
     expect(variantName(taskSessions(v, "tsk_1")[1])).toBe("#3");
   });
 
-  it("shows a created-by chip linking to the task page, for manual conversations too, saying when one started in opencode", () => {
-    const v = view(
-      [],
-      [
-        task("tsk_1", [{}, {}, {}]),
-        task("tsk_one", [{}]),
-        task("tsk_man", [{}], { kind: "manual" }),
-      ]
-    );
+  it("shows a created-by chip linking to the task page, or to the chat view for a chat, saying when one started in opencode", () => {
+    const v = {
+      ...view([], [task("tsk_1", [{}, {}, {}]), task("tsk_one", [{}])]),
+      chats: [
+        {
+          createdAt: 1,
+          id: "c_here",
+          origin: "hub" as const,
+          step: "session" as const,
+          title: "Fix",
+        },
+        {
+          createdAt: 1,
+          id: "c_oc",
+          origin: "opencode" as const,
+          step: "session" as const,
+          title: "Explore",
+        },
+      ],
+    };
     expect(taskChip(v, session("s", "/w"))).toBeUndefined();
     expect(
       taskChip(v, session("s", "/w", { task: ref(1, "tsk_one") }))
@@ -131,27 +143,15 @@ describe("task sessions", () => {
       title: "Task: Fix",
       to: "/p/p%201/t/tsk_one",
     });
-    expect(
-      taskChip(
-        v,
-        session("s", "/w", { task: { ...ref(1, "tsk_man"), kind: "manual" } })
-      )
-    ).toStrictEqual({
-      label: "started here",
-      title: "Started on its own in opendevhub",
-      to: "/p/p%201/t/tsk_man",
+    expect(taskChip(v, session("s", "/w", { chat: "c_here" }))).toStrictEqual({
+      label: "chat",
+      title: "Chat: Fix",
+      to: "/chat/p%201/c_here",
     });
-    expect(
-      taskChip(
-        v,
-        session("s", "/w", {
-          task: { ...ref(1, "tsk_man"), adopted: true, kind: "manual" },
-        })
-      )
-    ).toStrictEqual({
+    expect(taskChip(v, session("s", "/w", { chat: "c_oc" }))).toStrictEqual({
       label: "started in opencode",
       title: "Found in opencode; started outside opendevhub",
-      to: "/p/p%201/t/tsk_man",
+      to: "/chat/p%201/c_oc",
     });
     expect(
       taskChip(
@@ -504,7 +504,7 @@ describe("task page", () => {
     expect(taskTabs(task("t", [{}]))).toStrictEqual(base);
     expect(taskTabs(task("t", [{}, { discarded: true }]))).toStrictEqual(base);
     expect(taskTabs(task("t", [{}, {}]))).toStrictEqual([...base, "compare"]);
-    expect(taskTabs(task("t", [{}], { kind: "manual" }))).toStrictEqual(base);
+    expect(taskTabs(task("t", [{}], { kind: "review" }))).toStrictEqual(base);
     expect(
       taskTabs(task("t", [{}, {}], { spec: { first: true } }))
     ).toStrictEqual([...base, "spec", "compare"]);

@@ -34,7 +34,10 @@ import type { Tasks } from "./tasks/tasks";
 
 /** The Hub modules the dashboard routes call. */
 export interface DashboardHub {
-  chat: Pick<Chat, "start">;
+  chat: Pick<
+    Chat,
+    "start" | "lookup" | "archive" | "brief" | "suggestions" | "makeTask"
+  >;
   environments: Pick<
     Environments,
     | "start"
@@ -90,7 +93,14 @@ export interface DashboardHub {
   >;
   tasks: Pick<
     Tasks,
-    "startTask" | "dismissStarting" | "archiveTask" | "pickVariant"
+    | "startTask"
+    | "dismissStarting"
+    | "archiveTask"
+    | "pickVariant"
+    | "createDraft"
+    | "draftFromTicket"
+    | "editDraft"
+    | "startDraft"
   >;
 }
 

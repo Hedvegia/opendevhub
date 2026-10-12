@@ -9,6 +9,7 @@ import type {
   SpecPhase,
   StartStep,
   TaskKind,
+  TaskPlan,
   TaskStartSpec,
   TaskState,
   TaskView,
@@ -16,14 +17,28 @@ import type {
   VariantView,
 } from "../../shared/types";
 import { newTaskId } from "../projects/ids";
+import type { ChatRecord } from "./chats";
 import { transaction } from "./database";
 import type { Db } from "./database";
 import { SYSTEM, USER, record } from "./events";
 import type { Actor, EventVerb } from "./events";
-import { ensureTicketIn, linkTicketIn } from "./links";
-import { settingUp, taskState } from "./task-state";
+import {
+  ensurePullIn,
+  ensureTicketIn,
+  linkBranchIn,
+  linkTicketIn,
+} from "./links";
+import { RESTART_ERROR, settingUp, taskState } from "./task-state";
 
-export const RESTART_ERROR = "interrupted: opendevhub restarted";
+export { RESTART_ERROR } from "./task-state";
+
+/** A chat a task already adopted, or that has no session to adopt. */
+export class ChatTakenError extends Error {
+  constructor(chat: string) {
+    super(`chat ${chat} already belongs to a task or has no conversation`);
+    this.name = "ChatTakenError";
+  }
+}
 
 /** A task with what the snapshot leaves out. */
 export interface TaskRecord extends TaskView {
@@ -40,14 +55,28 @@ export interface NewTask {
   jira?: JiraTaskSource;
   spec?: TaskStartSpec;
   createdAt: number;
-  variants: { model?: ModelRef; agent?: string; node?: NodeId }[];
+  /** None for a draft. */
+  variants: NewVariant[];
+  /** A draft's requested variants and options, kept for Start to prefill its dialog. */
+  plan?: TaskPlan;
 }
 
-/**
- * A session that gets a task of its own: one opendevhub started outside a task, or one found in opencode (a manual
- * task), or an AI review of a pull request (a review task).
- */
-export interface ManualSession {
+export interface NewVariant {
+  model?: ModelRef;
+  agent?: string;
+  node?: NodeId;
+}
+
+export type DraftPatch = Partial<{
+  title: string;
+  prompt: string;
+  plan: TaskPlan;
+  /** Whether it starts by proposing an OpenSpec change. */
+  specFirst: boolean;
+}>;
+
+/** A session opendevhub just started to review a pull request: it gets a review task of its own. */
+export interface ReviewSession {
   projectId: ProjectId;
   sessionId: string;
   title: string;
@@ -55,8 +84,25 @@ export interface ManualSession {
   envId: EnvId;
   branch?: string;
   createdAt: number;
-  /** The pull request row it reviews; the task is then a review task. */
-  reviewOf?: number;
+  /** The pull request row it reviews. */
+  reviewOf: number;
+}
+
+/** The chat a task adopts as its variant 1, and what the new task records. */
+export interface ChatAdoption {
+  chat: ChatRecord;
+  task: {
+    id: string;
+    title: string;
+    prompt: string;
+    createdAt: number;
+    jira?: JiraTaskSource;
+    /** A pull request the user linked; the chat's branch becomes its head. */
+    pullUrl?: string;
+    specFirst: boolean;
+    model?: ModelRef;
+    agent?: string;
+  };
 }
 
 export type VariantPatch = Partial<{
@@ -81,6 +127,9 @@ interface RawTask {
   implemented_in: string | null;
   created_at: number;
   archived_at: number | null;
+  plan: string | null;
+  /** The chat it adopted as variant 1, when it was made from one. */
+  from_chat?: string | null;
 }
 
 interface RawVariant {
@@ -143,6 +192,7 @@ const toVariant = (r: RawVariant): VariantView => {
 
 const toTask = (t: RawTask, variants: RawVariant[]): TaskRecord => {
   const jira = parseJson<JiraTaskSource>(t.jira);
+  const plan = parseJson<TaskPlan>(t.plan);
   const spec =
     t.spec_first || t.proposed_in || t.implemented_in
       ? {
@@ -162,9 +212,14 @@ const toTask = (t: RawTask, variants: RawVariant[]): TaskRecord => {
     ...(jira ? { jira } : {}),
     ...(spec ? { spec } : {}),
     ...(t.prompt === null ? {} : { prompt: t.prompt }),
+    ...(plan ? { plan } : {}),
+    ...(t.from_chat ? { fromChat: t.from_chat } : {}),
     ...(t.archived_at === null ? {} : { archivedAt: t.archived_at }),
   };
 };
+
+const TASK_SELECT = `SELECT t.*, (SELECT c.id FROM chats c WHERE c.adopted_task = t.id LIMIT 1) AS from_chat
+  FROM tasks t`;
 
 const claimKey = (env: EnvId, directory: string) => `${env}\0${directory}`;
 
@@ -178,15 +233,22 @@ export class TaskStore {
   private readonly listeners = new Set<() => void>();
   private readonly claims = new Map<string, number>();
   private refs?: Map<string, SessionTaskRef>;
+  /** Told after every change, since some change chats too (an adoption, a session taken over from a chat). */
+  private readonly chatsChanged?: () => void;
 
-  constructor(db: Db, now: () => number = Date.now) {
+  constructor(db: Db, now: () => number = Date.now, chatsChanged?: () => void) {
     this.db = db;
     this.now = now;
+    this.chatsChanged = chatsChanged;
   }
 
-  /** Records a task and its variants, all `queued`, before any is set up. */
+  /**
+   * Records a task and its variants, all `queued`, before any is set up. A task with no variants is a draft, and
+   * keeps `plan` for when it starts.
+   */
   createTask(task: NewTask, actor: Actor = USER): void {
     const at = this.now();
+    const draft = task.variants.length === 0;
     this.write(() => {
       const proposedIn =
         task.spec?.phase === "implement" && this.raw(task.spec.proposedIn)
@@ -194,8 +256,8 @@ export class TaskStore {
           : undefined;
       this.db
         .prepare(
-          `INSERT INTO tasks (id, project_id, kind, title, prompt, jira, spec_first, proposed_in, created_at)
-           VALUES (?, ?, 'task', ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO tasks (id, project_id, kind, title, prompt, jira, spec_first, proposed_in, created_at, plan)
+           VALUES (?, ?, 'task', ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           task.id,
@@ -205,50 +267,248 @@ export class TaskStore {
           task.jira ? JSON.stringify(task.jira) : null,
           task.spec?.phase === "propose" ? 1 : 0,
           proposedIn ?? null,
-          task.createdAt
+          task.createdAt,
+          task.plan ? JSON.stringify(task.plan) : null
         );
       if (proposedIn) {
         this.db
           .prepare("UPDATE tasks SET implemented_in = ? WHERE id = ?")
           .run(task.id, proposedIn);
       }
-      const insert = this.db.prepare(
-        `INSERT INTO variants (task_id, n, model, agent, node_id, step, spec_phase, spec_change)
-         VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)`
-      );
-      for (const [i, v] of task.variants.entries()) {
-        insert.run(
-          task.id,
-          i + 1,
-          v.model ? JSON.stringify(v.model) : null,
-          v.agent ?? null,
-          v.node ?? null,
-          task.spec?.phase ?? null,
-          task.spec?.phase === "implement" ? task.spec.change : null
-        );
-      }
+      this.insertVariants(task.id, 1, task.variants, task.spec);
       this.event(
         at,
         actor,
-        "task.started",
+        draft ? "task.drafted" : "task.started",
         task.projectId,
         task.id,
         {
           id: task.id,
           type: "task",
         },
-        { kind: "task", title: task.title, variants: task.variants.length }
+        draft
+          ? { kind: "task", title: task.title }
+          : { kind: "task", title: task.title, variants: task.variants.length }
       );
       if (task.jira) {
-        const ticket = ensureTicketIn(this.db, {
-          instanceUrl: task.jira.instanceUrl,
-          key: task.jira.key,
-          title: task.jira.title,
-          url: jiraTicketUrl(task.jira),
-        });
-        linkTicketIn(this.db, at, actor, task.projectId, task.id, ticket);
+        this.linkJira(at, actor, task.projectId, task.id, task.jira);
       }
     });
+  }
+
+  /**
+   * Adds variants to a task of kind `task`, numbered after its highest, all `queued`: a draft starts, or a task
+   * made from a chat gets more. A draft that starts records `task.started`. Returns the new variants' numbers.
+   */
+  addVariants(
+    taskId: string,
+    variants: readonly NewVariant[],
+    actor: Actor = USER
+  ): number[] {
+    const at = this.now();
+    let added: number[] = [];
+    this.write(() => {
+      const task = this.raw(taskId);
+      if (!task || task.kind !== "task") {
+        throw new Error(`not a task that takes variants: ${taskId}`);
+      }
+      const max = (
+        this.db
+          .prepare(
+            "SELECT COALESCE(MAX(n), 0) AS n FROM variants WHERE task_id = ?"
+          )
+          .get(taskId) as { n: number }
+      ).n;
+      const spec: TaskStartSpec | undefined =
+        task.spec_first === 1 ? { phase: "propose" } : undefined;
+      added = this.insertVariants(taskId, max + 1, variants, spec);
+      if (max === 0) {
+        this.db
+          .prepare("UPDATE tasks SET plan = NULL WHERE id = ?")
+          .run(taskId);
+        this.event(
+          at,
+          actor,
+          "task.started",
+          task.project_id,
+          taskId,
+          { id: taskId, type: "task" },
+          { kind: "task", title: task.title, variants: variants.length }
+        );
+      }
+      for (const n of added) {
+        this.event(at, actor, "variant.added", task.project_id, taskId, {
+          id: `${taskId}/${n}`,
+          type: "variant",
+        });
+      }
+    });
+    return added;
+  }
+
+  /** Changes a draft's title, brief or plan. False when there is no such draft. */
+  updateDraft(taskId: string, patch: DraftPatch): boolean {
+    const columns: [string, string][] = [];
+    if (patch.title !== undefined) {
+      columns.push(["title", patch.title]);
+    }
+    if (patch.prompt !== undefined) {
+      columns.push(["prompt", patch.prompt]);
+    }
+    if (patch.plan !== undefined) {
+      columns.push(["plan", JSON.stringify(patch.plan)]);
+    }
+    if (patch.specFirst !== undefined) {
+      columns.push(["spec_first", patch.specFirst ? "1" : "0"]);
+    }
+    return this.write(() => {
+      if (this.variants(taskId).length > 0 || !this.raw(taskId)) {
+        return false;
+      }
+      if (columns.length > 0) {
+        this.db
+          .prepare(
+            `UPDATE tasks SET ${columns.map(([c]) => `${c} = ?`).join(", ")} WHERE id = ?`
+          )
+          .run(...columns.map(([, v]) => v), taskId);
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Makes a task of the chat: a task of kind `task` whose variant 1 is the chat's session, environment, directory,
+   * branch and worktree, with step `session`. In the same transaction the chat records its adopter and the
+   * `chat.adopted` event, and the ticket and pull request are linked. Throws when the chat was adopted meanwhile or
+   * its session already belongs to a variant.
+   */
+  adoptChat(adoption: ChatAdoption, actor: Actor = USER): void {
+    const { chat, task } = adoption;
+    const at = this.now();
+    this.write(() => {
+      const row = this.db
+        .prepare("SELECT adopted_task, session_id FROM chats WHERE id = ?")
+        .get(chat.id) as
+        | { adopted_task: string | null; session_id: string | null }
+        | undefined;
+      if (!row?.session_id || row.adopted_task !== null) {
+        throw new ChatTakenError(chat.id);
+      }
+      this.db
+        .prepare(
+          `INSERT INTO tasks (id, project_id, kind, title, prompt, jira, spec_first, created_at)
+           VALUES (?, ?, 'task', ?, ?, ?, ?, ?)`
+        )
+        .run(
+          task.id,
+          chat.projectId,
+          task.title,
+          task.prompt,
+          task.jira ? JSON.stringify(task.jira) : null,
+          task.specFirst ? 1 : 0,
+          task.createdAt
+        );
+      const branchId =
+        chat.branchId ??
+        (chat.branch
+          ? (
+              this.db
+                .prepare(
+                  "SELECT id FROM branches WHERE project_id = ? AND name = ?"
+                )
+                .get(chat.projectId, chat.branch) as { id: number } | undefined
+            )?.id
+          : undefined);
+      this.db
+        .prepare(
+          `INSERT INTO variants (task_id, n, model, agent, env_id, branch, directory, branch_id, worktree_id, step,
+             session_id, session_removed_at, spec_phase)
+           VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, 'session', ?, ?, ?)`
+        )
+        .run(
+          task.id,
+          task.model ? JSON.stringify(task.model) : null,
+          task.agent ?? null,
+          chat.envId ?? null,
+          chat.branch ?? null,
+          chat.directory ?? null,
+          branchId ?? null,
+          chat.worktreeId ?? null,
+          row.session_id,
+          chat.sessionRemoved ? at : null,
+          task.specFirst ? "propose" : null
+        );
+      this.db
+        .prepare(
+          "UPDATE chats SET adopted_task = ?, adopted_variant = 1 WHERE id = ?"
+        )
+        .run(task.id, chat.id);
+      this.event(
+        at,
+        actor,
+        "task.started",
+        chat.projectId,
+        task.id,
+        { id: task.id, type: "task" },
+        { chat: chat.id, kind: "task", title: task.title, variants: 1 }
+      );
+      record(this.db, {
+        actor,
+        at,
+        data: { session: row.session_id, task: task.id, title: chat.title },
+        object: { id: chat.id, type: "chat" },
+        projectId: chat.projectId,
+        taskId: task.id,
+        verb: "chat.adopted",
+      });
+      if (task.jira) {
+        this.linkJira(at, actor, chat.projectId, task.id, task.jira);
+      }
+      if (task.pullUrl && branchId !== undefined) {
+        const pull = ensurePullIn(this.db, task.pullUrl);
+        linkBranchIn(this.db, at, actor, branchId, pull.id, "head");
+      }
+    });
+  }
+
+  private insertVariants(
+    taskId: string,
+    first: number,
+    variants: readonly NewVariant[],
+    spec: TaskStartSpec | undefined
+  ): number[] {
+    const insert = this.db.prepare(
+      `INSERT INTO variants (task_id, n, model, agent, node_id, step, spec_phase, spec_change)
+       VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)`
+    );
+    return variants.map((v, i) => {
+      insert.run(
+        taskId,
+        first + i,
+        v.model ? JSON.stringify(v.model) : null,
+        v.agent ?? null,
+        v.node ?? null,
+        spec?.phase ?? null,
+        spec?.phase === "implement" ? spec.change : null
+      );
+      return first + i;
+    });
+  }
+
+  private linkJira(
+    at: number,
+    actor: Actor,
+    projectId: string,
+    taskId: string,
+    jira: JiraTaskSource
+  ): void {
+    const ticket = ensureTicketIn(this.db, {
+      instanceUrl: jira.instanceUrl,
+      key: jira.key,
+      title: jira.title,
+      url: jiraTicketUrl(jira),
+    });
+    linkTicketIn(this.db, at, actor, projectId, taskId, ticket);
   }
 
   /** Records a variant's progress; moving to `failed` records why. */
@@ -322,10 +582,10 @@ export class TaskStore {
       if (!task) {
         return false;
       }
-      // A session reconcile adopted before this ran (a claim can't cover a crash) gives up its manual task.
+      // A session reconcile adopted before this ran (a claim can't cover a crash) stops being a chat.
       this.db
         .prepare(
-          "DELETE FROM tasks WHERE kind = 'manual' AND id IN (SELECT task_id FROM variants WHERE session_id = ?)"
+          "DELETE FROM chats WHERE session_id = ? AND adopted_task IS NULL"
         )
         .run(session.sessionId);
       this.db
@@ -350,17 +610,8 @@ export class TaskStore {
     });
   }
 
-  /** A manual (or, with `reviewOf`, review) task for a session opendevhub just started outside a task. Returns its id. */
-  startManual(session: ManualSession, actor: Actor = USER): string {
-    return this.manual(session, actor, "session.started");
-  }
-
-  /** A manual task for a session found in opencode with no task; the existing one when it already has one. */
-  adoptSession(session: ManualSession, actor: Actor = SYSTEM): string {
-    return this.manual(session, actor, "session.adopted");
-  }
-
-  private manual(s: ManualSession, actor: Actor, verb: EventVerb): string {
+  /** A review task for a session opendevhub just started to review a pull request. Returns its id. */
+  startReview(s: ReviewSession, actor: Actor = USER): string {
     const existing = this.bySession(s.sessionId);
     if (existing) {
       return existing.task.id;
@@ -368,13 +619,12 @@ export class TaskStore {
     const at = this.now();
     // Ordered by when its session was created, as a task is by when it started.
     const id = newTaskId(s.createdAt);
-    const kind: TaskKind = s.reviewOf === undefined ? "manual" : "review";
     this.write(() => {
       this.db
         .prepare(
-          "INSERT INTO tasks (id, project_id, kind, title, pull_request_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+          "INSERT INTO tasks (id, project_id, kind, title, pull_request_id, created_at) VALUES (?, ?, 'review', ?, ?, ?)"
         )
-        .run(id, s.projectId, kind, s.title, s.reviewOf ?? null, s.createdAt);
+        .run(id, s.projectId, s.title, s.reviewOf, s.createdAt);
       this.db
         .prepare(
           `INSERT INTO variants (task_id, n, env_id, branch, directory, step, session_id)
@@ -391,12 +641,12 @@ export class TaskStore {
           id,
           type: "task",
         },
-        { kind, title: s.title }
+        { kind: "review", title: s.title }
       );
       this.event(
         at,
         actor,
-        verb,
+        "session.started",
         s.projectId,
         id,
         {
@@ -407,21 +657,6 @@ export class TaskStore {
       );
     });
     return id;
-  }
-
-  /** A manual task's title follows its session's. */
-  setManualTitle(sessionId: string, title: string): void {
-    this.write(
-      () =>
-        Number(
-          this.db
-            .prepare(
-              `UPDATE tasks SET title = ? WHERE kind = 'manual' AND title <> ?
-               AND id = (SELECT task_id FROM variants WHERE session_id = ?)`
-            )
-            .run(title, title, sessionId).changes
-        ) > 0
-    );
   }
 
   /**
@@ -648,7 +883,7 @@ export class TaskStore {
   listForProject(projectId: ProjectId): TaskRecord[] {
     const tasks = this.db
       .prepare(
-        "SELECT * FROM tasks WHERE project_id = ? AND archived_at IS NULL ORDER BY created_at, id"
+        `${TASK_SELECT} WHERE t.project_id = ? AND t.archived_at IS NULL ORDER BY t.created_at, t.id`
       )
       .all(projectId) as unknown as RawTask[];
     if (tasks.length === 0) {
@@ -701,9 +936,7 @@ export class TaskStore {
     if (!this.refs) {
       const rows = this.db
         .prepare(
-          `SELECT v.session_id AS session, v.task_id AS id, t.kind AS kind, v.n AS n, v.discarded_at AS discarded,
-             EXISTS (SELECT 1 FROM events e WHERE e.object_type = 'session' AND e.object_id = v.session_id
-               AND e.verb = 'session.adopted') AS adopted
+          `SELECT v.session_id AS session, v.task_id AS id, t.kind AS kind, v.n AS n, v.discarded_at AS discarded
            FROM variants v JOIN tasks t ON t.id = v.task_id WHERE v.session_id IS NOT NULL`
         )
         .all() as unknown as {
@@ -712,7 +945,6 @@ export class TaskStore {
         kind: TaskKind;
         n: number;
         discarded: number | null;
-        adopted: number;
       }[];
       this.refs = new Map(
         rows.map((r) => [
@@ -722,7 +954,6 @@ export class TaskStore {
             id: r.id,
             kind: r.kind,
             n: r.n,
-            ...(r.adopted ? { adopted: true } : {}),
           },
         ])
       );
@@ -766,6 +997,7 @@ export class TaskStore {
     const result = transaction(this.db, fn);
     if (result !== false) {
       this.refs = undefined;
+      this.chatsChanged?.();
       for (const listener of this.listeners) {
         listener();
       }
@@ -824,7 +1056,7 @@ export class TaskStore {
   }
 
   private raw(taskId: string): RawTask | undefined {
-    return this.db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as
+    return this.db.prepare(`${TASK_SELECT} WHERE t.id = ?`).get(taskId) as
       | RawTask
       | undefined;
   }

@@ -61,10 +61,13 @@ export interface Worktree {
   createdBy?: CheckoutCreator;
 }
 
-/** Who made a branch or worktree: a task variant, the checkouts page, a pull request checkout, or not opendevhub. */
+/**
+ * Who made a branch or worktree: a task variant, the user (on the checkouts page, or from Chat for a chat, which it
+ * names), a pull request checkout, or not opendevhub.
+ */
 export type CheckoutCreator =
   | { by: "variant"; task: string; n: number; title: string }
-  | { by: "manual" }
+  | { by: "manual"; chat?: { id: string; title: string } }
   | { by: "pull"; url?: string }
   | { by: "unmanaged" };
 
@@ -464,12 +467,12 @@ export interface ComposerSendRequest {
   model?: ModelRef;
 }
 
-/** What sending did: `sessionId` is the conversation `/new` started. */
+/** What sending did: `sessionId` is the conversation `/new` started, and `chat` its chat. */
 export type ComposerSendResult =
   | { kind: "prompt"; queued: boolean }
   | { kind: "command"; name: string; queued: boolean }
   | { kind: "interrupt" }
-  | { kind: "new"; sessionId: string };
+  | { kind: "new"; sessionId: string; chat?: string };
 
 /** Where a chat runs: a new worktree on the project's defaults, or one of the project's checkouts. */
 export type ChatTarget =
@@ -482,10 +485,74 @@ export interface ChatStartRequest {
   message: ComposerSendRequest;
 }
 
-/** The task the chat belongs to; `sessionId` once its conversation exists (a checkout's, at once). */
+/** The chat the first message started; `sessionId` once its conversation exists (a checkout's, at once). */
 export interface ChatStartResult {
-  task: string;
+  chat: string;
   sessionId?: string;
+}
+
+/** `GET …/chats/:chat`: the chat, or for one a task adopted, the task and variant it became. */
+export type ChatLookup =
+  | { chat: ChatView }
+  | { adoptedBy: { task: string; n: number } };
+
+/** `GET …/chats/:chat/suggestions`: links Make task offers for a chat. */
+export interface ChatSuggestions {
+  /** Jira keys in the chat's branch name and its user messages, branch first. */
+  tickets: string[];
+  /** Pull requests whose head is the chat's branch. */
+  pullRequests: { url: string; title?: string; number?: number }[];
+}
+
+/** `POST …/chats/:chat/task`: Make task. */
+export interface MakeTaskRequest {
+  title: string;
+  brief: string;
+  ticket?: JiraTaskSource;
+  /** A pull request's URL; the chat's branch is recorded as its head. */
+  pullRequest?: string;
+  /** Write a spec from the conversation: run `opsx-propose <brief>` in it. */
+  spec?: boolean;
+  /** Extra variants, each in a new worktree from the chat branch's base. */
+  variants?: TaskVariantSpec[];
+}
+
+/** Who started a chat: opendevhub for the user, opencode directly, or opendevhub only to generate text (never listed). */
+export type ChatOrigin = "hub" | "opencode" | "internal";
+
+/**
+ * A chat: a conversation in one of the project's checkouts that no task variant owns. It exists before its session
+ * when Chat sets up a new worktree for it.
+ */
+export interface ChatView {
+  /** `c_…`; its view is `/chat/:project/:id`. */
+  id: string;
+  /** Once its conversation exists. */
+  sessionId?: string;
+  title: string;
+  origin: ChatOrigin;
+  /** The environment whose opencode runs its session; absent until known. */
+  envId?: EnvId;
+  directory?: string;
+  /** Set when its checkout is a worktree. */
+  branch?: string;
+  /** Its worktree's row, when its checkout is one opendevhub recorded. */
+  worktreeId?: number;
+  createdAt: number;
+  /** How far a new worktree's setup got; `session` once its conversation exists. */
+  step: StartStep;
+  error?: string;
+  /** The last lines its setup wrote, while it starts. */
+  log?: string[];
+  /** Its session is gone from opencode. */
+  sessionRemoved?: boolean;
+  archived?: boolean;
+  /** The task that made it its variant; such a chat is no longer listed. */
+  adoptedBy?: { task: string; n: number };
+  /** From its session, when opencode lists it. */
+  updatedAt?: number;
+  status?: SessionStatus;
+  pending?: PendingItems;
 }
 
 /** OpenSpec's workflow as the project's environment offers it. Spec-first tasks need every command and the CLI. */
@@ -632,8 +699,10 @@ export interface SessionSummary {
   status: SessionStatus;
   /** What the session (or one of its subagents) is waiting on, oldest first. Omitted when nothing is. */
   pending?: PendingItems;
-  /** Its task; every top-level session has one once it has been reconciled. */
+  /** Its task when a task variant owns it; a chat's session has none. */
   task?: SessionTaskRef;
+  /** Its chat when no variant owns it, once it has been reconciled. */
+  chat?: string;
   model?: ModelRef;
   /** USD so far, its subagents included. */
   cost?: number;
@@ -767,6 +836,8 @@ export interface ProjectView {
   isolation?: IsolationInfo;
   /** Its tasks that are not archived, oldest first. */
   tasks: TaskView[];
+  /** Its chats that are not internal, archived, removed or adopted, newest first. */
+  chats: ChatView[];
 }
 
 /** Where a starting task variant is: its worktree, its environment (image, container), then its session. */
@@ -780,10 +851,10 @@ export type StartStep =
   | "failed";
 
 /**
- * `task`: started from the New task dialog. `manual`: a session started on its own, here or in opencode. `review`:
- * an AI review of a pull request.
+ * `task`: started or drafted from the New task dialog or a ticket, or made from a chat. `review`: an AI review of a
+ * pull request. (Databases from before chats may still hold `manual` in old events; no task has it.)
  */
-export type TaskKind = "task" | "manual" | "review";
+export type TaskKind = "task" | "review";
 
 /** How a branch relates to a pull request: published as its head, or made to check it out. */
 export type PullRole = "head" | "checkout";
@@ -817,10 +888,22 @@ export interface VariantPullRequest extends PullRequestRef {
 }
 
 /**
- * Starting while a variant is being set up or failed without being dismissed; running while a variant has a live
- * session; ended once none has.
+ * Draft while it has no variants; starting while a variant is being set up or failed without being dismissed;
+ * running while a variant has a live session; ended once none has.
  */
-export type TaskState = "starting" | "running" | "ended";
+export type TaskState = "draft" | "starting" | "running" | "ended";
+
+/** What a draft will start with, as the New task dialog asked for it; Start prefills the dialog from it. */
+export interface TaskPlan {
+  where: TaskWhere;
+  variants: TaskVariantSpec[];
+  branch?: string;
+  base?: string;
+  environment?: Isolation;
+  node?: NodeId;
+  /** Start by proposing an OpenSpec change. */
+  spec?: boolean;
+}
 
 /** A spec-first variant's place in the OpenSpec workflow. */
 export interface VariantSpec {
@@ -868,6 +951,12 @@ export interface TaskView {
   createdAt: number;
   state: TaskState;
   variants: VariantView[];
+  /** What the task is for: the prompt it started with, or the brief written for it. */
+  brief?: string;
+  /** A draft's plan for when it starts. */
+  plan?: TaskPlan;
+  /** The chat it was made from, which is its variant 1. */
+  fromChat?: string;
   /** The ticket it was started from, as last fetched; `jira` keeps what the prompt was built from. */
   ticket?: TicketRef;
   /** The pull requests its variants' branches were published as; absent when there are none. */
@@ -941,8 +1030,6 @@ export interface SessionTaskRef {
   /** Its variant's number. */
   n: number;
   discarded: boolean;
-  /** Found in opencode rather than started by opendevhub (while its `session.adopted` event is kept). */
-  adopted?: boolean;
 }
 
 export type EditorTarget = "host" | "container";

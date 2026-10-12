@@ -40,12 +40,17 @@ export const VariantRows = ({
   setRows,
   models,
   canAdd,
+  removable = false,
+  addLabel = "Compare with another model",
 }: {
   rows: VariantRow[];
   setRows: Dispatch<SetStateAction<VariantRow[]>>;
   models: ModelsInfo | undefined;
   /** Whether more than one variant is possible here. */
   canAdd: boolean;
+  /** Whether the last row can be removed too, leaving none. */
+  removable?: boolean;
+  addLabel?: string;
 }) => {
   const defaultModel = models?.default;
   const defaultName = defaultModel
@@ -105,7 +110,7 @@ export const VariantRows = ({
                 ]}
               />
             )}
-            {rows.length > 1 && (
+            {(rows.length > 1 || removable) && (
               <Button
                 type="button"
                 variant="ghost"
@@ -128,7 +133,7 @@ export const VariantRows = ({
           className="px-0"
           onClick={() => setRows((rs) => [...rs, EMPTY_ROW])}
         >
-          <PlusIcon /> Compare with another model
+          <PlusIcon /> {addLabel}
         </Button>
       )}
     </div>

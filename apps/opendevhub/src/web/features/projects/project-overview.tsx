@@ -19,6 +19,8 @@ import { envOfDirectory, projectTone, workspaceFolderOf } from "../../derive";
 import { checkoutResources } from "../../lib/resources";
 import { Link, Navigate, useSearchParams } from "../../routing";
 import { ActivityButton } from "../activity/activity-button";
+import { chatActivity, chatNeedsYou } from "../chat/chat";
+import { ChatRow } from "../chat/chat-rows";
 import {
   checkoutCounts,
   checkoutPath,
@@ -43,6 +45,9 @@ import { projectUsage } from "../usage/usage";
 import { AllContainersMenu, projectFlags } from "./project-actions";
 import { useProjectView } from "./project-layout";
 import { ProjectSettingsButton } from "./project-settings-dialog";
+
+/** How many chats the project page lists; the rest are on the chats page. */
+const PROJECT_CHATS = 8;
 
 export const ProjectOverview = () => {
   const view = useProjectView();
@@ -72,9 +77,16 @@ export const ProjectOverview = () => {
   }
 
   const tasks = projectTasks(view);
-  const attention = tasks.filter((t) => t.attention && t.state !== "ended");
-  const active = tasks.filter((t) => !t.attention && t.state !== "ended");
+  const live = (t: ProjectTask) => t.state !== "ended" && t.state !== "draft";
+  const attention = tasks.filter((t) => t.attention && live(t));
+  const active = tasks.filter((t) => !t.attention && live(t));
+  const drafts = tasks.filter((t) => t.state === "draft");
   const ended = tasks.filter((t) => t.state === "ended");
+  const chats = view.chats.toSorted(
+    (a, b) => chatActivity(b) - chatActivity(a)
+  );
+  const waitingChats = chats.filter(chatNeedsYou);
+  const otherChats = chats.filter((c) => !chatNeedsYou(c));
 
   return (
     <>
@@ -151,13 +163,30 @@ export const ProjectOverview = () => {
         </Alert>
       )}
 
-      {attention.length > 0 && (
-        <Section title="Needs you" hint={attention.length} attention>
+      {attention.length + waitingChats.length > 0 && (
+        <Section
+          title="Needs you"
+          hint={attention.length + waitingChats.length}
+          attention
+        >
           <ul>
             {attention.map((t) => (
               <TaskRow key={t.task} projectId={project.id} task={t}>
                 <WaitingCards view={view} task={t.task} />
               </TaskRow>
+            ))}
+            {waitingChats.map((c) => (
+              <ChatRow key={c.id} projectId={project.id} chat={c} />
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {drafts.length > 0 && (
+        <Section title="Drafts" hint={drafts.length}>
+          <ul>
+            {drafts.map((t) => (
+              <TaskRow key={t.task} projectId={project.id} task={t} />
             ))}
           </ul>
         </Section>
@@ -174,6 +203,26 @@ export const ProjectOverview = () => {
       )}
 
       {ended.length > 0 && <EndedTasks projectId={project.id} tasks={ended} />}
+
+      {otherChats.length > 0 && (
+        <Section
+          title="Chats"
+          hint={otherChats.length}
+          action={
+            <Button asChild variant="ghost" size="sm">
+              <Link to={`/chats?project=${encodeURIComponent(project.id)}`}>
+                Show all
+              </Link>
+            </Button>
+          }
+        >
+          <ul>
+            {otherChats.slice(0, PROJECT_CHATS).map((c) => (
+              <ChatRow key={c.id} projectId={project.id} chat={c} />
+            ))}
+          </ul>
+        </Section>
+      )}
 
       <Section
         title="Worktrees"

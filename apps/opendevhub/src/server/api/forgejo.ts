@@ -206,15 +206,13 @@ export const createForgejoRoutes = (deps: DashboardDeps) => {
           const b = c.req.valid("json");
           const details = await pullAt(c, b.commitId);
           const pull = reviewedPull(details);
-          return {
-            sessionId: await hub.sessions.startSession(
-              str(b.projectId) ?? "",
-              str(b.directory) ?? "",
-              aiReviewTitle(details),
-              aiReviewPrompt(details),
-              pull ? { reviewOf: pull.id } : {}
-            ),
-          };
+          return hub.sessions.startSession(
+            str(b.projectId) ?? "",
+            str(b.directory) ?? "",
+            aiReviewTitle(details),
+            aiReviewPrompt(details),
+            pull ? { reviewOf: pull.id } : {}
+          );
         })
     )
     .post(

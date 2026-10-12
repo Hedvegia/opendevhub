@@ -38,3 +38,7 @@ export const taskHref = (
   const query = search.toString();
   return query ? `${path}?${query}` : path;
 };
+
+/** A chat's view. */
+export const chatHref = (projectId: string, chatId: string): string =>
+  `/chat/${encodeURIComponent(projectId)}/${encodeURIComponent(chatId)}`;

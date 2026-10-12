@@ -40,8 +40,11 @@ import type {
   ChecksView,
   CleanupItem,
   CleanupPlan,
+  ChatLookup,
   ChatStartRequest,
   ChatStartResult,
+  ChatSuggestions,
+  MakeTaskRequest,
   CleanupResult,
   ComposerCommand,
   ComposerSendRequest,
@@ -97,7 +100,23 @@ function setup(webDir?: string) {
           _id: string,
           _req: ChatStartRequest
         ): Promise<ChatStartResult> => ({
-          task: "tsk_1",
+          chat: "c_1",
+        })
+      ),
+      lookup: vi.fn((_id: string, _chat: string): ChatLookup => ({
+        adoptedBy: { n: 1, task: "tsk_1" },
+      })),
+      archive: vi.fn((_id: string, _chat: string) => {}),
+      brief: vi.fn(async (_id: string, _chat: string) => ({ brief: "Goal" })),
+      suggestions: vi.fn(
+        async (_id: string, _chat: string): Promise<ChatSuggestions> => ({
+          pullRequests: [],
+          tickets: ["APP-42"],
+        })
+      ),
+      makeTask: vi.fn(
+        async (_id: string, _chat: string, _body: MakeTaskRequest) => ({
+          task: "tsk_2",
         })
       ),
     },
@@ -148,7 +167,7 @@ function setup(webDir?: string) {
           _title?: string,
           _prompt?: string,
           _options?: { reviewOf?: number }
-        ) => "ses_1"
+        ) => ({ sessionId: "ses_1" })
       ),
       generateIn: vi.fn(
         async (
@@ -279,6 +298,22 @@ function setup(webDir?: string) {
       ),
       dismissStarting: vi.fn((_id: string, _task: string) => {}),
       archiveTask: vi.fn((_id: string, _task: string) => {}),
+      createDraft: vi.fn((_id: string, _b: Record<string, unknown>) => ({
+        task: "tsk_d",
+      })),
+      draftFromTicket: vi.fn((_id: string, _b: Record<string, unknown>) => ({
+        task: "tsk_j",
+      })),
+      editDraft: vi.fn(
+        (_id: string, _task: string, _b: Record<string, unknown>) => {}
+      ),
+      startDraft: vi.fn(
+        async (
+          _id: string,
+          task: string,
+          _b: Record<string, unknown>
+        ): Promise<TaskResult> => ({ task, variants: [] })
+      ),
       pickVariant: vi.fn(
         async (
           _id: string,
@@ -1779,7 +1814,7 @@ describe("dashboard API", () => {
       };
       const res = await post(app, "chat", body);
       expect(res.status).toBe(200);
-      expect(await res.json()).toStrictEqual({ task: "tsk_1" });
+      expect(await res.json()).toStrictEqual({ chat: "c_1" });
       expect(hub.chat.start).toHaveBeenCalledWith(project.id, body);
       expect(
         (
@@ -1792,6 +1827,70 @@ describe("dashboard API", () => {
       expect(
         (await post(app, "chat", { target: { kind: "elsewhere" } })).status
       ).toBe(400);
+    });
+
+    it("looks up, archives, briefs and makes a task of a chat", async () => {
+      const { app, hub } = setup();
+      const chat = `/api/projects/${project.id}/chats/c_1`;
+      expect(await (await app.request(chat)).json()).toStrictEqual({
+        adoptedBy: { n: 1, task: "tsk_1" },
+      });
+      expect(await (await app.request(`${chat}/brief`)).json()).toStrictEqual({
+        brief: "Goal",
+      });
+      expect(
+        await (await app.request(`${chat}/suggestions`)).json()
+      ).toStrictEqual({ pullRequests: [], tickets: ["APP-42"] });
+      expect((await post(app, "chats/c_1/archive", {})).status).toBe(200);
+      expect(hub.chat.archive).toHaveBeenCalledWith(project.id, "c_1");
+      const body = {
+        brief: "b",
+        spec: true,
+        title: "Dark mode",
+        variants: [{ agent: "plan" }],
+      };
+      const made = await post(app, "chats/c_1/task", body);
+      expect(await made.json()).toStrictEqual({ task: "tsk_2" });
+      expect(hub.chat.makeTask).toHaveBeenCalledWith(project.id, "c_1", body);
+      expect((await post(app, "chats/c_1/task", { title: "x" })).status).toBe(
+        400
+      );
+    });
+
+    it("creates, edits and starts drafts, and drafts from a ticket", async () => {
+      const { app, hub } = setup();
+      const draft = await post(app, "drafts", { prompt: "", title: "Later" });
+      expect(await draft.json()).toStrictEqual({ task: "tsk_d" });
+      const jira = {
+        description: "d",
+        instanceUrl: "https://jira.example",
+        key: "APP-42",
+        title: "Dark mode",
+      };
+      expect(
+        await (await post(app, "drafts/ticket", { jira })).json()
+      ).toStrictEqual({ task: "tsk_j" });
+      expect(hub.tasks.draftFromTicket).toHaveBeenCalledWith(project.id, {
+        jira,
+      });
+      expect((await post(app, "drafts/ticket", {})).status).toBe(400);
+      const edit = await app.request(
+        `/api/projects/${project.id}/tasks/tsk_d/draft`,
+        {
+          body: JSON.stringify({ prompt: "p" }),
+          headers: { "content-type": "application/json" },
+          method: "PUT",
+        }
+      );
+      expect(edit.status).toBe(200);
+      expect(hub.tasks.editDraft).toHaveBeenCalledWith(project.id, "tsk_d", {
+        prompt: "p",
+      });
+      const started = await post(app, "tasks/tsk_d/start", { prompt: "p" });
+      expect(await started.json()).toStrictEqual({
+        task: "tsk_d",
+        variants: [],
+      });
     });
 
     it("prompts a session, starts one with a prompt, and removes a worktree with its branch", async () => {

@@ -3,7 +3,7 @@ import type {
   PendingPermission,
   SessionSummary,
 } from "./types";
-import { taskHref } from "./urls";
+import { chatHref, taskHref } from "./urls";
 
 /** Something worth a notification, computed on the server and delivered by Web Push. */
 export interface Notice {
@@ -11,7 +11,7 @@ export interface Notice {
   tag: string;
   title: string;
   body: string;
-  /** Dashboard path: the session's task, else /p/<projectId>?session=<sessionId> until it has one. */
+  /** Dashboard path: the session's task, else its chat, else /p/<projectId>?session=<sessionId> until it has one. */
   url: string;
   projectId: string;
   sessionId: string;
@@ -34,6 +34,17 @@ export const pendingSummary = (session: SessionSummary): string | undefined => {
   }
   const f = session.pending?.forms[0];
   return f ? `asks: ${f.title}` : undefined;
+};
+
+/** Where a notice about a session takes the user: its task, its chat, or its project until it has either. */
+const noticeUrl = (projectId: string, s: SessionSummary): string => {
+  if (s.task) {
+    return taskHref(projectId, s.task.id, { v: s.task.n });
+  }
+  if (s.chat) {
+    return chatHref(projectId, s.chat);
+  }
+  return `/p/${encodeURIComponent(projectId)}?session=${encodeURIComponent(s.id)}`;
 };
 
 /** One notice per permission or question that wasn't pending before, and per root session that finished. */
@@ -66,9 +77,7 @@ export const diffForNotifications = (
         body: s.title,
         projectId: view.project.id,
         sessionId: s.id,
-        url: s.task
-          ? taskHref(view.project.id, s.task.id, { v: s.task.n })
-          : `/p/${encodeURIComponent(view.project.id)}?session=${encodeURIComponent(s.id)}`,
+        url: noticeUrl(view.project.id, s),
       };
       for (const p of s.pending?.permissions ?? []) {
         const tag = `perm:${p.id}`;

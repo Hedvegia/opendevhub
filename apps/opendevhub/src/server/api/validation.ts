@@ -211,6 +211,29 @@ export const bodies = {
     variants: variants.optional(),
   }),
   pick: z.object({ sessionId: text, removeWorktrees: actionFlag }),
+  draftFromTicket: z.object({
+    jira: z.object({
+      key: z.string(),
+      instanceUrl: z.string(),
+      title: z.string(),
+      description: z.string(),
+    }),
+  }),
+  makeTask: z.object({
+    title: z.string().max(200),
+    brief: z.string().max(100_000),
+    ticket: z
+      .object({
+        key: z.string(),
+        instanceUrl: z.string(),
+        title: z.string(),
+        description: z.string(),
+      })
+      .optional(),
+    pullRequest: z.string().max(2000).optional(),
+    spec: flag,
+    variants: variants.max(8).optional(),
+  }),
   permission: z.object({
     decision: z.enum(["once", "always", "reject"]),
     message: text,

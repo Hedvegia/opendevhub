@@ -431,7 +431,7 @@ describe("review", () => {
     await expect(
       hub.sessions.promptSession(project.id, "ses_idle", "  ")
     ).rejects.toThrow(InvalidRequestError);
-    const sid = await hub.sessions.startSession(
+    const { sessionId: sid } = await hub.sessions.startSession(
       project.id,
       wt,
       "Review",
