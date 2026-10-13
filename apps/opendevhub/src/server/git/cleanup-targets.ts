@@ -196,7 +196,10 @@ export class CleanupTargets {
       ...(worktrees ? { worktrees } : {}),
       discarded: (id) =>
         this.deps.tasks.bySession(id)?.variant.discarded === true,
-      archived: (id) => this.deps.tasks.isSessionArchived(id),
+      archived: (id) =>
+        this.deps.tasks.isSessionArchived(id) ||
+        this.deps.tasks.bySession(id)?.task.archivedAt !== undefined ||
+        this.deps.chats.bySession(id)?.archivedAt !== undefined,
       now: (this.deps.now ?? Date.now)(),
     });
   }

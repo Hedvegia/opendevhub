@@ -928,6 +928,19 @@ export class TaskStore {
     });
   }
 
+  /** Conversations still present for an archived task, including earlier tabs. */
+  liveSessionIds(taskId: string): string[] {
+    const rows = this.db
+      .prepare(`
+      SELECT session_id FROM variants WHERE task_id = ? AND session_id IS NOT NULL AND session_removed_at IS NULL
+      UNION
+      SELECT s.session_id FROM task_sessions s JOIN variants v ON v.task_id = s.task_id AND v.n = s.n
+      WHERE s.task_id = ? AND v.session_removed_at IS NULL
+    `)
+      .all(taskId, taskId) as { session_id: string }[];
+    return rows.map((row) => row.session_id);
+  }
+
   /**
    * On start: a variant still being set up lost the job that was setting it up. Marks each failed, and returns
    * how many.

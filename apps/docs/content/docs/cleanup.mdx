@@ -7,7 +7,8 @@ icon: Eraser
 Open **Settings → Cleanup** to scan every project and see what can go, with the reason:
 
 - **Branches & worktrees.** Local branches merged into their base (the base recorded when opendevhub created the branch, else the remote's default branch), checked. Branches whose upstream was deleted on the remote, which is what a squash merge on GitHub or Forgejo leaves, unchecked: "gone" can also mean deleted without merging. A branch's worktree and the worktree's own container go with it. A worktree with uncommitted changes is listed unchecked, with a warning.
-- **Sessions**: task variants you discarded with "Pick this one", and sessions whose worktree was removed, checked. Sessions not touched in 30 days (counting their subagents), unchecked. A session that's running or waiting on you is never listed. A session is deleted in opencode with its subagents; what it cost stays in Usage.
+- **Sessions**: archived chats and task conversations, task variants you discarded with "Pick this one", and sessions whose worktree was removed, checked. Sessions not touched in 30 days (counting their subagents), unchecked. A session that's running or waiting on you is never listed. A session is deleted in opencode with its subagents; what it cost stays in Usage.
+- **Archived chats and tasks**: their records appear as soon as you archive them. Select them to delete the records permanently. If a conversation is still present, select its session for cleanup too; the record is deleted after the conversation.
 - **Containers** opendevhub labelled but no longer tracks: a task container without its record, or a container of a project you removed. Running ones are unchecked.
 - **Images**: old base images left by changes to a project's devcontainer config, images of removed projects, and the per-container UID images of removed task containers. Images built in the last 15 minutes are never listed.
 

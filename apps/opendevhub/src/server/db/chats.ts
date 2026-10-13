@@ -300,6 +300,43 @@ export class ChatStore {
     });
   }
 
+  /** Archived chats for cleanup, including chats whose session is already gone. */
+  listArchivedForProject(projectId: ProjectId): ChatRecord[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT * FROM chats WHERE project_id = ? AND archived_at IS NOT NULL AND adopted_task IS NULL ORDER BY archived_at DESC, id DESC"
+        )
+        .all(projectId) as unknown as RawChat[]
+    ).map(toChat);
+  }
+
+  /** Deletes an archived chat record after its conversation has been removed. */
+  deleteArchived(
+    id: string,
+    actor: Actor = USER,
+    removedSessionId?: string
+  ): boolean {
+    const at = this.now();
+    return this.write(() => {
+      const chat = this.raw(id);
+      if (
+        !chat ||
+        chat.archived_at === null ||
+        (chat.session_id &&
+          chat.session_removed_at === null &&
+          chat.session_id !== removedSessionId)
+      ) {
+        return false;
+      }
+      this.db.prepare("DELETE FROM chats WHERE id = ?").run(id);
+      this.event(at, actor, "chat.deleted", chat.project_id, id, {
+        title: chat.title,
+      });
+      return true;
+    });
+  }
+
   /**
    * On start: a chat still being set up lost the job that was setting it up. Marks each failed, and returns how
    * many.

@@ -77,6 +77,7 @@ export const EVENT_TEXT: Record<EventVerb, (e: ActivityEvent) => string> = {
   "chat.adopted": (e) =>
     `${actorLabel(e.actor)} made ${task(e)} from ${chatOf(e)}`,
   "chat.archived": (e) => `${actorLabel(e.actor)} archived ${chatOf(e)}`,
+  "chat.deleted": (e) => `${actorLabel(e.actor)} deleted ${chatOf(e)}`,
   "chat.discovered": (e) =>
     `opendevhub found ${chatOf(e)}, started in opencode`,
   "chat.removed": (e) => `The conversation of ${chatOf(e)} is gone`,

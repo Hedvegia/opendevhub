@@ -1256,6 +1256,30 @@ export interface TaskCleanupItem {
   lastActivity: number;
 }
 
+/** An archived chat record that cleanup may permanently delete. */
+export interface ChatCleanupItem {
+  id: string;
+  kind: "chat";
+  checked: boolean;
+  reason: string;
+  projectId: ProjectId;
+  chatId: string;
+  title: string;
+  archivedAt: number;
+}
+
+/** An archived task record that cleanup may permanently delete. */
+export interface ArchivedTaskCleanupItem {
+  id: string;
+  kind: "archived-task";
+  checked: boolean;
+  reason: string;
+  projectId: ProjectId;
+  taskId: string;
+  title: string;
+  archivedAt: number;
+}
+
 /** The stored AI reviews of a closed or merged pull request, none of them recent. */
 export interface ReviewCleanupItem {
   /** `review:<pullRequestId>`. */
@@ -1275,6 +1299,8 @@ export interface ReviewCleanupItem {
 
 export type CleanupItem =
   | BranchCleanupItem
+  | ChatCleanupItem
+  | ArchivedTaskCleanupItem
   | ContainerCleanupItem
   | ImageCleanupItem
   | SessionCleanupItem

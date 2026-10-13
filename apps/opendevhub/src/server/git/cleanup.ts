@@ -1,5 +1,7 @@
 import type {
   BranchCleanupItem,
+  ArchivedTaskCleanupItem,
+  ChatCleanupItem,
   CleanupItem,
   CleanupOutcome,
   CleanupPlan,
@@ -15,6 +17,7 @@ import type {
   TaskCleanupItem,
   Worktree,
 } from "../../shared/types";
+import type { ChatStore } from "../db/chats";
 import { USER } from "../db/events";
 import type { LinkStore } from "../db/links";
 import type { TaskStore } from "../db/tasks";
@@ -368,7 +371,7 @@ export const staleSessions = (
       continue;
     }
     const reasons = {
-      archived: "closed task conversation",
+      archived: "archived conversation",
       discarded: "discarded task variant",
       idle: `idle for ${idleDays} days`,
       "worktree-gone": "its worktree was removed",
@@ -461,8 +464,15 @@ export interface CleanupDeps {
   /** Ended tasks to offer for archiving; none are offered without it. */
   tasks?: Pick<
     TaskStore,
-    "listForProject" | "lastActivity" | "get" | "archive"
+    | "listForProject"
+    | "listArchivedForProject"
+    | "lastActivity"
+    | "get"
+    | "archive"
+    | "deleteArchived"
+    | "liveSessionIds"
   >;
+  chats?: Pick<ChatStore, "listArchivedForProject" | "get" | "deleteArchived">;
   /** Stored AI reviews to offer for deletion; none are offered without it. */
   reviews?: Pick<LinkStore, "staleReviews" | "deleteStaleReviews">;
   /** Writes a line to a project's log. */
@@ -569,6 +579,14 @@ export class Cleanup {
         }
       }
       for (const item of items) {
+        if (item.kind === "chat") {
+          results.push({ id: item.id, ...this.deleteChat(item, results) });
+        }
+        if (item.kind === "archived-task") {
+          results.push({ id: item.id, ...this.deleteTask(item, results) });
+        }
+      }
+      for (const item of items) {
         if (item.kind === "review") {
           results.push({ id: item.id, ...this.deleteReviews(item) });
         }
@@ -587,6 +605,38 @@ export class Cleanup {
     const items: CleanupItem[] = this.deps.tasks
       ? staleTasks(p.id, this.deps.tasks, this.now())
       : [];
+    if (this.deps.tasks) {
+      items.push(
+        ...this.deps.tasks
+          .listArchivedForProject(p.id)
+          .map((task): ArchivedTaskCleanupItem => ({
+            id: `archived-task:${p.id}:${task.id}`,
+            kind: "archived-task",
+            checked: true,
+            reason: "archived task record",
+            projectId: p.id,
+            taskId: task.id,
+            title: task.title,
+            archivedAt: task.archivedAt,
+          }))
+      );
+    }
+    if (this.deps.chats) {
+      items.push(
+        ...this.deps.chats
+          .listArchivedForProject(p.id)
+          .map((chat): ChatCleanupItem => ({
+            id: `chat:${p.id}:${chat.id}`,
+            kind: "chat",
+            checked: true,
+            reason: "archived chat record",
+            projectId: p.id,
+            chatId: chat.id,
+            title: chat.title,
+            archivedAt: chat.archivedAt ?? 0,
+          }))
+      );
+    }
     if (this.deps.store.runtime(p.id).containerState !== "running") {
       return { items, summary: { ...summary, skipped: "not running" } };
     }
@@ -693,6 +743,79 @@ export class Cleanup {
       this.deps.tasks?.archive(item.taskId, USER);
       this.deps.log(item.projectId, `cleanup: archived task ${task.title}`);
       return { message: "archived", outcome: "removed" };
+    } catch (error) {
+      return { message: message(error), outcome: "failed" };
+    }
+  }
+
+  private deleteChat(
+    item: ChatCleanupItem,
+    results: CleanupResult["results"]
+  ): CleanupOutcome {
+    const chat = this.deps.chats?.get(item.chatId);
+    if (
+      !chat ||
+      chat.projectId !== item.projectId ||
+      chat.archivedAt === undefined
+    ) {
+      return { message: "no longer an archived chat", outcome: "skipped" };
+    }
+    const removed = results.some(
+      (result) =>
+        result.id === `session:${item.projectId}:${chat.sessionId}` &&
+        result.outcome === "removed"
+    );
+    if (chat.sessionId && !chat.sessionRemoved && !removed) {
+      return { message: "delete its conversation first", outcome: "skipped" };
+    }
+    try {
+      if (
+        !this.deps.chats?.deleteArchived(
+          item.chatId,
+          USER,
+          removed ? chat.sessionId : undefined
+        )
+      ) {
+        return { message: "changed since scan", outcome: "skipped" };
+      }
+      this.deps.log(item.projectId, `cleanup: deleted chat ${chat.title}`);
+      return { message: "deleted", outcome: "removed" };
+    } catch (error) {
+      return { message: message(error), outcome: "failed" };
+    }
+  }
+
+  private deleteTask(
+    item: ArchivedTaskCleanupItem,
+    results: CleanupResult["results"]
+  ): CleanupOutcome {
+    const task = this.deps.tasks?.get(item.taskId);
+    if (
+      !task ||
+      task.projectId !== item.projectId ||
+      task.archivedAt === undefined
+    ) {
+      return { message: "no longer an archived task", outcome: "skipped" };
+    }
+    const live = this.deps.tasks?.liveSessionIds(item.taskId) ?? [];
+    if (
+      live.some(
+        (id) =>
+          !results.some(
+            (result) =>
+              result.id === `session:${item.projectId}:${id}` &&
+              result.outcome === "removed"
+          )
+      )
+    ) {
+      return { message: "delete its conversations first", outcome: "skipped" };
+    }
+    try {
+      if (!this.deps.tasks?.deleteArchived(item.taskId, USER)) {
+        return { message: "changed since scan", outcome: "skipped" };
+      }
+      this.deps.log(item.projectId, `cleanup: deleted task ${task.title}`);
+      return { message: "deleted", outcome: "removed" };
     } catch (error) {
       return { message: message(error), outcome: "failed" };
     }
@@ -845,6 +968,33 @@ export const parseCleanupItems = (value: unknown): CleanupItem[] => {
         reason: "",
         taskId,
         title: "",
+      };
+    }
+    if (o.kind === "chat" || o.kind === "archived-task") {
+      const projectId = field(o, "projectId");
+      if (o.kind === "chat") {
+        const chatId = field(o, "chatId");
+        return {
+          id: `chat:${projectId}:${chatId}`,
+          kind: "chat",
+          checked: true,
+          reason: "",
+          projectId,
+          chatId,
+          title: "",
+          archivedAt: 0,
+        };
+      }
+      const taskId = field(o, "taskId");
+      return {
+        id: `archived-task:${projectId}:${taskId}`,
+        kind: "archived-task",
+        checked: true,
+        reason: "",
+        projectId,
+        taskId,
+        title: "",
+        archivedAt: 0,
       };
     }
     if (o.kind === "review") {

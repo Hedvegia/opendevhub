@@ -371,6 +371,7 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
   });
   const cleanup = new Cleanup({
     branches: hub.cleanupTargets,
+    chats,
     containers,
     log: (id, line) => hub.environments.note(id, line),
     reviews: links,

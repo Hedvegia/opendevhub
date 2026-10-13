@@ -615,36 +615,38 @@ const TasksCard = ({ view }: { view: ProjectView }) => {
       title="Tasks"
       hint={tasks.filter((t) => inView(t, "open")).length}
       attention={waiting > 0}
-    >
-      <div className="flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
-        <div className="max-w-full [scrollbar-width:none] overflow-x-auto">
-          <Segmented
-            label="State"
-            value={filter}
-            onChange={(id) => set("tasks", id === "open" ? "" : id)}
-            options={TASK_VIEWS.map((o) => ({
-              id: o.id,
-              label: (
-                <>
-                  {o.label}{" "}
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {o.id === "archived"
-                      ? archivedShown.length
-                      : searched.filter((t) => inView(t, o.id)).length}
-                  </span>
-                </>
-              ),
-            }))}
+      action={
+        <div className="flex min-w-0 items-center justify-end gap-2.5 max-md:flex-wrap">
+          <div className="max-w-full min-w-0 [scrollbar-width:none] overflow-x-auto max-md:w-full">
+            <Segmented
+              label="State"
+              value={filter}
+              onChange={(id) => set("tasks", id === "open" ? "" : id)}
+              options={TASK_VIEWS.map((o) => ({
+                id: o.id,
+                label: (
+                  <>
+                    {o.label}{" "}
+                    <span className="text-muted-foreground text-xs tabular-nums">
+                      {o.id === "archived"
+                        ? archivedShown.length
+                        : searched.filter((t) => inView(t, o.id)).length}
+                    </span>
+                  </>
+                ),
+              }))}
+            />
+          </div>
+          <Input
+            className="h-8 w-48 shrink-0 max-md:w-full"
+            placeholder="Search tasks…"
+            aria-label="Search tasks"
+            value={q}
+            onChange={(e) => set("q", e.target.value)}
           />
         </div>
-        <Input
-          className="h-8 w-48 max-md:w-full md:ml-auto"
-          placeholder="Search tasks…"
-          aria-label="Search tasks"
-          value={q}
-          onChange={(e) => set("q", e.target.value)}
-        />
-      </div>
+      }
+    >
       {body}
     </Section>
   );

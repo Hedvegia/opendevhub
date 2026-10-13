@@ -21,6 +21,7 @@ export const EVENT_VERBS = [
   "chat.discovered",
   "chat.removed",
   "chat.archived",
+  "chat.deleted",
   "chat.adopted",
   "branch.created",
   "branch.published",

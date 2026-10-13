@@ -145,7 +145,7 @@ export const CleanupSettings = () => {
   const header = (
     <SettingsHeader
       title="Cleanup"
-      description="Merged branches with their worktrees, stale conversations, containers opendevhub no longer needs, and unused images. Nothing is removed until you confirm."
+      description="Merged branches, archived chats and tasks, stale conversations, containers, and unused images. Nothing is removed until you confirm."
       action={
         <div className="flex flex-wrap items-center gap-2">
           {plan && (
@@ -187,6 +187,8 @@ export const CleanupSettings = () => {
   const images = plan.items.filter((i) => i.kind === "image");
   const sessions = plan.items.filter((i) => i.kind === "session");
   const tasks = plan.items.filter((i) => i.kind === "task");
+  const archivedChats = plan.items.filter((i) => i.kind === "chat");
+  const archivedTasks = plan.items.filter((i) => i.kind === "archived-task");
   const reviews = plan.items.filter((i) => i.kind === "review");
   const projectName = (id: string) =>
     plan.projects.find((p) => p.id === id)?.name ?? id;
@@ -305,7 +307,7 @@ export const CleanupSettings = () => {
 
           <Section
             title="Conversations"
-            hint="discarded task variants, conversations of removed worktrees, and ones idle for 30 days"
+            hint="archived conversations, discarded task variants, conversations of removed worktrees, and ones idle for 30 days"
             action={selectAll("session")}
           >
             {sessions.length === 0 && (
@@ -352,6 +354,58 @@ export const CleanupSettings = () => {
                 <Chip variant="secondary">{item.reason}</Chip>
                 <span className="text-muted-foreground ml-auto text-xs whitespace-nowrap">
                   {relativeTime(item.lastActivity, now)}
+                </span>
+              </Row>
+            ))}
+          </Section>
+
+          <Section
+            title="Archived chats"
+            hint="permanently delete archived chat records after their conversations are removed"
+            action={selectAll("chat")}
+          >
+            {archivedChats.length === 0 && (
+              <p className={cn(muted, "px-4 py-2")}>Nothing to clean up.</p>
+            )}
+            {archivedChats.map((item) => (
+              <Row
+                key={item.id}
+                item={item}
+                selected={selected.has(item.id)}
+                onToggle={(on) => toggle(item.id, on)}
+                result={results.get(item.id)}
+              >
+                <span className="truncate text-sm">{item.title}</span>
+                <span className={muted}>{projectName(item.projectId)}</span>
+                <Chip variant="secondary">{item.reason}</Chip>
+                <span className="text-muted-foreground ml-auto text-xs whitespace-nowrap">
+                  {relativeTime(item.archivedAt, now)}
+                </span>
+              </Row>
+            ))}
+          </Section>
+
+          <Section
+            title="Archived tasks"
+            hint="permanently delete archived task records after their conversations are removed"
+            action={selectAll("archived-task")}
+          >
+            {archivedTasks.length === 0 && (
+              <p className={cn(muted, "px-4 py-2")}>Nothing to clean up.</p>
+            )}
+            {archivedTasks.map((item) => (
+              <Row
+                key={item.id}
+                item={item}
+                selected={selected.has(item.id)}
+                onToggle={(on) => toggle(item.id, on)}
+                result={results.get(item.id)}
+              >
+                <span className="truncate text-sm">{item.title}</span>
+                <span className={muted}>{projectName(item.projectId)}</span>
+                <Chip variant="secondary">{item.reason}</Chip>
+                <span className="text-muted-foreground ml-auto text-xs whitespace-nowrap">
+                  {relativeTime(item.archivedAt, now)}
                 </span>
               </Row>
             ))}

@@ -505,12 +505,14 @@ function service(
     store,
     containers,
     branches,
+    chats: dbs.chats,
     tasks: dbs.tasks,
     reviews: dbs.links,
     log,
     now: () => NOW,
   });
   return {
+    chats: dbs.chats,
     links: dbs.links,
     cleanup,
     containers,
@@ -865,6 +867,123 @@ describe("ended tasks", () => {
   });
 });
 
+describe("archived records", () => {
+  it("offers archived chats and tasks even when the project is stopped, and deletes selected records", async () => {
+    const s = service({ running: false });
+    const chat = s.chats.insert({
+      createdAt: NOW,
+      origin: "hub",
+      projectId: project.id,
+      step: "failed",
+      title: "Old chat",
+    });
+    s.chats.archive(chat.id);
+    s.tasks.createTask({
+      createdAt: NOW,
+      id: "tsk_archived",
+      projectId: project.id,
+      prompt: "old",
+      title: "Old task",
+      variants: [],
+    });
+    s.tasks.archive("tsk_archived");
+    const plan = await s.cleanup.scan();
+    const records = plan.items.filter(
+      (item) => item.kind === "chat" || item.kind === "archived-task"
+    );
+    expect(
+      records.map((item) => [item.kind, item.checked, item.title])
+    ).toStrictEqual([
+      ["archived-task", true, "Old task"],
+      ["chat", true, "Old chat"],
+    ]);
+    const result = await s.cleanup.apply(records);
+    expect(result.results.map((item) => item.outcome)).toStrictEqual([
+      "removed",
+      "removed",
+    ]);
+    expect(s.chats.get(chat.id)).toBeUndefined();
+    expect(s.tasks.get("tsk_archived")).toBeUndefined();
+  });
+
+  it("keeps an archived chat until its selected conversation is removed", async () => {
+    const s = service();
+    const chat = s.chats.insert({
+      createdAt: NOW,
+      directory: "/w",
+      envId: project.id,
+      origin: "hub",
+      projectId: project.id,
+      sessionId: "ses_d",
+      step: "session",
+      title: "Old chat",
+    });
+    s.chats.archive(chat.id);
+    const record = (await s.cleanup.scan()).items.find(
+      (item) => item.kind === "chat"
+    );
+    expect(record).toBeDefined();
+    if (!record) {
+      return;
+    }
+    expect((await s.cleanup.apply([record])).results[0].outcome).toBe(
+      "skipped"
+    );
+    expect(s.chats.get(chat.id)).toBeDefined();
+    const result = await s.cleanup.apply([sessionItem, record]);
+    expect(result.results.map((item) => item.outcome)).toStrictEqual([
+      "removed",
+      "removed",
+    ]);
+    expect(s.chats.get(chat.id)).toBeUndefined();
+  });
+
+  it("keeps an archived task until its selected conversation is removed", async () => {
+    const s = service();
+    s.tasks.createTask({
+      createdAt: NOW,
+      id: "tsk_live",
+      projectId: project.id,
+      prompt: "old",
+      title: "Old task",
+      variants: [{}],
+    });
+    s.tasks.attachSession(
+      "tsk_live",
+      1,
+      { directory: "/w", envId: project.id, sessionId: "ses_d" },
+      SYSTEM
+    );
+    s.tasks.archive("tsk_live");
+    const record = (await s.cleanup.scan()).items.find(
+      (item) => item.kind === "archived-task"
+    );
+    expect(record).toBeDefined();
+    if (!record) {
+      return;
+    }
+    expect((await s.cleanup.apply([record])).results[0].outcome).toBe(
+      "skipped"
+    );
+    expect(s.tasks.get("tsk_live")).toBeDefined();
+    const result = await s.cleanup.apply([sessionItem, record]);
+    expect(result.results.map((item) => item.outcome)).toStrictEqual([
+      "removed",
+      "removed",
+    ]);
+    expect(s.tasks.get("tsk_live")).toBeUndefined();
+  });
+
+  it("parses archived record identities", () => {
+    expect(
+      parseCleanupItems([
+        { kind: "chat", projectId: "demo", chatId: "c_1", title: "forged" },
+        { kind: "archived-task", projectId: "demo", taskId: "tsk_1" },
+      ]).map((item) => item.id)
+    ).toStrictEqual(["chat:demo:c_1", "archived-task:demo:tsk_1"]);
+  });
+});
+
 describe("stale reviews", () => {
   const DAY_MS = 24 * 60 * 60_000;
   const reviewed = (
@@ -1091,7 +1210,7 @@ describe(staleSessions, () => {
     expect(items).toMatchObject([
       {
         checked: true,
-        reason: "closed task conversation",
+        reason: "archived conversation",
         sessionId: "ses_closed",
         why: "archived",
       },

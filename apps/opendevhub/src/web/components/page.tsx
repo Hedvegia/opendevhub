@@ -66,7 +66,7 @@ export const Section = (props: {
   >
     <div
       className={cn(
-        "flex items-baseline gap-3 border-b px-4 py-3",
+        "flex flex-wrap items-center gap-3 border-b px-4 py-3",
         props.attention && "bg-attention/5"
       )}
     >
@@ -76,7 +76,9 @@ export const Section = (props: {
       {props.hint && (
         <span className="text-muted-foreground text-sm">{props.hint}</span>
       )}
-      {props.action && <div className="ml-auto">{props.action}</div>}
+      {props.action && (
+        <div className="ml-auto min-w-0 max-md:basis-full">{props.action}</div>
+      )}
     </div>
     {props.children}
   </Card>
