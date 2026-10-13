@@ -186,13 +186,14 @@ const ProjectSettingsPanel = ({ view }: { view: ProjectView }) => {
                   const Icon = section.icon;
                   const active = section.id === current?.id;
                   return (
-                    <button
+                    <Button
                       key={section.id}
                       type="button"
+                      variant="ghost"
                       aria-current={active ? "page" : undefined}
                       onClick={() => setSelected(section.id)}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
+                        "h-auto w-full justify-start gap-2.5 rounded-md px-2.5 py-1.5 text-left",
                         active
                           ? "bg-accent text-foreground font-medium"
                           : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
@@ -202,7 +203,7 @@ const ProjectSettingsPanel = ({ view }: { view: ProjectView }) => {
                       <span className="flex-1 truncate" title={section.label}>
                         {section.label}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>

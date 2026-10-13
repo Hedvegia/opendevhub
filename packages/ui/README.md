@@ -11,3 +11,5 @@ import "@opendevhub/ui/styles.css";
 ```
 
 The package exports TypeScript source for workspace consumers. The consuming app needs a bundler that handles TSX and Tailwind CSS v4. Use `components.json` from this directory when adding shadcn components. Keep imports inside the package relative so consumers do not need the package's `@/` alias.
+
+Run the package's Storybook with `pnpm storybook:ui` from the repository root. It serves the UI stories on port 6007. Run `pnpm build-storybook:ui` to verify the standalone build. Place new stories next to their components as `*.stories.tsx`.

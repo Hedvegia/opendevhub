@@ -101,9 +101,10 @@ const PresetRow = <F,>({
   }
   return (
     <li className="group flex items-center gap-1">
-      <button
+      <Button
         type="button"
-        className="hover:bg-accent hover:text-accent-foreground flex min-w-0 flex-1 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm"
+        variant="ghost"
+        className="text-foreground h-auto min-w-0 flex-1 justify-start rounded-sm px-2 py-1.5 text-left"
         onClick={onApply}
       >
         <CheckIcon
@@ -112,7 +113,7 @@ const PresetRow = <F,>({
         />
         <span className="truncate">{preset.name}</span>
         {active && <span className="sr-only">(current)</span>}
-      </button>
+      </Button>
       {!active && (
         <Tip label="Replace with the current filters">
           <Button

@@ -81,6 +81,7 @@ import { newTaskShortcut } from "../features/tasks/tasks";
 import { Link, useIsActive, useNavigate, useSearchParams } from "../routing";
 import { CommandPalette } from "./command-palette";
 import { CurrentProjectProvider, useCurrentProject } from "./current-project";
+import { DesktopSidebar } from "./desktop-sidebar";
 import { Logo } from "./logo";
 import { RightSidebarHost } from "./right-sidebar";
 
@@ -507,7 +508,10 @@ export const Shell = () => {
   return (
     <SidebarProvider>
       <CurrentProjectProvider>
-        <AppSidebar />
+        <div className="md:hidden">
+          <AppSidebar />
+        </div>
+        <DesktopSidebar />
         <RightSidebarHost>
           <SidebarInset className="min-w-0">
             <MobileBar onSearch={() => setPalette(true)} />

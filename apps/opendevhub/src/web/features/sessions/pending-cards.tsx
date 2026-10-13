@@ -283,9 +283,14 @@ const PermissionCard = (props: {
         </form>
       ) : (
         <div className={ACTIONS}>
-          <Button size="sm" disabled={busy} onClick={() => reply("once")}>
+          <Button
+            size="sm"
+            variant="attention"
+            disabled={busy}
+            onClick={() => reply("once")}
+          >
             Allow once{" "}
-            <Kbd className="bg-primary-foreground/15 text-primary-foreground">
+            <Kbd className="bg-attention-foreground/15 text-attention-foreground">
               ↵
             </Kbd>
           </Button>

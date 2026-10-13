@@ -1,4 +1,5 @@
 import { DifferenceMode, OnionSkinMode, SwipeMode } from "@blazediff/react";
+import { Button } from "@opendevhub/ui/button";
 import { Card } from "@opendevhub/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@opendevhub/ui/toggle-group";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
@@ -246,9 +247,10 @@ export const ImageDiff = (props: {
           !collapsed && "border-b"
         )}
       >
-        <button
+        <Button
           type="button"
-          className="text-muted-foreground hover:text-foreground flex min-w-0 items-center gap-2 text-left"
+          variant="ghost"
+          className="h-auto min-w-0 justify-start p-0 text-left hover:bg-transparent"
           onClick={() => setCollapsed((c) => !c)}
           aria-expanded={!collapsed}
           title={collapsed ? "Show image" : "Hide image"}
@@ -261,7 +263,7 @@ export const ImageDiff = (props: {
           <span className="text-foreground min-w-0 truncate font-mono text-sm">
             {file.file}
           </span>
-        </button>
+        </Button>
         <span className="text-muted-foreground ml-auto text-xs whitespace-nowrap">
           {file.status} image
         </span>

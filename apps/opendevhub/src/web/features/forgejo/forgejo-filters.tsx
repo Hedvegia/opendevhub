@@ -385,14 +385,16 @@ export const ActiveFilters = ({
             {filter.label}:{" "}
             <span className="text-foreground">{filter.value}</span>
           </span>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             aria-label={`Remove ${filter.label.toLowerCase()} filter ${filter.value}`}
-            className="hover:bg-background hover:text-foreground rounded-sm p-0.5"
+            className="hover:bg-background hover:text-foreground size-4 rounded-sm p-0"
             onClick={() => onRemove(filter)}
           >
             <XIcon className="size-3" />
-          </button>
+          </Button>
         </Chip>
       ))}
       {active.length > 1 && (

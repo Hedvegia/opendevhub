@@ -98,17 +98,19 @@ const PortList = ({
           {ports.map((port) => (
             <Chip key={port} className="gap-1 font-mono">
               {port}
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 aria-label={removeLabel(port)}
-                className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                className="text-muted-foreground hover:text-foreground size-4 hover:bg-transparent"
                 disabled={saving}
                 onClick={() =>
                   saveMutation.mutate(ports.filter((p) => p !== port))
                 }
               >
                 <XIcon className="size-3" />
-              </button>
+              </Button>
             </Chip>
           ))}
           <form className="flex items-center gap-2" onSubmit={add}>
@@ -202,13 +204,15 @@ export const HostPortsSettings = ({ projectId }: { projectId: string }) => (
             </div>
           }
         >
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             aria-label="Host ports container access warning"
-            className="text-warn focus-visible:outline-ring rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
+            className="text-warn hover:text-warn size-4 rounded-sm hover:bg-transparent"
           >
             <TriangleAlertIcon className="size-4" />
-          </button>
+          </Button>
         </Tip>
       </>
     }

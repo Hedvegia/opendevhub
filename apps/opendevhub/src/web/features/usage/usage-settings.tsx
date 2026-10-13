@@ -272,13 +272,15 @@ const DaysTable = (props: {
             data-state={d.day === props.selected ? "selected" : undefined}
           >
             <TableCell>
-              <button
+              <Button
                 type="button"
-                className="hover:underline"
+                variant="link"
+                size="xs"
+                className="text-foreground h-auto p-0 font-normal"
                 onClick={() => props.onSelect(d.day)}
               >
                 {dayLabel(d.day)}
-              </button>
+              </Button>
             </TableCell>
             <TableCell className="text-right tabular-nums">
               {formatCost(d.cost)}

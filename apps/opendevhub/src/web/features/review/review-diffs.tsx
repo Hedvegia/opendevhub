@@ -534,9 +534,11 @@ const FileDiff = (props: FileDiffProps) => {
     }
   );
   const toggle = useStableCallback(() => (
-    <button
+    <Button
       type="button"
-      className="text-muted-foreground hover:text-foreground inline-flex items-center pr-1"
+      variant="ghost"
+      size="icon-xs"
+      className="h-auto w-auto p-0 pr-1 hover:bg-transparent"
       onClick={() => setCollapsed((c) => !c)}
       aria-expanded={!collapsed}
       title={collapsed ? "Show diff" : "Hide diff"}
@@ -546,7 +548,7 @@ const FileDiff = (props: FileDiffProps) => {
       ) : (
         <ChevronDownIcon className="size-3.5" />
       )}
-    </button>
+    </Button>
   ));
 
   // A collapsed diff shows only its header: @pierre/diffs parses and highlights the whole patch even when

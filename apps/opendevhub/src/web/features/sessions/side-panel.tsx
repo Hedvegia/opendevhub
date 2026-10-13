@@ -484,13 +484,15 @@ const TurnItem = (props: {
             {turn.prompt || "(empty prompt)"}
           </p>
           {long && (
-            <button
+            <Button
               type="button"
-              className="text-muted-foreground hover:text-foreground self-start text-xs"
+              variant="ghost"
+              size="xs"
+              className="h-auto self-start p-0 hover:bg-transparent"
               onClick={() => setWhole((w) => !w)}
             >
               {whole ? "Show less" : "Show the whole prompt"}
-            </button>
+            </Button>
           )}
         </div>
         <When
