@@ -29,8 +29,16 @@ export const Conversation = meta.story({
     const transcript = canvas.getByRole("region", {
       name: "Conversation transcript",
     });
+    await canvas.findByText(
+      "Registered the limiter on POST /login. Running the rate-limit tests next."
+    );
     await waitFor(() =>
       expect(transcript.scrollHeight).toBeGreaterThan(transcript.clientHeight)
+    );
+    await waitFor(() =>
+      expect(
+        transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight
+      ).toBeLessThanOrEqual(2)
     );
     transcript.scrollTop = 0;
     // The first prompt opens the transcript; the newest is near the composer.

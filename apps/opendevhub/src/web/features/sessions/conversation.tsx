@@ -78,7 +78,8 @@ export const Conversation = (props: {
 }) => {
   const { view, checkout, session, detail } = props;
   const projectId = view.project.id;
-  const { behind, contentRef, scrollRef, scrollToBottom } = useStickToBottom();
+  const { behind, contentRef, scrollRef, scrollToBottom } =
+    useStickToBottom(!!detail);
   const { panel, toggle, close } = useSidePanel(props.initialPanel);
   const [notice, setNotice] = useState<string>();
   useEffect(() => {

@@ -8,7 +8,7 @@ const NEAR_BOTTOM_PX = 48;
  * `contentRef` on the element inside it that grows. When the content grows while the user has scrolled up, the view
  * stays put and `behind` turns true until they are back at the bottom.
  */
-export const useStickToBottom = () => {
+export const useStickToBottom = (ready: boolean) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -65,6 +65,14 @@ export const useStickToBottom = () => {
       el.removeEventListener("scroll", onScroll);
     };
   }, []);
+
+  // The transcript can arrive after the container mounts. Its virtualized rows
+  // may still be measuring, so keep following their growth from the bottom.
+  useEffect(() => {
+    if (ready) {
+      scrollToBottom();
+    }
+  }, [ready, scrollToBottom]);
 
   return { behind, contentRef, scrollRef, scrollToBottom };
 };
