@@ -202,7 +202,7 @@ export interface DashboardDeps {
       OcrSettingsStore,
       "view" | "save" | "projectView" | "saveProject" | "importHost"
     >;
-    service: Pick<OcrService, "test" | "review" | "install">;
+    service: Pick<OcrService, "test" | "review" | "reviewLocal" | "install">;
   };
   /** The event feed; absent in tests that don't need it. */
   activity?: Pick<EventStore, "page">;

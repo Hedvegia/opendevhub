@@ -710,7 +710,7 @@ const stageText = (
     ) {
       return "The review conversation is waiting on you.";
     }
-    return "The agent is reviewing the pull request…";
+    return "The agent is reviewing the changes…";
   }
   if (run.stage === "collecting") {
     return run.kind === "quick"
@@ -725,7 +725,16 @@ const stageText = (
  * finding can go into the review summary; in Address mode it can go to the agent.
  */
 export const AiReviewPanel = (props: {
-  ai: AiReview;
+  ai: Pick<
+    AiReview,
+    | "run"
+    | "session"
+    | "sessionLink"
+    | "orphaned"
+    | "collectNow"
+    | "retry"
+    | "clear"
+  >;
   general: AiSuggestion[];
   /** Count of suggestions still open in the diff. */
   inline: number;

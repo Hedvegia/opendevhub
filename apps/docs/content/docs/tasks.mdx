@@ -38,4 +38,6 @@ Each checkout has a **Changes** tab that shows the diff. Its toolbar stays at th
 
 Comment on a line with the **+** in the diff's gutter; the comments button collects them, takes general comments, and sends them all to a session. The **Git** menu commits, updates from the base, merges into the base, and [publishes](/docs/publish) the branch as a pull request; an action that can't run says why.
 
+Before publishing, use **AI review** on the Changes tab to ask an agent or Open Code Review to review the selected diff. Findings appear beside their lines or in the review summary. **Accept** adds a finding to your draft comments for the agent; **Dismiss** removes it. Open the comments button to send accepted findings to a session. Open Code Review can review uncommitted work directly; for a comparison with the base, commit uncommitted changes first so its range review includes the whole diff.
+
 ![A task worktree's changes, checks and diff, with commit, merge and publish under Git](./images/review.webp)

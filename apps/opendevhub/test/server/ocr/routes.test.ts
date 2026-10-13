@@ -138,7 +138,7 @@ const setup = (opts: { head?: string; review?: RunResult } = {}) => {
         await app.request("/api/forgejo/pulls/team/repo/7/ai-reviews")
       ).json()) as { reviews: StoredAiReview[] }
     ).reviews;
-  return { app, exec, post, reviews, settings };
+  return { app, exec, post, reviews, service, settings };
 };
 
 const where = { commitId: SHA, directory: DIR, projectId: "p" };
@@ -154,6 +154,42 @@ const configure = (settings: OcrSettingsStore, limits = OCR_DEFAULT_LIMITS) =>
       url: "https://api.deepseek.com",
     },
   });
+
+describe("local Open Code Review", () => {
+  it("reviews uncommitted changes in workspace mode", async () => {
+    const { exec, service, settings } = setup();
+    configure(settings);
+    const result = await service.reviewLocal({
+      directory: DIR,
+      mode: "working",
+      projectId: "p",
+    });
+    expect(result.findings.length).toBeGreaterThan(0);
+    const command = exec.mock.calls.find(
+      ([args]) => args[3] === "ocr-review"
+    )?.[0];
+    expect(command).toBeDefined();
+    expect(command).not.toContain("--from");
+    expect(command).not.toContain("--to");
+  });
+
+  it("rejects a branch review when uncommitted files would be omitted", async () => {
+    const { exec, service, settings } = setup();
+    configure(settings);
+    exec.mockImplementationOnce(async () => ok(" M src/a.ts\n"));
+    await expect(
+      service.reviewLocal({
+        base: "main",
+        directory: DIR,
+        mode: "branch",
+        projectId: "p",
+      })
+    ).rejects.toThrow(/Commit the uncommitted changes/u);
+    expect(exec.mock.calls.some(([args]) => args[3] === "ocr-review")).toBe(
+      false
+    );
+  });
+});
 
 describe("POST …/ocr-review", () => {
   it("asks to set up OCR first when the project has no provider", async () => {

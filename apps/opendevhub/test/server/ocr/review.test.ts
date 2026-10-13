@@ -88,6 +88,13 @@ describe("ocrReviewCommand", () => {
     expect(cmd[cmd.indexOf("--max-tokens-budget") + 1]).toBe("50000");
   });
 
+  it("uses workspace mode for uncommitted changes", () => {
+    const cmd = ocrReviewCommand({ ...run, base: undefined, head: undefined });
+    expect(cmd).not.toContain("--from");
+    expect(cmd).not.toContain("--to");
+    expect(cmd).toContain("review");
+  });
+
   it("never puts the key in argv: it goes on stdin", () => {
     expect(ocrReviewCommand(run).join(" ")).not.toContain(KEY);
     const test = ocrTestCommand(run.bin, "/tmp", provider);

@@ -601,6 +601,8 @@ export interface AiReviewRun {
   /** Tells a late answer for an earlier run apart from the current one. */
   id: string;
   headSha: string;
+  /** Local Changes reviews use this diff fingerprint to detect later edits. */
+  revision?: string;
   projectId: string;
   directory: string;
   /** "agent": a session investigates first. "quick": findings straight from the diff. "ocr": Open Code Review. */

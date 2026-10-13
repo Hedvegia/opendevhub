@@ -193,6 +193,12 @@ export const bodies = {
   }),
   aiReview,
   aiFindings: aiReview.extend({ sessionId: text }),
+  localAiReview: z.object({
+    directory: z.string(),
+    mode: z.enum(["working", "branch"]),
+    base: text,
+  }),
+  localAiFindings: z.object({ directory: z.string(), sessionId: z.string() }),
   ocrSettings: z.object({ provider: ocrProvider, limits: ocrLimits }),
   ocrProject: z.discriminatedUnion("mode", [
     z.object({ mode: z.literal("global") }),

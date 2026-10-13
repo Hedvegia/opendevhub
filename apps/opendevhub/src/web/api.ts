@@ -554,6 +554,42 @@ export const fetchReview = (
     "review"
   );
 
+export const startLocalAiReview = async (
+  projectId: string,
+  input: { directory: string; mode: "working" | "branch"; base?: string }
+) => {
+  const result = await read(
+    project.review["ai-session"].$post({
+      param: projectParam(projectId),
+      json: input,
+    }),
+    "start AI review"
+  );
+  return result.sessionId;
+};
+
+export const collectLocalAiReview = (
+  projectId: string,
+  directory: string,
+  sessionId: string
+) =>
+  read(
+    project.review["ai-findings"].$post({
+      param: projectParam(projectId),
+      json: { directory, sessionId },
+    }),
+    "collect AI review"
+  );
+
+export const runLocalOcrReview = (
+  projectId: string,
+  input: { directory: string; mode: "working" | "branch"; base?: string }
+) =>
+  read(
+    project.review.ocr.$post({ param: projectParam(projectId), json: input }),
+    "Open Code Review"
+  );
+
 /** Where the review loads one version of a changed image in a checkout. */
 export const reviewImageUrl = (
   projectId: string,

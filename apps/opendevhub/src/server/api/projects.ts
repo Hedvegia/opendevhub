@@ -5,6 +5,11 @@ import type { DashboardDeps } from "../dashboard-api";
 import { NotFoundError, UnavailableError } from "../errors";
 import { InvalidRequestError } from "../git/worktrees";
 import {
+  AI_REVIEW_TIMEOUT_MS,
+  aiFindingsPrompt,
+  parseAiReview,
+} from "../integrations/ai-review";
+import {
   errorStatus,
   errorResponse,
   imageResponse,
@@ -471,6 +476,83 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
           );
         }
       }
+    )
+    .post(
+      "/api/projects/:id/review/ai-session",
+      validateJson(bodies.localAiReview),
+      (c) =>
+        json(c, async (id) => {
+          const input = c.req.valid("json");
+          const data = await hub.reviews.review(id, input.directory, {
+            base: input.base,
+            mode: input.mode,
+          });
+          if (!data.files.length) {
+            throw new InvalidRequestError("There are no changes to review.");
+          }
+          const scope =
+            data.mode === "branch"
+              ? `all changes compared with ${data.base?.name ?? input.base}`
+              : "uncommitted changes, including new files";
+          const prompt = [
+            `Review ${scope} in this checkout before a pull request is created.`,
+            "Read the diff and surrounding code. Run relevant tests if useful. Do not edit, commit, or push anything.",
+            "Look for bugs, regressions, unhandled edge cases, security problems, and missing tests for risky logic. Skip formatter and linter issues. Do not praise.",
+            "For each finding, note severity and a short actionable comment. Include a file and line only for a specific line; otherwise use a general comment. End with a short summary.",
+          ].join("\n\n");
+          return hub.sessions.startSession(
+            id,
+            input.directory,
+            "Review changes",
+            prompt
+          );
+        })
+    )
+    .post(
+      "/api/projects/:id/review/ai-findings",
+      validateJson(bodies.localAiFindings),
+      (c) =>
+        json(c, async (id) => {
+          const { directory, sessionId } = c.req.valid("json");
+          const generated = await hub.sessions.generateIn(
+            id,
+            directory,
+            aiFindingsPrompt(),
+            {
+              sessionId,
+              timeoutMs: AI_REVIEW_TIMEOUT_MS,
+              title: "Review findings",
+            }
+          );
+          return {
+            ...parseAiReview(generated.text),
+            sessionId: generated.sessionId,
+          };
+        })
+    )
+    .post(
+      "/api/projects/:id/review/ocr",
+      validateJson(bodies.localAiReview),
+      (c) =>
+        json(c, async (id) => {
+          if (!deps.ocr) {
+            throw new UnavailableError("Open Code Review is not available");
+          }
+          const input = c.req.valid("json");
+          const data = await hub.reviews.review(id, input.directory, {
+            base: input.base,
+            mode: input.mode,
+          });
+          if (!data.files.length) {
+            throw new InvalidRequestError("There are no changes to review.");
+          }
+          return deps.ocr.service.reviewLocal({
+            projectId: id,
+            directory: input.directory,
+            mode: data.mode === "branch" ? "branch" : "working",
+            base: data.base?.name,
+          });
+        })
     )
     .get(
       "/api/projects/:id/review/image",

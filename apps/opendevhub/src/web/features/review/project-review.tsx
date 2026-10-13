@@ -8,6 +8,7 @@ import {
   ArrowDownIcon,
   ArrowDownToLineIcon,
   ArrowUpIcon,
+  BotIcon,
   ChevronDownIcon,
   DownloadIcon,
   CircleDotIcon,
@@ -21,6 +22,8 @@ import {
   LoaderCircleIcon,
   MessageSquareIcon,
   RefreshCwIcon,
+  ScanSearchIcon,
+  SparklesIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -63,14 +66,25 @@ import { useNavigate } from "../../routing";
 import { useCheckoutContext } from "../checkouts/checkout-context";
 import { fixPrompt, publishWarning, STATE_LABEL } from "../checks/checks";
 import { ChecksIcon, ChecksPanel, useChecks } from "../checks/checks-panel";
+import {
+  placeAiFindings,
+  suggestionComment,
+  withSuggestion,
+} from "../forgejo/forgejo";
+import { AiReviewPanel, AiSuggestionCard } from "../forgejo/forgejo-ai-review";
 import { JiraSourceCard } from "../jira/jira-source-card";
+import { ProjectSettingsDialog } from "../projects/project-settings-dialog";
+import { OCR_SECTION, useProjectOcr } from "../settings/ocr-settings";
+import { SettingsLink } from "../settings/settings-link";
 import { variantOf } from "../tasks/tasks";
+import { useLocalAiReview } from "./local-ai-review";
 import { PublishDialog, usePublishInfo } from "./publish-dialog";
 import {
   aheadHint,
   composeReviewPrompt,
   conflictPrompt,
   draftKey,
+  diffKey,
   newId,
   readComments,
   readDiffView,
@@ -137,6 +151,9 @@ const ReviewTarget = ({
     placeholderData: keepPreviousData,
   });
   const { data } = review;
+  const ai = useLocalAiReview({ projectId, directory, data });
+  const ocr = useProjectOcr(projectId);
+  const [projectSettings, setProjectSettings] = useState(false);
   const loading = review.isFetching;
   const refresh = useCallback(
     () => void refreshCheckout(queryClient, projectId, directory),
@@ -172,6 +189,60 @@ const ReviewTarget = ({
     setComments(next);
     writeComments(keyRef.current, next);
   }, []);
+  const revision = data
+    ? `${data.mode === "branch" ? `branch:${data.base?.name ?? ""}` : "working"}:${data.files.map(diffKey).join("|")}`
+    : undefined;
+  const staleReview =
+    !!data && ai.run?.stage === "done" && ai.run.revision !== revision;
+  const reviewRun =
+    ai.run?.stage === "done" && !staleReview ? ai.run : undefined;
+  const placed = useMemo(
+    () =>
+      placeAiFindings(
+        reviewRun?.findings ?? [],
+        data?.files ?? [],
+        `local-${reviewRun?.id ?? ""}`
+      ),
+    [reviewRun?.findings, reviewRun?.id, data?.files]
+  );
+  const handled = new Set(reviewRun?.handled);
+  const inlineAi = placed.inline.filter((s) => !handled.has(s.id));
+  const generalAi = placed.general.filter((s) => !handled.has(s.id));
+  const aiById = new Map(inlineAi.map((s) => [s.id, s] as const));
+  const aiNotes = inlineAi.map((s) => ({
+    file: s.file ?? "",
+    id: s.id,
+    line: s.line ?? 0,
+    side: s.side ?? "new",
+  }));
+  const suggestionCard = (id: string, inDiff: boolean) => {
+    const suggestion = inDiff
+      ? aiById.get(id)
+      : generalAi.find((s) => s.id === id);
+    if (!suggestion) {
+      return null;
+    }
+    return (
+      <AiSuggestionCard
+        key={id}
+        suggestion={suggestion}
+        inDiff={inDiff}
+        onAccept={(edited) => {
+          const body = withSuggestion(edited, suggestion);
+          const text =
+            suggestion.placement === "general" && suggestion.file
+              ? `${suggestion.file}${suggestion.line ? `:${suggestion.line}` : ""}: ${body}`
+              : body;
+          saveComments([
+            ...commentsRef.current,
+            suggestionComment(suggestion, text),
+          ]);
+          ai.handle(id);
+        }}
+        onDismiss={() => ai.handle(id)}
+      />
+    );
+  };
   const [sent, setSent] = useState<ReviewComment[]>(() =>
     readComments(sentKey(projectId, target))
   );
@@ -524,6 +595,50 @@ const ReviewTarget = ({
             </Button>
           </Tip>
           <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  loading ||
+                  !data?.files.length ||
+                  !!(ai.run && !["done", "failed"].includes(ai.run.stage))
+                }
+              >
+                <SparklesIcon /> AI review <ChevronDownIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuItem onSelect={() => ai.start("agent")}>
+                <BotIcon /> Agent review
+              </DropdownMenuItem>
+              {ocr.data?.effective.configured && (
+                <DropdownMenuItem onSelect={() => ai.start("ocr")}>
+                  <ScanSearchIcon /> Open Code Review
+                </DropdownMenuItem>
+              )}
+              {!ocr.data?.effective.configured &&
+                ocr.data?.override.mode === "custom" && (
+                  <DropdownMenuItem onSelect={() => setProjectSettings(true)}>
+                    <ScanSearchIcon /> Set up Open Code Review…
+                  </DropdownMenuItem>
+                )}
+              {!ocr.data?.effective.configured &&
+                ocr.data?.override.mode !== "custom" && (
+                  <DropdownMenuItem asChild>
+                    <SettingsLink section={OCR_SECTION}>
+                      <ScanSearchIcon /> Set up Open Code Review…
+                    </SettingsLink>
+                  </DropdownMenuItem>
+                )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ProjectSettingsDialog
+            view={view}
+            open={projectSettings}
+            onOpenChange={setProjectSettings}
+          />
+          <DropdownMenu>
             <Tip label="Commit, update, merge and publish">
               <DropdownMenuTrigger asChild>
                 <Button size="sm" disabled={!!busy}>
@@ -613,6 +728,19 @@ const ReviewTarget = ({
         </Alert>
       )}
       {notice && <OkBanner>{notice}</OkBanner>}
+      {staleReview && (
+        <p className={muted}>
+          The diff has changed since this AI review. Run it again for current
+          findings.
+        </p>
+      )}
+      <AiReviewPanel
+        ai={ai}
+        general={generalAi}
+        inline={inlineAi.length}
+        renderGeneral={(suggestion) => suggestionCard(suggestion.id, false)}
+        onRerun={() => ai.start(ai.run?.kind === "ocr" ? "ocr" : "agent")}
+      />
       {published && (
         <OkBanner>
           <span>
@@ -802,6 +930,8 @@ const ReviewTarget = ({
                 })
           }
           comments={comments}
+          notes={aiNotes}
+          renderNote={(id) => suggestionCard(id, true)}
           open={open}
           placeholder="Comment for the agent…"
           onAnchor={openLineComment}

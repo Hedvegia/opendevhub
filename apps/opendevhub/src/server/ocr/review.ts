@@ -32,8 +32,8 @@ export interface OcrProviderArgs {
 export interface OcrReviewRun {
   bin: string;
   directory: string;
-  base: string;
-  head: string;
+  base?: string;
+  head?: string;
   background: string;
   provider: OcrProviderArgs;
   limits: OcrLimits;
@@ -53,10 +53,7 @@ export const ocrReviewCommand = (run: OcrReviewRun): string[] => [
   run.provider.protocol,
   run.provider.model,
   "review",
-  "--from",
-  run.base,
-  "--to",
-  run.head,
+  ...(run.base && run.head ? ["--from", run.base, "--to", run.head] : []),
   "--format",
   "json",
   "--audience",

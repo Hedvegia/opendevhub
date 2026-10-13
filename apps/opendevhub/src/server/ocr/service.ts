@@ -43,6 +43,13 @@ export interface OcrReviewRequest {
   details: ForgejoPullDetails;
 }
 
+export interface OcrLocalReviewRequest {
+  projectId: string;
+  directory: string;
+  mode: "working" | "branch";
+  base?: string;
+}
+
 /** The pull request's base repository as `host` and `owner/repo`, from its web URL. */
 const baseRepo = (details: ForgejoPullDetails) => {
   const url = new URL(details.pull.url);
@@ -151,6 +158,55 @@ export class OcrService {
         input: ocrStdin(provider.key),
         timeoutMs: limits.runLimit * MINUTE_MS,
       }
+    );
+    if (result.timedOut) {
+      throw new OcrRunError(
+        `Open Code Review was stopped at the run limit of ${limits.runLimit} minutes.`
+      );
+    }
+    return parseOcrOutput(result.stdout, result.stderr, result.exitCode);
+  }
+
+  /** Reviews a checkout before publishing. Workspace mode includes untracked files. */
+  async reviewLocal(
+    req: OcrLocalReviewRequest
+  ): Promise<{ summary: string; findings: AiFinding[]; stats: OcrRunStats }> {
+    const provider = await this.deps.settings.resolve(req.projectId);
+    if (!provider) {
+      throw new OcrSettingsError("Set up Open Code Review in Settings.", 412);
+    }
+    const env = this.deps.toolEnv(req.projectId, req.directory);
+    if (req.mode === "branch") {
+      if (!req.base) {
+        throw new InvalidRequestError("Choose a base branch for this review.");
+      }
+      const status = await env.exec(
+        ["git", "-C", req.directory, "status", "--porcelain"],
+        { timeoutMs: GIT_TIMEOUT_MS }
+      );
+      if (status.exitCode !== 0) {
+        throw new OcrRunError(trimOcrError(status.stderr, 3));
+      }
+      if (status.stdout.trim()) {
+        throw new InvalidRequestError(
+          "Commit the uncommitted changes before an Open Code Review of the branch, or switch to Uncommitted."
+        );
+      }
+    }
+    const bin = await ensureInEnv(this.deps.binaries, env);
+    const limits = this.deps.settings.limits();
+    const result = await env.exec(
+      ocrReviewCommand({
+        background: "Review these changes before publishing a pull request.",
+        ...(req.mode === "branch"
+          ? { base: validateBranch(req.base ?? ""), head: "HEAD" }
+          : {}),
+        bin,
+        directory: req.directory,
+        limits,
+        provider,
+      }),
+      { input: ocrStdin(provider.key), timeoutMs: limits.runLimit * MINUTE_MS }
     );
     if (result.timedOut) {
       throw new OcrRunError(

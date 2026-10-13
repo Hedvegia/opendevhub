@@ -115,6 +115,7 @@ export interface CommentFocus {
 
 /** How long a jump waits for a comment to render (its diff may still be parsing) before settling for its file. */
 const SEEK_TIMEOUT_MS = 2000;
+const DIFF_PRELOAD_MARGIN = "600px 0px";
 
 const stopSelector = (id: string) => `[data-comment-stop="${CSS.escape(id)}"]`;
 
@@ -325,7 +326,7 @@ export const ReviewDiffs = (props: {
               imageUrl={props.imageUrl}
             />
           ) : (
-            <FileDiff
+            <DeferredFileDiff
               key={`${diffKey(f)}:${props.version ?? ""}`}
               id={`review-file-${i}`}
               file={f}
@@ -387,7 +388,7 @@ const Stats = ({ file }: { file: ReviewFile }) => (
   </span>
 );
 
-const FileDiff = (props: {
+interface FileDiffProps {
   id: string;
   file: ReviewFile;
   load?: () => Promise<string | undefined>;
@@ -405,7 +406,61 @@ const FileDiff = (props: {
   onAdd: (file: string, anchor: LineAnchor, text: string) => void;
   onCancel: () => void;
   onDelete: (id: string) => void;
-}) => {
+}
+
+/** Keep the file list navigable while parsing and highlighting only diffs near the scroll area. */
+const DeferredFileDiff = (props: FileDiffProps) => {
+  const host = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  const ready =
+    visible ||
+    props.file.patch === undefined ||
+    props.file.binary ||
+    props.open !== undefined ||
+    props.reveal !== undefined;
+
+  useEffect(() => {
+    if (ready) {
+      return;
+    }
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: DIFF_PRELOAD_MARGIN }
+    );
+    if (host.current) {
+      observer.observe(host.current);
+    }
+    return () => observer.disconnect();
+  }, [ready]);
+
+  return (
+    <div id={props.id} ref={host} className="scroll-mt-16">
+      {ready ? (
+        <FileDiff {...props} />
+      ) : (
+        <Card className="min-h-40 gap-0 overflow-hidden py-0">
+          <header className="bg-muted/50 flex items-center gap-2 px-3 py-1.5">
+            <span className="min-w-0 truncate font-mono text-sm">
+              {props.file.file}
+            </span>
+            <Stats file={props.file} />
+          </header>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+const FileDiff = (props: FileDiffProps) => {
   const { file } = props;
   const [collapsed, setCollapsed] = useState(false);
   const [revealed, setRevealed] = useState(props.reveal);
@@ -498,10 +553,7 @@ const FileDiff = (props: {
   // collapsed, which for a lockfile or a generated spec blocks the page for seconds.
   if (patch !== undefined && !file.binary && collapsed) {
     return (
-      <Card
-        className={cn("gap-0 overflow-hidden py-0", diffFont)}
-        id={props.id}
-      >
+      <Card className={cn("gap-0 overflow-hidden py-0", diffFont)}>
         <header className="bg-muted/50 flex items-center gap-2 px-3 py-1.5">
           {toggle()}
           <span className="min-w-0 truncate font-mono text-sm">
@@ -514,7 +566,7 @@ const FileDiff = (props: {
   }
   if (patch !== undefined && !file.binary) {
     return (
-      <Card className={cn("overflow-hidden py-0", diffFont)} id={props.id}>
+      <Card className={cn("overflow-hidden py-0", diffFont)}>
         <DiffBoundary patch={patch}>
           <PatchView<ReviewAnnotation>
             patch={patch}
@@ -558,7 +610,7 @@ const FileDiff = (props: {
     </p>
   );
   return (
-    <Card className="gap-0 overflow-hidden py-0" id={props.id}>
+    <Card className="gap-0 overflow-hidden py-0">
       <header className="bg-muted/50 flex items-center justify-between gap-2 border-b px-3 py-1.5">
         <span className="font-mono text-sm">{file.file}</span>
         <Stats file={file} />
