@@ -654,6 +654,9 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
     http.post("/api/projects/:id/tasks/:task/start", ({ params }) =>
       HttpResponse.json({ task: params.task, variants: [] })
     ),
+    http.get("/api/projects/:id/tasks/archived", () => HttpResponse.json([])),
+    http.post("/api/projects/:id/tasks/:task/restore", ok),
+    http.delete("/api/projects/:id/tasks/:task", ok),
     http.post("/api/projects/:id/sessions/:session/send", () =>
       HttpResponse.json({ kind: "prompt", queued: false })
     ),

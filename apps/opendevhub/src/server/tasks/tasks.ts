@@ -1,5 +1,6 @@
 import { deriveTitle, variantLabels, variantTitle } from "../../shared/tasks";
 import type {
+  ArchivedTask,
   NodeId,
   PickResult,
   Project,
@@ -119,6 +120,37 @@ export class Tasks {
       !this.deps.tasks.archive(task, USER)
     ) {
       throw new NotFoundError(task, "task");
+    }
+  }
+
+  archivedTasks(id: ProjectId): ArchivedTask[] {
+    this.envs.requireProject(id);
+    return this.deps.tasks.listArchivedForProject(id);
+  }
+
+  restoreTask(id: ProjectId, task: string): void {
+    this.envs.requireProject(id);
+    if (!TASK_ID.test(task)) {
+      throw new InvalidRequestError(`not a task id: ${task}`);
+    }
+    if (
+      this.deps.tasks.get(task)?.projectId !== id ||
+      !this.deps.tasks.restore(task, USER)
+    ) {
+      throw new NotFoundError(task, "archived task");
+    }
+  }
+
+  deleteArchivedTask(id: ProjectId, task: string): void {
+    this.envs.requireProject(id);
+    if (!TASK_ID.test(task)) {
+      throw new InvalidRequestError(`not a task id: ${task}`);
+    }
+    if (
+      this.deps.tasks.get(task)?.projectId !== id ||
+      !this.deps.tasks.deleteArchived(task, USER)
+    ) {
+      throw new NotFoundError(task, "archived task");
     }
   }
 

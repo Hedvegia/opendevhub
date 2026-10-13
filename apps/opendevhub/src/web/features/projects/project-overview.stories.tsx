@@ -1,5 +1,8 @@
+import { http, HttpResponse } from "msw";
+
 import preview from "../../../../.storybook/preview";
 import { App } from "../../app";
+import { mockApi } from "../../mocks/story";
 
 const meta = preview.meta({
   component: App,
@@ -9,6 +12,24 @@ const meta = preview.meta({
 
 /** Main checkout, two worktrees (one in its own container) and a task still starting. */
 export const Overview = meta.story();
+
+export const ArchivedTasks = meta.story({
+  parameters: { route: "/p/acme-web?tasks=archived" },
+  beforeEach: mockApi(
+    {},
+    http.get("/api/projects/:id/tasks/archived", () =>
+      HttpResponse.json([
+        {
+          id: "tsk_archived",
+          title: "Finish the migration",
+          kind: "task",
+          variants: 2,
+          archivedAt: Date.now(),
+        },
+      ])
+    )
+  ),
+});
 
 /** A task with two variants to compare and pick from. */
 export const WithVariants = meta.story({

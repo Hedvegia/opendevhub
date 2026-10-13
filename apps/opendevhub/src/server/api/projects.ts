@@ -432,6 +432,15 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
     .post("/api/projects/:id/tasks/:task/archive", (c) =>
       ok(c, (id) => hub.tasks.archiveTask(id, c.req.param("task") ?? ""))
     )
+    .get("/api/projects/:id/tasks/archived", (c) =>
+      json(c, (id) => hub.tasks.archivedTasks(id))
+    )
+    .post("/api/projects/:id/tasks/:task/restore", (c) =>
+      ok(c, (id) => hub.tasks.restoreTask(id, c.req.param("task") ?? ""))
+    )
+    .delete("/api/projects/:id/tasks/:task", (c) =>
+      ok(c, (id) => hub.tasks.deleteArchivedTask(id, c.req.param("task") ?? ""))
+    )
     .post(
       "/api/projects/:id/tasks/:task/pick",
       validateJson(bodies.pick),

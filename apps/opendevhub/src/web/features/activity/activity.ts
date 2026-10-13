@@ -111,6 +111,9 @@ export const EVENT_TEXT: Record<EventVerb, (e: ActivityEvent) => string> = {
       ? `${actorLabel(e.actor)} started a conversation for ${task(e)}`
       : `${actorLabel(e.actor)} started the conversation of variant ${variantN(e)} of ${task(e)}`,
   "task.archived": (e) => `${actorLabel(e.actor)} archived ${task(e)}`,
+  "task.restored": (e) => `${actorLabel(e.actor)} restored ${task(e)}`,
+  "task.deleted": (e) =>
+    `${actorLabel(e.actor)} deleted ${str(e.data?.title) ? `“${str(e.data?.title)}”` : "a task"}`,
   "task.drafted": (e) => `${actorLabel(e.actor)} drafted task ${task(e)}`,
   "task.ended": (e) =>
     e.taskTitle ? `Task “${e.taskTitle}” ended` : "A task ended",

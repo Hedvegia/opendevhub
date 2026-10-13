@@ -1,6 +1,7 @@
 import { jiraTicketUrl } from "../../shared/jira";
 import type { JiraTaskSource } from "../../shared/jira";
 import type {
+  ArchivedTask,
   EnvId,
   ModelRef,
   NodeId,
@@ -844,6 +845,85 @@ export class TaskStore {
         id: taskId,
         type: "task",
       });
+      return true;
+    });
+  }
+
+  /** Archived tasks for the project card, newest archive first. */
+  listArchivedForProject(projectId: ProjectId): ArchivedTask[] {
+    const rows = this.db
+      .prepare(
+        `SELECT t.id, t.title, t.kind, t.archived_at AS archivedAt,
+                COUNT(v.n) AS variants
+         FROM tasks t LEFT JOIN variants v ON v.task_id = t.id
+         WHERE t.project_id = ? AND t.archived_at IS NOT NULL
+         GROUP BY t.id ORDER BY t.archived_at DESC, t.id DESC`
+      )
+      .all(projectId) as unknown as ArchivedTask[];
+    return rows;
+  }
+
+  /** Returns an archived task to the live project list. */
+  restore(taskId: string, actor: Actor = USER): boolean {
+    const at = this.now();
+    return this.write(() => {
+      const task = this.raw(taskId);
+      if (!task || task.archived_at === null) {
+        return false;
+      }
+      this.db
+        .prepare("UPDATE tasks SET archived_at = NULL WHERE id = ?")
+        .run(taskId);
+      this.event(at, actor, "task.restored", task.project_id, taskId, {
+        id: taskId,
+        type: "task",
+      });
+      return true;
+    });
+  }
+
+  /** Deletes only an archived task's database record; external sessions and worktrees stay. */
+  deleteArchived(taskId: string, actor: Actor = USER): boolean {
+    const at = this.now();
+    return this.write(() => {
+      const task = this.raw(taskId);
+      if (!task || task.archived_at === null) {
+        return false;
+      }
+      this.db
+        .prepare(
+          "UPDATE branches SET created_by_task = NULL, created_by_variant = NULL WHERE created_by_task = ?"
+        )
+        .run(taskId);
+      this.db
+        .prepare("UPDATE tasks SET proposed_in = NULL WHERE proposed_in = ?")
+        .run(taskId);
+      this.db
+        .prepare(
+          "UPDATE tasks SET implemented_in = NULL WHERE implemented_in = ?"
+        )
+        .run(taskId);
+      this.db
+        .prepare("UPDATE reviews SET task_id = NULL WHERE task_id = ?")
+        .run(taskId);
+      this.db
+        .prepare(
+          "UPDATE chats SET adopted_task = NULL, adopted_variant = NULL, archived_at = COALESCE(archived_at, ?) WHERE adopted_task = ?"
+        )
+        .run(at, taskId);
+      this.db.prepare("DELETE FROM tasks WHERE id = ?").run(taskId);
+      this.event(
+        at,
+        actor,
+        "task.deleted",
+        task.project_id,
+        taskId,
+        {
+          id: taskId,
+          type: "task",
+        },
+        { title: task.title }
+      );
       return true;
     });
   }

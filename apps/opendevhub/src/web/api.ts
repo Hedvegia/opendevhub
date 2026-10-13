@@ -1278,6 +1278,33 @@ export const archiveTask = async (projectId: string, task: string) => {
   );
 };
 
+export const fetchArchivedTasks = (projectId: string) =>
+  read(
+    project.tasks.archived.$get(
+      { param: projectParam(projectId) },
+      { init: { cache: "no-store" } }
+    ),
+    "archived tasks"
+  );
+
+export const restoreTask = async (projectId: string, task: string) => {
+  await complete(
+    project.tasks[":task"].restore.$post({
+      param: { ...projectParam(projectId), task: encodeURIComponent(task) },
+    }),
+    "restore task"
+  );
+};
+
+export const deleteArchivedTask = async (projectId: string, task: string) => {
+  await complete(
+    project.tasks[":task"].$delete({
+      param: { ...projectParam(projectId), task: encodeURIComponent(task) },
+    }),
+    "delete task"
+  );
+};
+
 export const sendForgejoReview = async (
   owner: string,
   repo: string,

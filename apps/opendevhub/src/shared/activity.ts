@@ -8,6 +8,8 @@ export const EVENT_VERBS = [
   "task.started",
   "task.ended",
   "task.archived",
+  "task.restored",
+  "task.deleted",
   "variant.added",
   "variant.failed",
   "variant.picked",

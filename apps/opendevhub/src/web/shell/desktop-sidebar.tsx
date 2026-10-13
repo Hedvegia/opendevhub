@@ -4,11 +4,13 @@ import type {
   SidebarProject,
   SidebarProjectDetails,
 } from "@opendevhub/ui/project-sidebar";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import { BellIcon, SettingsIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { taskHref } from "../../shared/urls";
+import { archiveChat, archiveTask } from "../api";
 import { STATE_LABEL } from "../components/status";
 import { Tip } from "../components/tip";
 import { useDash } from "../dashboard-context";
@@ -82,9 +84,11 @@ export const DesktopSidebar = () => {
     requestPermission,
     openAddProject,
     newTask,
+    report,
   } = useDash();
   const { view, projects, choose } = useCurrentProject();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const settingsHref = useSettingsHref();
   const [params] = useSearchParams();
   const [panelOpen, setPanelOpen] = useState(true);
@@ -170,6 +174,22 @@ export const DesktopSidebar = () => {
                 pathname === taskPath || pathname.startsWith(`${taskPath}/`),
               activity,
               meta: shortAgo(task.updatedAt),
+              onArchive: async () => {
+                try {
+                  await archiveTask(selectedView.project.id, task.task);
+                  await queryClient.invalidateQueries({
+                    queryKey: ["archived-tasks", selectedView.project.id],
+                  });
+                  if (
+                    pathname === taskPath ||
+                    pathname.startsWith(`${taskPath}/`)
+                  ) {
+                    await navigate("/tasks");
+                  }
+                } catch (error) {
+                  report(error);
+                }
+              },
             };
           }),
         chats: sidebarChats(selectedView).map((chat) => ({
@@ -181,6 +201,16 @@ export const DesktopSidebar = () => {
             chatNeedsYou(chat) ? "attention" : chatTone(chat)
           ),
           meta: shortAgo(chatActivity(chat)),
+          onArchive: async () => {
+            try {
+              await archiveChat(selectedView.project.id, chat.id);
+              if (pathname === chatPath(selectedView.project.id, chat.id)) {
+                await navigate("/chats");
+              }
+            } catch (error) {
+              report(error);
+            }
+          },
         })),
         onAddTask: () => newTask(selectedView.project.id),
         onAddChat: () => void navigate("/chat"),

@@ -49,6 +49,7 @@ const projectDetails = {
       href: "#task-user-id-types",
       activity: "attention" as const,
       meta: "4h",
+      onArchive: fn(),
     },
     {
       id: "openspec-tasks",
@@ -56,6 +57,7 @@ const projectDetails = {
       href: "#task-openspec-tasks",
       activity: "running" as const,
       meta: "6h",
+      onArchive: fn(),
     },
   ],
   chats: [
@@ -66,6 +68,7 @@ const projectDetails = {
       active: true,
       activity: "attention" as const,
       meta: "4h",
+      onArchive: fn(),
     },
     {
       id: "review-guidelines",

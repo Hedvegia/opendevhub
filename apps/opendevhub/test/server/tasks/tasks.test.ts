@@ -1224,6 +1224,31 @@ describe("starting tasks in the background", () => {
       s.hub.tasks.archiveTask(project.id, "tsk_01JA0000000000000000000009")
     ).toThrow(NotFoundError);
   });
+
+  it("restores and deletes only archived tasks in their own project", async () => {
+    const s = await started();
+    const { task } = await s.hub.tasks.createTask(project.id, {
+      prompt: "x",
+      environment: "shared",
+    });
+    expect(() => s.hub.tasks.restoreTask(project.id, task)).toThrow(
+      NotFoundError
+    );
+    expect(() => s.hub.tasks.deleteArchivedTask(project.id, task)).toThrow(
+      NotFoundError
+    );
+    s.hub.tasks.archiveTask(project.id, task);
+    expect(
+      s.hub.tasks.archivedTasks(project.id).map((item) => item.id)
+    ).toStrictEqual([task]);
+    expect(() => s.hub.tasks.restoreTask("other", task)).toThrow();
+    s.hub.tasks.restoreTask(project.id, task);
+    expect(s.tasks.get(task)?.archivedAt).toBeUndefined();
+    s.hub.tasks.archiveTask(project.id, task);
+    s.hub.tasks.deleteArchivedTask(project.id, task);
+    expect(s.tasks.get(task)).toBeUndefined();
+    expect(s.hub.tasks.archivedTasks(project.id)).toStrictEqual([]);
+  });
 });
 
 describe("draft tasks", () => {

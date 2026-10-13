@@ -1,4 +1,5 @@
 import {
+  Archive,
   ChevronDown,
   Folder,
   GitPullRequest,
@@ -18,6 +19,12 @@ import type {
 import { useId, useState } from "react";
 
 import { cn } from "../utils";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "./context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 type GlobalPage = "inbox" | "tasks" | "chats" | "pullRequests" | "tickets";
@@ -59,6 +66,7 @@ interface SidebarEntry {
   active?: boolean;
   activity?: Activity;
   meta?: string;
+  onArchive?: () => void;
 }
 
 interface SidebarProjectDetails {
@@ -210,27 +218,45 @@ const SidebarEntries = ({
       >
         {entries.map((entry) => (
           <li key={entry.id}>
-            <SidebarTip label={entry.label}>
-              <a
-                href={entry.href}
-                onClick={(event) =>
-                  handleLinkClick(event, entry.href, onNavigate)
-                }
-                aria-current={entry.active ? "page" : undefined}
-                className={cn(
-                  "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:ring-sidebar-ring flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-[13px] outline-none focus-visible:ring-2",
-                  entry.active && "bg-sidebar-accent"
+            <ContextMenu>
+              <SidebarTip label={entry.label}>
+                <ContextMenuTrigger asChild>
+                  <a
+                    href={entry.href}
+                    onClick={(event) =>
+                      handleLinkClick(event, entry.href, onNavigate)
+                    }
+                    aria-current={entry.active ? "page" : undefined}
+                    className={cn(
+                      "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:ring-sidebar-ring flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-[13px] outline-none focus-visible:ring-2",
+                      entry.active && "bg-sidebar-accent"
+                    )}
+                  >
+                    <ActivityDot activity={entry.activity ?? "idle"} />
+                    <span className="min-w-0 flex-1 truncate">
+                      {entry.label}
+                    </span>
+                    {entry.meta && (
+                      <span className="text-muted-foreground shrink-0 text-xs">
+                        {entry.meta}
+                      </span>
+                    )}
+                  </a>
+                </ContextMenuTrigger>
+              </SidebarTip>
+              <ContextMenuContent>
+                <ContextMenuItem asChild>
+                  <a href={entry.href} rel="noopener" target="_blank">
+                    Open in new tab
+                  </a>
+                </ContextMenuItem>
+                {entry.onArchive && (
+                  <ContextMenuItem onSelect={() => entry.onArchive?.()}>
+                    <Archive /> Archive {kind === "tasks" ? "task" : "chat"}
+                  </ContextMenuItem>
                 )}
-              >
-                <ActivityDot activity={entry.activity ?? "idle"} />
-                <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                {entry.meta && (
-                  <span className="text-muted-foreground shrink-0 text-xs">
-                    {entry.meta}
-                  </span>
-                )}
-              </a>
-            </SidebarTip>
+              </ContextMenuContent>
+            </ContextMenu>
           </li>
         ))}
       </ul>

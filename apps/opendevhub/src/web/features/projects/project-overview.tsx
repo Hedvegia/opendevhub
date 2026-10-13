@@ -2,13 +2,21 @@ import { Alert, AlertDescription } from "@opendevhub/ui/alert";
 import { Badge } from "@opendevhub/ui/badge";
 import { Button } from "@opendevhub/ui/button";
 import { Input } from "@opendevhub/ui/input";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { GitBranchIcon, InfoIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-import type { ProjectView } from "../../../shared/types";
-import { archiveTask, refreshWorktrees } from "../../api";
+import type { ArchivedTask, ProjectView } from "../../../shared/types";
+import {
+  archiveTask,
+  deleteArchivedTask,
+  fetchArchivedTasks,
+  refreshWorktrees,
+  restoreTask,
+} from "../../api";
+import { confirm } from "../../components/confirm-dialog";
 import { CopyButton } from "../../components/copy-button";
 import { EnvBadge } from "../../components/env-badge";
 import {
@@ -405,7 +413,7 @@ const OPENCODE_PILL: Record<ProjectView["runtime"]["opencode"], string> = {
   unhealthy: "border-destructive/45 text-destructive",
 };
 
-type TasksView = "open" | Exclude<TaskFilter, "all">;
+type TasksView = "open" | "archived" | Exclude<TaskFilter, "all">;
 
 const TASK_VIEWS: { id: TasksView; label: string }[] = [
   { id: "open", label: "Open" },
@@ -414,6 +422,7 @@ const TASK_VIEWS: { id: TasksView; label: string }[] = [
   { id: "idle", label: "Idle" },
   { id: "draft", label: "Drafts" },
   { id: "ended", label: "Ended" },
+  { id: "archived", label: "Archived" },
 ];
 
 const isTasksView = (v: string | null): v is TasksView =>
@@ -421,7 +430,9 @@ const isTasksView = (v: string | null): v is TasksView =>
 
 /** Open is everything not ended: what needs the user first, then what is working, idle, and drafts. */
 const inView = (t: ProjectTask, v: TasksView) =>
-  v === "open" ? t.state !== "ended" : matchesTaskFilter(t, v);
+  v === "open"
+    ? t.state !== "ended"
+    : v !== "archived" && matchesTaskFilter(t, v);
 
 const TASK_ORDER: TaskFilter[] = [
   "attention",
@@ -436,8 +447,16 @@ const taskRank = (t: ProjectTask) =>
 /** The project's tasks in one card, filtered by state (`?tasks=`) and title (`?q=`); waiting ones answer in place, ended ones archive. */
 const TasksCard = ({ view }: { view: ProjectView }) => {
   const { report } = useDash();
+  const queryClient = useQueryClient();
+  const [busyTask, setBusyTask] = useState<string>();
   const [params, setParams] = useSearchParams();
   const projectId = view.project.id;
+  const archivedQuery = useQuery({
+    queryKey: ["archived-tasks", projectId],
+    queryFn: () => fetchArchivedTasks(projectId),
+    refetchOnMount: "always",
+  });
+  const archivedTasks = archivedQuery.data ?? [];
   const raw = params.get("tasks");
   const filter: TasksView = isTasksView(raw) ? raw : "open";
   const q = params.get("q") ?? "";
@@ -461,9 +480,101 @@ const TasksCard = ({ view }: { view: ProjectView }) => {
     .filter((t) => inView(t, filter))
     .toSorted((a, b) => taskRank(a) - taskRank(b));
   const waiting = tasks.filter((t) => matchesTaskFilter(t, "attention")).length;
+  const archivedShown = archivedTasks.filter((t) => matches(q, t.title));
+  const refreshArchived = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: ["archived-tasks", projectId],
+    });
+  };
+  const archive = async (taskId: string) => {
+    setBusyTask(taskId);
+    try {
+      await archiveTask(projectId, taskId);
+      await refreshArchived();
+    } catch (error) {
+      report(error);
+    } finally {
+      setBusyTask(undefined);
+    }
+  };
+  const changeArchived = async (
+    task: ArchivedTask,
+    action: "restore" | "delete"
+  ) => {
+    if (action === "delete") {
+      const approved = await confirm({
+        title: `Delete “${task.title}”?`,
+        description:
+          "This permanently removes the task record and its variant links. Conversations and worktrees stay in place.",
+        confirmLabel: "Delete task",
+        destructive: true,
+      });
+      if (!approved) {
+        return;
+      }
+    }
+    setBusyTask(task.id);
+    try {
+      if (action === "restore") {
+        await restoreTask(projectId, task.id);
+      } else {
+        await deleteArchivedTask(projectId, task.id);
+      }
+      await refreshArchived();
+    } catch (error) {
+      report(error);
+    } finally {
+      setBusyTask(undefined);
+    }
+  };
 
   let body;
-  if (tasks.length === 0) {
+  if (filter === "archived" && archivedQuery.isPending) {
+    body = <p className={cn(muted, "px-4 py-3")}>Loading archived tasks…</p>;
+  } else if (filter === "archived" && archivedQuery.isError) {
+    body = (
+      <p className="text-destructive px-4 py-3">
+        Could not load archived tasks.
+      </p>
+    );
+  } else if (filter === "archived" && archivedShown.length === 0) {
+    body = <p className={cn(muted, "px-4 py-3")}>No archived tasks match.</p>;
+  } else if (filter === "archived") {
+    body = (
+      <ul>
+        {archivedShown.map((task) => (
+          <li key={task.id} className="border-t first:border-t-0">
+            <div className="flex flex-wrap items-center gap-3 px-4 py-2">
+              <span className="min-w-0 basis-full truncate sm:flex-1 sm:basis-auto">
+                {task.title || "Task"}
+              </span>
+              <span className={muted}>
+                Archived {new Date(task.archivedAt).toLocaleDateString()} ·{" "}
+                {task.variants} variant
+                {task.variants === 1 ? "" : "s"}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busyTask === task.id}
+                onClick={() => void changeArchived(task, "restore")}
+              >
+                Restore
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={busyTask === task.id}
+                onClick={() => void changeArchived(task, "delete")}
+              >
+                Delete
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
+  } else if (tasks.length === 0) {
     body = (
       <p className={cn(muted, "px-4 py-3")}>
         No tasks yet. Start one, or make one from a chat.
@@ -484,9 +595,8 @@ const TasksCard = ({ view }: { view: ProjectView }) => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    void archiveTask(projectId, t.task).catch(report)
-                  }
+                  disabled={busyTask === t.task}
+                  onClick={() => void archive(t.task)}
                 >
                   Archive
                 </Button>
@@ -506,35 +616,35 @@ const TasksCard = ({ view }: { view: ProjectView }) => {
       hint={tasks.filter((t) => inView(t, "open")).length}
       attention={waiting > 0}
     >
-      {tasks.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
-          <div className="max-w-full [scrollbar-width:none] overflow-x-auto">
-            <Segmented
-              label="State"
-              value={filter}
-              onChange={(id) => set("tasks", id === "open" ? "" : id)}
-              options={TASK_VIEWS.map((o) => ({
-                id: o.id,
-                label: (
-                  <>
-                    {o.label}{" "}
-                    <span className="text-muted-foreground text-xs tabular-nums">
-                      {searched.filter((t) => inView(t, o.id)).length}
-                    </span>
-                  </>
-                ),
-              }))}
-            />
-          </div>
-          <Input
-            className="h-8 w-48 max-md:w-full md:ml-auto"
-            placeholder="Search tasks…"
-            aria-label="Search tasks"
-            value={q}
-            onChange={(e) => set("q", e.target.value)}
+      <div className="flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
+        <div className="max-w-full [scrollbar-width:none] overflow-x-auto">
+          <Segmented
+            label="State"
+            value={filter}
+            onChange={(id) => set("tasks", id === "open" ? "" : id)}
+            options={TASK_VIEWS.map((o) => ({
+              id: o.id,
+              label: (
+                <>
+                  {o.label}{" "}
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    {o.id === "archived"
+                      ? archivedShown.length
+                      : searched.filter((t) => inView(t, o.id)).length}
+                  </span>
+                </>
+              ),
+            }))}
           />
         </div>
-      )}
+        <Input
+          className="h-8 w-48 max-md:w-full md:ml-auto"
+          placeholder="Search tasks…"
+          aria-label="Search tasks"
+          value={q}
+          onChange={(e) => set("q", e.target.value)}
+        />
+      </div>
       {body}
     </Section>
   );

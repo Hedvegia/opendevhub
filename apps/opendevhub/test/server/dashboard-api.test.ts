@@ -309,6 +309,9 @@ function setup(webDir?: string) {
       ),
       dismissStarting: vi.fn((_id: string, _task: string) => {}),
       archiveTask: vi.fn((_id: string, _task: string) => {}),
+      archivedTasks: vi.fn((_id: string) => []),
+      restoreTask: vi.fn((_id: string, _task: string) => {}),
+      deleteArchivedTask: vi.fn((_id: string, _task: string) => {}),
       createDraft: vi.fn((_id: string, _b: Record<string, unknown>) => ({
         task: "tsk_d",
       })),
@@ -2112,6 +2115,25 @@ describe("dashboard API", () => {
       const archived = await post(app, "tasks/tsk_1/archive", {});
       expect(archived.status).toBe(200);
       expect(hub.tasks.archiveTask).toHaveBeenCalledWith(project.id, "tsk_1");
+      const archivedList = await app.request(
+        `/api/projects/${project.id}/tasks/archived`
+      );
+      expect(archivedList.status).toBe(200);
+      await expect(archivedList.json()).resolves.toStrictEqual([]);
+      expect(hub.tasks.archivedTasks).toHaveBeenCalledWith(project.id);
+      expect((await post(app, "tasks/tsk_1/restore", {})).status).toBe(200);
+      expect(hub.tasks.restoreTask).toHaveBeenCalledWith(project.id, "tsk_1");
+      expect(
+        (
+          await app.request(`/api/projects/${project.id}/tasks/tsk_1`, {
+            method: "DELETE",
+          })
+        ).status
+      ).toBe(200);
+      expect(hub.tasks.deleteArchivedTask).toHaveBeenCalledWith(
+        project.id,
+        "tsk_1"
+      );
       hub.tasks.archiveTask.mockImplementationOnce(() => {
         throw new NotFoundError("tsk_2", "task");
       });

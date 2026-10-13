@@ -542,6 +542,72 @@ describe("TaskStore picks, dismissals and archiving", () => {
     expect(s.events()).toStrictEqual([`task.archived ${T1} user`]);
     expect(s.tasks.archive(T2)).toBeFalsy();
   });
+
+  it("lists archived tasks and restores one to the live list", () => {
+    const s = setup();
+    s.tasks.createTask(s.task({ variants: [{}] }));
+    s.tasks.archive(T1);
+    expect(s.tasks.listArchivedForProject(project.id)).toEqual([
+      {
+        archivedAt: 1000,
+        id: T1,
+        kind: "task",
+        title: "Fix the login",
+        variants: 1,
+      },
+    ]);
+    expect(s.tasks.listArchivedForProject("other")).toStrictEqual([]);
+    s.events();
+    expect(s.tasks.restore(T1)).toBe(true);
+    expect(s.tasks.get(T1)?.archivedAt).toBeUndefined();
+    expect(
+      s.tasks.listForProject(project.id).map((task) => task.id)
+    ).toStrictEqual([T1]);
+    expect(s.tasks.listArchivedForProject(project.id)).toStrictEqual([]);
+    expect(s.events()).toStrictEqual([`task.restored ${T1} user`]);
+    expect(s.tasks.restore(T1)).toBe(false);
+  });
+
+  it("deletes only an archived task and detaches records that refer to it", () => {
+    const s = setup();
+    s.tasks.createTask(s.task({ variants: [{}] }));
+    s.attach(T1, 1, "ses_1");
+    s.tasks.createTask(s.task({ id: T2, variants: [] }));
+    s.db.prepare("UPDATE tasks SET proposed_in = ? WHERE id = ?").run(T1, T2);
+    s.db
+      .prepare(
+        "INSERT INTO branches (project_id, name, created_by, created_by_task, created_by_variant, created_at) VALUES (?, ?, 'variant', ?, 1, ?)"
+      )
+      .run(project.id, "feature", T1, 1000);
+    s.db
+      .prepare(
+        "INSERT INTO chats (id, project_id, origin, title, step, created_at, adopted_task, adopted_variant) VALUES (?, ?, 'hub', ?, 'session', ?, ?, 1)"
+      )
+      .run("chat_1", project.id, "Old chat", 1000, T1);
+    expect(s.tasks.deleteArchived(T1)).toBe(false);
+    s.tasks.archive(T1);
+    s.events();
+    expect(s.tasks.deleteArchived(T1)).toBe(true);
+    expect(s.tasks.get(T1)).toBeUndefined();
+    expect(s.tasks.sessionRef("ses_1")).toBeUndefined();
+    expect(
+      s.db.prepare("SELECT proposed_in FROM tasks WHERE id = ?").get(T2)
+    ).toEqual({ proposed_in: null });
+    expect(
+      s.db
+        .prepare("SELECT created_by_task FROM branches WHERE name = 'feature'")
+        .get()
+    ).toEqual({ created_by_task: null });
+    expect(
+      s.db
+        .prepare(
+          "SELECT adopted_task, archived_at FROM chats WHERE id = 'chat_1'"
+        )
+        .get()
+    ).toEqual({ adopted_task: null, archived_at: 1000 });
+    expect(s.events()).toStrictEqual([`task.deleted ${T1} user`]);
+    expect(s.tasks.deleteArchived(T1)).toBe(false);
+  });
 });
 
 describe("TaskStore lifecycle", () => {

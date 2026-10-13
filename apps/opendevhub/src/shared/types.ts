@@ -986,6 +986,15 @@ export interface TaskView {
   reviewOf?: PullRequestRef;
 }
 
+/** An archived task shown in the project's task card, outside the live snapshot. */
+export interface ArchivedTask {
+  id: string;
+  title: string;
+  kind: TaskKind;
+  variants: number;
+  archivedAt: number;
+}
+
 /** What a pull request is linked to in opendevhub, from `GET /api/links/pull`. Empty for one it never touched. */
 export interface PullLinks {
   /** Its row, for `GET /api/provenance/pull_request/:id`. */
