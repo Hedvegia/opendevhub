@@ -1079,6 +1079,25 @@ describe(staleSessions, () => {
     });
   });
 
+  it("offers a closed task conversation for cleanup immediately", () => {
+    const items = staleSessions({
+      projectId: "demo",
+      sessions: [rawSession("ses_closed", { time: recent })],
+      busy: new Set(),
+      workspace: "/workspaces/demo",
+      archived: (id) => id === "ses_closed",
+      now: NOW,
+    });
+    expect(items).toMatchObject([
+      {
+        checked: true,
+        reason: "closed task conversation",
+        sessionId: "ses_closed",
+        why: "archived",
+      },
+    ]);
+  });
+
   it("never lists subagents, archived sessions, or a session whose tree is busy; idle counts the newest update in the tree", () => {
     const old = { created: 0, updated: NOW - 40 * DAY };
     const items = scan(

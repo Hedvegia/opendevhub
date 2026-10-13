@@ -1,4 +1,4 @@
-import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Outlet, useLocation, useParams } from "@tanstack/react-router";
 import {
@@ -9,9 +9,11 @@ import {
   GitCompareIcon,
   LoaderCircleIcon,
   MessagesSquareIcon,
+  PlusIcon,
   ServerIcon,
   TerminalIcon,
   TicketIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -35,7 +37,13 @@ import type {
 } from "../../../shared/types";
 import { taskHref } from "../../../shared/urls";
 import type { TaskTab } from "../../../shared/urls";
-import { archiveTask, dismissStarting, pickVariant } from "../../api";
+import {
+  archiveTask,
+  archiveTaskConversation,
+  dismissStarting,
+  pickVariant,
+  startTaskConversation,
+} from "../../api";
 import { EnvBadge } from "../../components/env-badge";
 import {
   Chip,
@@ -50,7 +58,7 @@ import {
 import { SessionBadge } from "../../components/status";
 import { useDash } from "../../dashboard-context";
 import { envOfDirectory, sessionHref } from "../../derive";
-import { Link, Navigate, useSearchParams } from "../../routing";
+import { Link, Navigate, useNavigate, useSearchParams } from "../../routing";
 import { ActivityButton } from "../activity/activity-button";
 import { ProvenanceBreadcrumb } from "../activity/provenance-breadcrumb";
 import { checkoutOf } from "../checkouts/checkouts";
@@ -186,6 +194,115 @@ const ArchiveButton = (props: { view: ProjectView; task: TaskView }) => {
     >
       Archive
     </Button>
+  );
+};
+
+/** The open conversations of one variant, in task header order. */
+const ConversationTabs = (props: {
+  view: ProjectView;
+  task: TaskView;
+  variant: VariantView;
+  current: TaskTab;
+  thread?: string;
+}) => {
+  const navigate = useNavigate();
+  const conversations = taskSessions(props.view, props.task.id)
+    .filter((session) => session.task?.n === props.variant.n)
+    .toSorted((a, b) => a.id.localeCompare(b.id));
+  const selected =
+    conversations.find((session) => session.id === props.thread) ??
+    conversations.find((session) => session.id === props.variant.sessionId) ??
+    conversations.at(-1);
+  const path = (thread?: string) =>
+    taskHref(props.view.project.id, props.task.id, {
+      v: props.variant.n,
+      ...(thread ? { thread } : {}),
+    });
+  const start = useMutation({
+    mutationFn: () => {
+      if (!props.variant.sessionId) {
+        throw new Error("The task has no conversation to continue from");
+      }
+      return startTaskConversation(
+        props.view.project.id,
+        props.variant.sessionId
+      );
+    },
+    onSuccess: (id) => void navigate(path(id)),
+  });
+  const close = useMutation({
+    mutationFn: (id: string) =>
+      archiveTaskConversation(props.view.project.id, id),
+    onSuccess: (_result, id) => {
+      if (props.current === "conversation" && selected?.id === id) {
+        const remaining = conversations.filter((session) => session.id !== id);
+        void navigate(path(remaining.at(-1)?.id), { replace: true });
+      }
+    },
+  });
+
+  return (
+    <>
+      {conversations.map((session, index) => {
+        const label =
+          conversations.length === 1
+            ? "Conversation"
+            : `Conversation ${index + 1}`;
+        const active =
+          props.current === "conversation" && selected?.id === session.id;
+        return (
+          <span
+            key={session.id}
+            className={cn(
+              "inline-flex shrink-0 items-center gap-0.5 border-b-2",
+              active ? "border-foreground" : "border-transparent"
+            )}
+          >
+            <Link
+              to={path(session.id)}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "inline-flex items-center gap-1.5 py-2 pl-0.5 text-sm font-medium whitespace-nowrap",
+                active
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <MessagesSquareIcon className="size-4" /> {label}
+            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground size-6"
+              aria-label={`Close ${label}`}
+              title={`Close ${label}`}
+              disabled={close.isPending}
+              onClick={() => close.mutate(session.id)}
+            >
+              <XIcon className="size-3.5" />
+            </Button>
+          </span>
+        );
+      })}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="text-muted-foreground size-8 shrink-0 self-center"
+        aria-label="New conversation"
+        title="New conversation"
+        disabled={
+          !props.variant.sessionId || props.variant.discarded || start.isPending
+        }
+        onClick={() => start.mutate()}
+      >
+        <PlusIcon className="size-4" />
+      </Button>
+      {(start.error || close.error) && (
+        <span className="text-destructive self-center text-xs">
+          {(start.error ?? close.error)?.message}
+        </span>
+      )}
+    </>
   );
 };
 
@@ -368,8 +485,25 @@ export const ProjectTask = () => {
         />
       )}
       <TabBar label="Task">
+        {!variant && (
+          <TabLink to={hrefOf("conversation")} end>
+            <MessagesSquareIcon className="size-4" /> Conversation
+          </TabLink>
+        )}
+        {variant && (
+          <ConversationTabs
+            view={view}
+            task={record}
+            variant={variant}
+            current={current}
+            thread={params.get("thread") ?? undefined}
+          />
+        )}
         {tabs
-          .filter((tab) => !["changes", "terminal", "runtime"].includes(tab))
+          .filter(
+            (tab) =>
+              !["conversation", "changes", "terminal", "runtime"].includes(tab)
+          )
           .map((tab) => {
             const { icon: Icon, label } = TAB_LABEL[tab];
             return (

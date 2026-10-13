@@ -67,6 +67,51 @@ describe("removeSession", () => {
   });
 });
 
+describe("task conversations", () => {
+  it("closes a running conversation without deleting it, then starts a fresh one", async () => {
+    const s = setup();
+    await s.hub.environments.rescan();
+    await s.hub.environments.start(project.id);
+    s.tasks.createTask({
+      id: "task_1",
+      projectId: project.id,
+      title: "Implement login",
+      prompt: "Login",
+      createdAt: 1,
+      variants: [{}],
+    });
+    s.tasks.attachSession(
+      "task_1",
+      1,
+      { sessionId: "ses_1", envId: project.id, directory: "/workspaces/demo" },
+      USER
+    );
+    s.store.setSessions(project.id, [
+      {
+        id: "ses_1",
+        projectId: project.id,
+        title: "Implement login",
+        directory: "/workspaces/demo",
+        updatedAt: 1,
+        status: "running",
+      },
+    ]);
+
+    await s.hub.sessions.archiveTaskConversation(project.id, "ses_1");
+    expect(s.client.interrupt).toHaveBeenCalledWith(
+      "ses_1",
+      "/workspaces/demo"
+    );
+    expect(s.client.deleteSession).not.toHaveBeenCalled();
+    expect(s.store.sessionsOf(project.id)).toStrictEqual([]);
+    expect(s.tasks.bySession("ses_1")?.task.id).toBe("task_1");
+    await expect(
+      s.hub.sessions.startTaskConversation(project.id, "ses_1")
+    ).resolves.toBe("ses_new");
+    expect(s.tasks.get("task_1")?.variants[0].sessionId).toBe("ses_new");
+  });
+});
+
 describe("responding", () => {
   async function running() {
     const s = setup();

@@ -326,6 +326,7 @@ export interface StaleSessionsInput {
   worktrees?: string[];
   /** Whether a session's task variant was discarded, from the variant's row. */
   discarded?: (sessionId: string) => boolean;
+  archived?: (sessionId: string) => boolean;
   now: number;
 }
 
@@ -348,7 +349,9 @@ export const staleSessions = (
     const updatedAt = trees.get(s.id)?.updatedAt ?? s.time.updated;
     const idleDays = Math.floor((input.now - updatedAt) / (24 * 60 * 60_000));
     let why;
-    if (input.discarded?.(s.id)) {
+    if (input.archived?.(s.id)) {
+      why = "archived" as const;
+    } else if (input.discarded?.(s.id)) {
       why = "discarded" as const;
     } else if (
       input.worktrees &&
@@ -365,6 +368,7 @@ export const staleSessions = (
       continue;
     }
     const reasons = {
+      archived: "closed task conversation",
       discarded: "discarded task variant",
       idle: `idle for ${idleDays} days`,
       "worktree-gone": "its worktree was removed",

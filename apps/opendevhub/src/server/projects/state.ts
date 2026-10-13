@@ -254,6 +254,9 @@ export class StateStore {
    */
   private withTasks(list: SessionSummary[]): SessionSummary[] {
     return list.flatMap((s) => {
+      if (this.opts.tasks.isSessionArchived(s.id)) {
+        return [];
+      }
       const task = this.opts.tasks.sessionRef(s.id);
       if (task) {
         return task.discarded ? [] : [{ ...s, task }];

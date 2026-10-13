@@ -769,6 +769,26 @@ export const sendComposerMessage = (
     "send to agent"
   );
 
+export const startTaskConversation = (projectId: string, sessionId: string) =>
+  read(
+    project.sessions[":sid"]["task-conversation"].$post({
+      param: { ...projectParam(projectId), sid: encodeURIComponent(sessionId) },
+    }),
+    "start task conversation"
+  );
+
+export const archiveTaskConversation = async (
+  projectId: string,
+  sessionId: string
+) => {
+  await complete(
+    project.sessions[":sid"].archive.$post({
+      param: { ...projectParam(projectId), sid: encodeURIComponent(sessionId) },
+    }),
+    "close task conversation"
+  );
+};
+
 /** The `/` suggestions of a checkout: the hub's commands and opencode's. */
 export const fetchComposerCommands = (projectId: string, directory: string) =>
   read(

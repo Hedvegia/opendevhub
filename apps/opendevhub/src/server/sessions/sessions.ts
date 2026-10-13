@@ -821,6 +821,27 @@ export class Sessions {
     }
   }
 
+  /** Closes a task conversation; cleanup removes its opencode session later. */
+  async archiveTaskConversation(
+    id: ProjectId,
+    sessionId: string
+  ): Promise<void> {
+    this.envs.requireProject(id);
+    const found = this.deps.tasks.bySession(sessionId);
+    if (!found || found.task.projectId !== id || found.variant.discarded) {
+      throw new NotFoundError(sessionId, "task conversation");
+    }
+    const session = this.deps.store
+      .sessionsOf(id)
+      .find((s) => s.id === sessionId);
+    if (session && session.status !== "idle") {
+      await this.envs
+        .opencodeClient(session.envId ?? id)
+        .interrupt(sessionId, session.directory);
+    }
+    this.deps.tasks.archiveSession(sessionId);
+  }
+
   latestSession(id: ProjectId, directory: string): SessionSummary | undefined {
     return this.deps.store
       .sessionsOf(id)

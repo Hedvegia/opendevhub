@@ -225,6 +225,10 @@ function setup(webDir?: string) {
         "src/a.ts",
       ]),
       removeSession: vi.fn(async (_id: string, _sid: string) => {}),
+      startTaskConversation: vi.fn(
+        async (_id: string, _sid: string) => "ses_new"
+      ),
+      archiveTaskConversation: vi.fn(async (_id: string, _sid: string) => {}),
       sessionDetail: vi.fn(
         async (_id: string, _sid: string): Promise<SessionDetail> => {
           throw new NotFoundError(_sid, "session");

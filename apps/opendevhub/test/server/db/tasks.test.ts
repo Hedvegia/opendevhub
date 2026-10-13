@@ -64,6 +64,22 @@ const setup = () => {
   return { ...s, attach, clock, events, task };
 };
 
+describe("TaskStore.archiveSession", () => {
+  it("keeps a prior conversation owned by its task while hiding it", () => {
+    const s = setup();
+    s.tasks.createTask(s.task({ variants: [{}] }));
+    s.attach(T1, 1, "ses_old");
+    s.attach(T1, 1, "ses_new");
+
+    expect(s.tasks.archiveSession("ses_old")).toBe(true);
+    expect(s.tasks.isSessionArchived("ses_old")).toBe(true);
+    expect(s.tasks.bySession("ses_old")?.task.id).toBe(T1);
+    expect(s.tasks.sessionRef("ses_old")?.id).toBe(T1);
+    expect(s.tasks.bySession("ses_new")?.task.id).toBe(T1);
+    expect(s.tasks.archiveSession("ses_old")).toBe(false);
+  });
+});
+
 describe("TaskStore.createTask", () => {
   it("records the task and its queued variants, and a task.started event", () => {
     const s = setup();

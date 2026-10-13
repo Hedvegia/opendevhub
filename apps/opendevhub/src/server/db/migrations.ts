@@ -267,6 +267,9 @@ CREATE TABLE task_sessions (
 );
 INSERT INTO task_sessions SELECT session_id, task_id, n FROM variants WHERE session_id IS NOT NULL;
 `,
+  `
+ALTER TABLE task_sessions ADD COLUMN archived_at INTEGER;
+`,
 ];
 
 export class NewerDatabaseError extends Error {

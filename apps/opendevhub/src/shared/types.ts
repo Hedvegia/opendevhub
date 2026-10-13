@@ -1228,7 +1228,7 @@ export interface SessionCleanupItem {
   directory: string;
   /** The latest update in the session's tree. */
   updatedAt: number;
-  why: "discarded" | "worktree-gone" | "idle";
+  why: "archived" | "discarded" | "worktree-gone" | "idle";
 }
 
 /** An ended task cleanup may archive: hidden from the dashboard, its record kept. */

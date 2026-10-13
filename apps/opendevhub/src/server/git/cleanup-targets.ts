@@ -196,6 +196,7 @@ export class CleanupTargets {
       ...(worktrees ? { worktrees } : {}),
       discarded: (id) =>
         this.deps.tasks.bySession(id)?.variant.discarded === true,
+      archived: (id) => this.deps.tasks.isSessionArchived(id),
       now: (this.deps.now ?? Date.now)(),
     });
   }

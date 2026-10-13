@@ -255,6 +255,16 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
     .delete("/api/projects/:id/sessions/:sid", (c) =>
       ok(c, (id) => hub.sessions.removeSession(id, c.req.param("sid") ?? ""))
     )
+    .post("/api/projects/:id/sessions/:sid/task-conversation", (c) =>
+      json(c, (id) =>
+        hub.sessions.startTaskConversation(id, c.req.param("sid") ?? "")
+      )
+    )
+    .post("/api/projects/:id/sessions/:sid/archive", (c) =>
+      ok(c, (id) =>
+        hub.sessions.archiveTaskConversation(id, c.req.param("sid") ?? "")
+      )
+    )
     .post(
       "/api/projects/:id/sessions/:sid/prompt",
       validateJson(bodies.prompt),

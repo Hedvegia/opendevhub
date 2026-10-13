@@ -584,7 +584,7 @@ export class TaskStore {
       }
       this.db
         .prepare(
-          "INSERT OR IGNORE INTO task_sessions SELECT session_id, task_id, n FROM variants WHERE task_id = ? AND n = ? AND session_id IS NOT NULL"
+          "INSERT OR IGNORE INTO task_sessions (session_id, task_id, n) SELECT session_id, task_id, n FROM variants WHERE task_id = ? AND n = ? AND session_id IS NOT NULL"
         )
         .run(taskId, n);
       this.db
@@ -940,6 +940,26 @@ export class TaskStore {
     const task = v && this.get(v.task_id);
     const variant = task?.variants.find((x) => x.n === v?.n);
     return task && variant ? { task, variant } : undefined;
+  }
+
+  /** Hides one task conversation while keeping it in opencode until cleanup deletes it. */
+  archiveSession(sessionId: string): boolean {
+    return this.write(() => {
+      const result = this.db
+        .prepare(
+          "UPDATE task_sessions SET archived_at = ? WHERE session_id = ? AND archived_at IS NULL"
+        )
+        .run(this.now(), sessionId);
+      return result.changes > 0;
+    });
+  }
+
+  isSessionArchived(sessionId: string): boolean {
+    return !!this.db
+      .prepare(
+        "SELECT 1 FROM task_sessions WHERE session_id = ? AND archived_at IS NOT NULL"
+      )
+      .get(sessionId);
   }
 
   /** What a session in the snapshot says about its task; cached until the next change. */

@@ -82,6 +82,8 @@ export interface DashboardHub {
     | "findFiles"
     | "sessionDetail"
     | "removeSession"
+    | "startTaskConversation"
+    | "archiveTaskConversation"
     | "models"
   >;
   reviews: Pick<
