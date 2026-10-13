@@ -22,6 +22,10 @@ const unique = <T extends { id: number }>(items: T[]): T[] => [
 /** Check states that something has to be done about. */
 export const FAILED_CHECK = new Set(["failure", "error"]);
 
+/** Comment anchors and review counts must be reloaded when the pull request changes. */
+export const pullFeedbackVersion = (details: ForgejoPullDetails): string =>
+  JSON.stringify([details.headSha, details.base, details.pull.updatedAt]);
+
 /**
  * The pull request's conversation, reviews, checks and every review's inline comments, loaded pages only. Shares
  * its queries with the conversation, so both show the same data.
@@ -31,11 +35,14 @@ export const usePullFeedback = (details: ForgejoPullDetails) => {
   const { owner, repo, number } = details.pull;
   const args = [owner, repo, String(number)] as const;
   const key = ["pull", ...args];
-  const comments = useForgejoPages([...key, "comments"], (page, signal) =>
-    fetchForgejoComments(...args, page, signal)
+  const version = pullFeedbackVersion(details);
+  const comments = useForgejoPages(
+    [...key, "comments", version],
+    (page, signal) => fetchForgejoComments(...args, page, signal)
   );
-  const reviews = useForgejoPages([...key, "reviews"], (page, signal) =>
-    fetchForgejoReviews(...args, page, signal)
+  const reviews = useForgejoPages(
+    [...key, "reviews", version],
+    (page, signal) => fetchForgejoReviews(...args, page, signal)
   );
   const checks = useForgejoPages(
     ["checks", owner, repo, details.headSha],
@@ -64,6 +71,7 @@ export const usePullFeedback = (details: ForgejoPullDetails) => {
         ...key,
         "review-comments",
         r.id,
+        version,
       ] as const,
     })),
   });

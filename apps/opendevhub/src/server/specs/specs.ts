@@ -270,6 +270,10 @@ export interface SpecsDeps {
   /** Where each variant's spec phase, change and archive folder are kept. */
   tasks: Pick<TaskStore, "bySession" | "setSpec">;
   client: (envId: string) => Pick<OpencodeClient, "command" | "commands">;
+  startConversation: (
+    projectId: ProjectId,
+    sessionId: string
+  ) => Promise<string>;
   /** Re-reads an environment's sessions after a command changed them. */
   reconcile?: (envId: string) => void;
   /** Commits a checkout's changes under `paths` on its branch, as `ReviewActions.commitPaths`. */
@@ -309,7 +313,9 @@ export class Specs {
       .filter((s) => s.directory === directory)
       .flatMap((session) => {
         const found = this.deps.tasks.bySession(session.id);
-        return found?.variant.spec && !found.variant.discarded
+        return found?.variant.spec &&
+          found.variant.sessionId === session.id &&
+          !found.variant.discarded
           ? [{ session, ...found }]
           : [];
       });
@@ -413,14 +419,15 @@ export class Specs {
 
   /**
    * Approves the checkout's proposed change and starts implementing it: the task's phase becomes `implement`, then
-   * its session runs `/opsx-apply <change>`. The CLI is asked again first, so the change must exist, have every
+   * a fresh conversation runs `/opsx-apply <change>` by default. The CLI is asked again first, so the change must exist, have every
    * artifact implementing needs, and pass `openspec validate` unless `force` is set.
    */
   async approve(
     projectId: ProjectId,
     directory: string,
     change: string,
-    force = false
+    force = false,
+    newConversation = true
   ): Promise<void> {
     const { session, task, variant, envId, client, target } =
       await this.proposed(projectId, directory, change, APPROVE_REFUSALS);
@@ -431,7 +438,10 @@ export class Specs {
     // The phase changes first, so nothing can revise the spec while the agent implements it.
     write("implement");
     try {
-      await client.command(session.id, APPLY_COMMAND, change, directory);
+      const implementing = newConversation
+        ? await this.deps.startConversation(projectId, session.id)
+        : session.id;
+      await client.command(implementing, APPLY_COMMAND, change, directory);
     } catch (error) {
       write("propose");
       throw error;

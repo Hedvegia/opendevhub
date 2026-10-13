@@ -1,3 +1,4 @@
+import { useMutation } from "@tanstack/react-query";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -6,18 +7,24 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 import type { SessionSummary } from "../../../shared/types";
+import { sendComposerMessage } from "../../api";
 import { Note } from "../../components/page";
 import { SessionBadge } from "../../components/status";
 import { When } from "../../components/when";
 import { Link, useSearchParams } from "../../routing";
 import { sessionPath } from "../checkouts/checkouts";
 import { SessionView } from "../sessions/session-page";
+import type { PanelId } from "../sessions/side-panel";
 import { useTaskPage } from "./task-context";
 import { conversationThreads, taskOf } from "./tasks";
 import { conversationCheckout, VariantWaiting } from "./variant-waiting";
 
 /** The selected variant's conversation, and the other conversations in its checkout as threads (`?thread=`). */
-export const TaskConversation = () => {
+export const TaskConversation = ({
+  initialPanel,
+}: {
+  initialPanel?: PanelId;
+} = {}) => {
   const { view, task, variant } = useTaskPage();
   const [params, setParams] = useSearchParams();
   const threads = conversationThreads(view, variant);
@@ -40,15 +47,35 @@ export const TaskConversation = () => {
       { replace: true }
     );
 
+  const start = useMutation({
+    mutationFn: () => {
+      if (!variant.sessionId) {
+        throw new Error("The task has no conversation yet");
+      }
+      return sendComposerMessage(view.project.id, variant.sessionId, {
+        text: "/new",
+      });
+    },
+    onSuccess: (result) => {
+      if (result.kind === "new") {
+        select(undefined);
+      }
+    },
+  });
+
   let body;
   if (selected && checkout) {
     body = (
       <SessionView
-        key={selected.id}
+        key={`${selected.id}:${initialPanel ?? ""}`}
         view={view}
         checkout={checkout}
         session={selected}
-        showTask={selected.id !== own?.id}
+        showTask={selected.task?.id !== task.id}
+        changes
+        terminal
+        runtime
+        initialPanel={initialPanel}
         onStarted={select}
       />
     );
@@ -58,6 +85,23 @@ export const TaskConversation = () => {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="outline"
+          disabled={!variant.sessionId || variant.discarded || start.isPending}
+          onClick={() => start.mutate()}
+        >
+          {start.isPending ? "Starting…" : "Start a new conversation here"}
+        </Button>
+        <span className="text-muted-foreground text-sm">
+          Fresh context, same task and checkout.
+        </span>
+        {start.error && (
+          <span className="text-destructive text-sm">
+            {start.error.message}
+          </span>
+        )}
+      </div>
       {others.length > 0 && (
         <Threads
           threads={others}
@@ -68,7 +112,9 @@ export const TaskConversation = () => {
       )}
       {selected && own && selected.id !== own.id && (
         <Note>
-          Another conversation in this checkout
+          {selected.task?.id === task.id
+            ? "Earlier conversation in this task"
+            : "Another conversation in this checkout"}
           {selected.task && selected.task.id !== task.id && (
             <>
               , from{" "}
@@ -97,7 +143,7 @@ export const TaskConversation = () => {
             className="h-auto p-0"
             onClick={() => select(undefined)}
           >
-            Back to this task&apos;s conversation
+            Back to the current conversation
           </Button>
         </Note>
       )}
@@ -126,7 +172,7 @@ const Threads = (props: {
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        <Chevron /> {n} other conversation{n === 1 ? "" : "s"} here
+        <Chevron /> {n} earlier or other conversation{n === 1 ? "" : "s"} here
       </Button>
       {open && (
         <Card className="gap-0 overflow-hidden py-0">

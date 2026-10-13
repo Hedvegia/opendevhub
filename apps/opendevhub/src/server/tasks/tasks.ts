@@ -411,7 +411,9 @@ export class Tasks {
       throw new InvalidRequestError("that variant was already discarded");
     }
     const all = this.deps.store.sessionsOf(id);
-    const others = all.filter((s) => s.task?.id === task && s.id !== keep);
+    const others = all.filter(
+      (s) => s.task?.id === task && s.task.n !== kept.n
+    );
     const result: PickResult = { discarded: [], errors: [], removed: [] };
     const discard = async () => {
       this.deps.tasks.pick(task, kept.n, USER);

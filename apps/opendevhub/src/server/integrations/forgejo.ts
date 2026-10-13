@@ -1399,12 +1399,14 @@ interface RawComment {
   position?: number;
   original_position?: number;
   diff_hunk?: string;
+  extra_lines_count?: number;
   resolver?: { login: string } | null;
 }
 const comment = (v: RawComment): ForgejoComment => ({
   author: v.user?.login ?? "",
   body: v.body ?? "",
   diffHunk: v.diff_hunk,
+  extraLines: v.extra_lines_count,
   id: v.id,
   line: v.position,
   oldLine: v.original_position,

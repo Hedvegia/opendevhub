@@ -1116,8 +1116,17 @@ describe("Forgejo inbox, context and connection verification", () => {
             position: 4,
             original_position: 0,
             diff_hunk: "@@ -1 +1 @@\n+x",
+            extra_lines_count: 2,
             resolver: { login: "bob" },
           },
+          {
+            id: 6,
+            body: "General review feedback",
+            path: "a.ts",
+            position: 0,
+            original_position: 0,
+          },
+          { id: 7, body: "PR feedback without a file" },
         ])
       )
       .mockResolvedValueOnce(
@@ -1159,7 +1168,15 @@ describe("Forgejo inbox, context and connection verification", () => {
     await expect(
       forgejo.reviewComments("team", "private", "7", "2")
     ).resolves.toMatchObject([
-      { id: 3, path: "a.ts", line: 4, resolved: true },
+      { id: 3, path: "a.ts", line: 4, resolved: true, extraLines: 2 },
+      {
+        id: 6,
+        path: "a.ts",
+        line: 0,
+        oldLine: 0,
+        body: "General review feedback",
+      },
+      { id: 7, body: "PR feedback without a file" },
     ]);
     const checks = await forgejo.checks("team", "private", "a".repeat(40));
     expect(checks.items[0].url).toBeUndefined();

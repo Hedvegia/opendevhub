@@ -28,6 +28,7 @@ import type { ReactNode } from "react";
 import { confirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 import type {
   ForgejoInbox,
@@ -55,7 +56,7 @@ import {
 import { DiffLinesSkeleton } from "../../components/skeletons";
 import { Tip } from "../../components/tip";
 import { When } from "../../components/when";
-import { useDash } from "../../dashboard-context";
+import { useDash, useNow } from "../../dashboard-context";
 import { Link, useSearchParams } from "../../routing";
 import { ProvenanceBreadcrumb } from "../activity/provenance-breadcrumb";
 import {
@@ -121,6 +122,7 @@ import {
 import { ForgejoStack } from "./forgejo-stack";
 import { LocalCheckouts } from "./local-checkouts";
 import { EarlierAiReviews, PullOrigins, usePullLinks } from "./pull-links";
+import { isStalePull } from "./stale-pull";
 import { useForgejoQuery } from "./use-forgejo";
 import { FAILED_CHECK, usePullFeedback } from "./use-pull-feedback";
 
@@ -254,6 +256,7 @@ const PullView = ({
   onDrafting: (drafting: boolean) => void;
 }) => {
   const { forgejo } = useDash();
+  const now = useNow();
   const [search, setSearch] = useSearchParams();
   const listSearch = listSearchOf(search);
   const client = useQueryClient();
@@ -357,13 +360,13 @@ const PullView = ({
     return note ? [{ comment, note }] : [];
   });
   const commentById = new Map(
-    inlineForgejo.map(({ comment, note }) => [note.id, comment] as const)
+    inlineForgejo.map((entry) => [entry.note.id, entry] as const)
   );
   const noteKey = [
-    ...inlineForgejo.map(({ note }) => note.id),
-    ...inlineAi.map((s) => s.id),
+    ...inlineForgejo.map(({ note }) => JSON.stringify(note)),
+    ...inlineAi.map((s) => JSON.stringify([s.id, s.file, s.line, s.side])),
   ].join(",");
-  // The diff re-renders when its notes change, so they only change when the ids do.
+  // Keep annotations stable until their identities or positions change.
   const notesRef = useRef<{ key: string; notes: DiffNote[] }>({
     key: "",
     notes: [],
@@ -445,7 +448,7 @@ const PullView = ({
   };
   const accept = (s: AiSuggestion, edited: string) => {
     const text = withSuggestion(edited, s);
-    if (s.file && s.line !== undefined) {
+    if (s.placement === "inline") {
       setComments((current) => [...current, suggestionComment(s, text)]);
     } else {
       setSummary((current) =>
@@ -467,11 +470,13 @@ const PullView = ({
     />
   );
   const renderNote = (id: string): ReactNode => {
-    const comment = commentById.get(id);
-    if (comment) {
+    const entry = commentById.get(id);
+    if (entry) {
+      const { comment, note } = entry;
       return (
         <ForgejoCommentNote
           comment={comment}
+          anchor={note}
           selected={!!selection[id]}
           onSelect={
             reviewing
@@ -584,6 +589,14 @@ const PullView = ({
       <ForgejoGate>
         <div className="flex flex-wrap items-center gap-2">
           <Chip>{details.pull.state}</Chip>
+          {isStalePull(details.pull, now) && (
+            <Chip
+              className="bg-warn/10 text-warn"
+              title="No activity in the last 2 full days (48 hours)"
+            >
+              Stale
+            </Chip>
+          )}
           {details.draft && <Chip>Draft</Chip>}
           {details.mergeable === false && isOpen && (
             <Chip>Merge conflicts</Chip>
@@ -803,6 +816,7 @@ const PullView = ({
 // oxlint-disable-next-line complexity
 export const ForgejoPage = () => {
   const { forgejo } = useDash();
+  const now = useNow();
   const [search, setSearch] = useSearchParams();
   // Explicit URL filters win; a bare sidebar link restores the last view.
   const filters = search.size
@@ -1041,7 +1055,10 @@ export const ForgejoPage = () => {
               {stackForgejoPulls(pulls).map(({ pull, depth }) => (
                 <li key={`${pull.owner}/${pull.repo}/${pull.number}`}>
                   <Link
-                    className="hover:bg-muted/50 focus-visible:outline-ring flex items-start gap-3 px-4 py-3 transition-colors focus-visible:outline-2"
+                    className={cn(
+                      "hover:bg-muted/50 focus-visible:outline-ring flex items-start gap-3 px-4 py-3 transition-colors focus-visible:outline-2",
+                      isStalePull(pull, now) && "bg-warn/5 hover:bg-warn/10"
+                    )}
                     style={
                       depth
                         ? { paddingLeft: `${1 + depth * STACK_INDENT_REM}rem` }

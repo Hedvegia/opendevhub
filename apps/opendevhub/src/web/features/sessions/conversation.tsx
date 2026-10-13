@@ -21,6 +21,7 @@ import { Tip } from "../../components/tip";
 import { needsAttention, sessionHref } from "../../derive";
 import { Link } from "../../routing";
 import { CheckoutProvider } from "../checkouts/checkout-context";
+import { CheckoutRuntime } from "../checkouts/checkout-page";
 import type { Checkout } from "../checkouts/checkouts";
 import { ProjectReview } from "../review/project-review";
 import { taskChip } from "../tasks/tasks";
@@ -66,6 +67,9 @@ export const Conversation = (props: {
   changes?: boolean;
   /** Offers the checkout's terminal in a side panel. */
   terminal?: boolean;
+  /** Offers the checkout runtime in a side panel. */
+  runtime?: boolean;
+  initialPanel?: PanelId;
   chips?: ReactNode;
   actions?: ReactNode;
   onSend: (
@@ -75,7 +79,7 @@ export const Conversation = (props: {
   const { view, checkout, session, detail } = props;
   const projectId = view.project.id;
   const { behind, contentRef, scrollRef, scrollToBottom } = useStickToBottom();
-  const { panel, toggle, close } = useSidePanel();
+  const { panel, toggle, close } = useSidePanel(props.initialPanel);
   const [notice, setNotice] = useState<string>();
   useEffect(() => {
     if (!notice) {
@@ -93,8 +97,9 @@ export const Conversation = (props: {
   const panels: PanelId[] = [
     "turns",
     ...(props.changes ? (["changes"] as const) : []),
-    ...(subagents > 0 ? (["subagents"] as const) : []),
+    "subagents",
     ...(props.terminal ? (["terminal"] as const) : []),
+    ...(props.runtime ? (["runtime"] as const) : []),
   ];
   // A remembered panel this conversation doesn't offer stays shut.
   const shown = panel && panels.includes(panel) ? panel : undefined;
@@ -109,6 +114,16 @@ export const Conversation = (props: {
       hint: checkout.worktree
         ? "Commits against the base, and what isn't committed"
         : "What isn't committed",
+      id: shown,
+    };
+  } else if (shown === "runtime") {
+    open = {
+      children: (
+        <CheckoutProvider value={{ checkout, sessionId: session.id, view }}>
+          <CheckoutRuntime sidebar />
+        </CheckoutProvider>
+      ),
+      hint: checkout.worktree?.branch ?? checkout.label,
       id: shown,
     };
   } else if (shown === "terminal") {

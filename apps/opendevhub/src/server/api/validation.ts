@@ -350,6 +350,7 @@ export const bodies = {
   runChecks: directory.extend({ names: strings, approve: strings }),
   reviseSpec: directory.extend({ change: z.string(), feedback: z.string() }),
   approveSpec: directory.extend({
+    newConversation: z.boolean().optional(),
     change: z.string(),
     force: z.boolean().optional(),
   }),

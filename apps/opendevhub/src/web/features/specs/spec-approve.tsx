@@ -59,6 +59,7 @@ export const ApproveSpec = (props: {
   worktree?: boolean;
 }) => {
   const { change, code = [] } = props;
+  const [newConversation, setNewConversation] = useState(true);
   const [comparing, setComparing] = useState(false);
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string>();
@@ -68,6 +69,7 @@ export const ApproveSpec = (props: {
         change: change.name,
         directory: props.directory,
         force,
+        newConversation,
       }),
     onMutate: () => setNotice(undefined),
     onSuccess: async () => {
@@ -105,6 +107,15 @@ export const ApproveSpec = (props: {
           </AlertDescription>
         </Alert>
       )}
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={newConversation}
+          disabled={approve.isPending}
+          onChange={(event) => setNewConversation(event.target.checked)}
+        />
+        Start implementation in a new conversation (fresh context)
+      </label>
       <div className="flex flex-wrap items-center gap-3">
         <Button
           disabled={blocker !== undefined || approve.isPending}

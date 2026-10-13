@@ -81,7 +81,6 @@ import { newTaskShortcut } from "../features/tasks/tasks";
 import { Link, useIsActive, useNavigate, useSearchParams } from "../routing";
 import { CommandPalette } from "./command-palette";
 import { CurrentProjectProvider, useCurrentProject } from "./current-project";
-import { LinkedWork } from "./linked-work";
 import { Logo } from "./logo";
 import { RightSidebarHost } from "./right-sidebar";
 
@@ -339,10 +338,7 @@ const AppSidebar = () => {
 
       <SidebarContent>
         {view ? (
-          <>
-            <ProjectChats view={view} />
-            <LinkedWork view={view} />
-          </>
+          <ProjectChats view={view} />
         ) : (
           <p className="text-muted-foreground px-4 py-2 text-sm">
             Add a project to start chatting.

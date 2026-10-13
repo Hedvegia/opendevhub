@@ -582,6 +582,16 @@ export class TaskStore {
       if (!task) {
         return false;
       }
+      this.db
+        .prepare(
+          "INSERT OR IGNORE INTO task_sessions SELECT session_id, task_id, n FROM variants WHERE task_id = ? AND n = ? AND session_id IS NOT NULL"
+        )
+        .run(taskId, n);
+      this.db
+        .prepare(
+          "INSERT OR IGNORE INTO task_sessions (session_id, task_id, n) VALUES (?, ?, ?)"
+        )
+        .run(session.sessionId, taskId, n);
       // A session reconcile adopted before this ran (a claim can't cover a crash) stops being a chat.
       this.db
         .prepare(
@@ -924,7 +934,8 @@ export class TaskStore {
     sessionId: string
   ): { task: TaskRecord; variant: VariantView } | undefined {
     const v = this.db
-      .prepare("SELECT * FROM variants WHERE session_id = ?")
+      .prepare(`SELECT v.* FROM variants v WHERE v.session_id = ?1 OR EXISTS
+        (SELECT 1 FROM task_sessions s WHERE s.session_id = ?1 AND s.task_id = v.task_id AND s.n = v.n)`)
       .get(sessionId) as RawVariant | undefined;
     const task = v && this.get(v.task_id);
     const variant = task?.variants.find((x) => x.n === v?.n);
@@ -937,7 +948,11 @@ export class TaskStore {
       const rows = this.db
         .prepare(
           `SELECT v.session_id AS session, v.task_id AS id, t.kind AS kind, v.n AS n, v.discarded_at AS discarded
-           FROM variants v JOIN tasks t ON t.id = v.task_id WHERE v.session_id IS NOT NULL`
+           FROM variants v JOIN tasks t ON t.id = v.task_id WHERE v.session_id IS NOT NULL
+           UNION
+           SELECT s.session_id AS session, s.task_id AS id, t.kind AS kind, s.n AS n, v.discarded_at AS discarded
+           FROM task_sessions s JOIN tasks t ON t.id = s.task_id
+           JOIN variants v ON v.task_id = s.task_id AND v.n = s.n`
         )
         .all() as unknown as {
         session: string;

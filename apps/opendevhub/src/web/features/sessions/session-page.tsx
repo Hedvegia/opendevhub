@@ -6,6 +6,7 @@ import type { ProjectView, SessionSummary } from "../../../shared/types";
 import { fetchSessionDetail, sendComposerMessage } from "../../api";
 import type { Checkout } from "../checkouts/checkouts";
 import { Conversation } from "./conversation";
+import type { PanelId } from "./side-panel";
 
 /** How often a working conversation is read again, so its replies show up as they come. */
 const WORKING_REFRESH_MS = 2000;
@@ -35,6 +36,8 @@ export const SessionView = ({
   showTask = false,
   changes = false,
   terminal = false,
+  runtime = false,
+  initialPanel,
   onStarted,
   chips,
   actions,
@@ -47,6 +50,9 @@ export const SessionView = ({
   changes?: boolean;
   /** Offers the checkout's terminal in a side panel. */
   terminal?: boolean;
+  /** Offers the checkout runtime in a side panel. */
+  runtime?: boolean;
+  initialPanel?: PanelId;
   /** A conversation the composer's `/new` started in this checkout, with its chat. */
   onStarted?: (sessionId: string, chat?: string) => void;
   /** More chips for the header. */
@@ -83,6 +89,8 @@ export const SessionView = ({
       showTask={showTask}
       changes={changes}
       terminal={terminal}
+      runtime={runtime}
+      initialPanel={initialPanel}
       chips={chips}
       actions={actions}
       onSend={async (message) => {

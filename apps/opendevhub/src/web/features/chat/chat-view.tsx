@@ -113,6 +113,7 @@ const ChatPage = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
           session={session}
           changes
           terminal
+          runtime
           chips={chips}
           actions={actions}
           onStarted={(_, next) => {

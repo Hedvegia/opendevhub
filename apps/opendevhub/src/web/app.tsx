@@ -32,11 +32,6 @@ import {
   TaskCompare,
   TaskSpec,
 } from "./features/tasks/project-task";
-import {
-  TaskChanges,
-  TaskRuntime,
-  VariantCheckout,
-} from "./features/tasks/task-checkout-tabs";
 import { TaskConversation } from "./features/tasks/task-conversation";
 import { TasksPage } from "./features/tasks/tasks-page";
 import { parseSearch, stringifySearch } from "./routing";
@@ -129,13 +124,9 @@ const taskRoute = () => {
     createRoute({ component, getParentRoute: () => route, path });
   return route.addChildren([
     tab("/", TaskConversation),
-    tab("changes", TaskChanges),
-    tab("terminal", () => (
-      <VariantCheckout>
-        <LazyTerminal />
-      </VariantCheckout>
-    )),
-    tab("runtime", TaskRuntime),
+    tab("changes", () => <TaskConversation initialPanel="changes" />),
+    tab("terminal", () => <TaskConversation initialPanel="terminal" />),
+    tab("runtime", () => <TaskConversation initialPanel="runtime" />),
     tab("spec", TaskSpec),
     tab("compare", TaskCompare),
   ]);

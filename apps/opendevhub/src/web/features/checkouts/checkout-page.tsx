@@ -438,8 +438,10 @@ const Group = (props: {
 };
 
 /** The checkout's container at work: its forwarded ports beside its log. */
-export const CheckoutRuntime = () => (
-  <div className="grid items-start gap-8 lg:grid-cols-2">
+export const CheckoutRuntime = ({
+  sidebar = false,
+}: { sidebar?: boolean } = {}) => (
+  <div className={cn("grid items-start gap-8", !sidebar && "lg:grid-cols-2")}>
     <CheckoutPorts />
     <CheckoutLogs />
   </div>

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { eventsSince, variantActor } from "../../../src/server/db/events";
 import type { NewTask } from "../../../src/server/db/tasks";
-import { RESTART_ERROR } from "../../../src/server/db/tasks";
+import { RESTART_ERROR, TaskStore } from "../../../src/server/db/tasks";
 import type { Project } from "../../../src/shared/types";
 import { memoryStores, taskEnvironment } from "../../helpers/stores";
 
@@ -590,5 +590,22 @@ describe("TaskStore claims", () => {
     expect(s.tasks.isClaimed("env-1", "/w/a")).toBeTruthy();
     b();
     expect(s.tasks.isClaimed("env-1", "/w/a")).toBeFalsy();
+  });
+});
+
+describe("task conversation history", () => {
+  it("keeps earlier conversations owned by the variant after switching", () => {
+    const s = setup();
+    s.tasks.createTask(s.task());
+    s.attach(T1, 1, "old");
+    expect(s.tasks.sessionRef("old")?.id).toBe(T1);
+    s.attach(T1, 1, "fresh");
+    expect(s.tasks.get(T1)?.variants[0].sessionId).toBe("fresh");
+    expect(s.tasks.sessionRef("old")).toEqual(s.tasks.sessionRef("fresh"));
+    expect(s.tasks.bySession("old")?.task.id).toBe(T1);
+    expect(s.tasks.bySession("fresh")?.variant.n).toBe(1);
+    const reopened = new TaskStore(s.db);
+    expect(reopened.bySession("old")?.task.id).toBe(T1);
+    expect(reopened.sessionRef("old")).toEqual(reopened.sessionRef("fresh"));
   });
 });

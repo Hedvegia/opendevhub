@@ -131,6 +131,8 @@ export interface ForgejoComment {
   line?: number;
   oldLine?: number;
   diffHunk?: string;
+  /** Additional lines after the stored anchor in a Forgejo range comment. */
+  extraLines?: number;
   resolved?: boolean;
 }
 

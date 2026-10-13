@@ -177,6 +177,7 @@ const make = (opts: {
     reconcile,
     sessions: () => opts.sessions ?? [],
     startTask,
+    startConversation: vi.fn(async () => "ses_fresh"),
     tasks,
     target: () => opts.target ?? target(),
   };
@@ -499,12 +500,26 @@ const report = (status: unknown, validate: unknown) =>
   section("validate", validate);
 
 describe("Specs.approve", () => {
+  it("implements in a fresh conversation by default", async () => {
+    const { specs, client } = make({
+      outputs: [report(READY, VALID)],
+      sessions: [taskSession({ phase: "propose" })],
+    });
+    await specs.approve("p", "/workspaces/wt", "add-login");
+    expect(client.command).toHaveBeenCalledWith(
+      "ses_fresh",
+      "opsx-apply",
+      "add-login",
+      "/workspaces/wt"
+    );
+  });
+
   it("records the implement phase, then runs /opsx-apply with the change", async () => {
     const { client, exec, reconcile, specs, setSpec, specOf } = make({
       outputs: [report(READY, VALID)],
       sessions: [taskSession({ phase: "propose" })],
     });
-    await specs.approve("p", "/workspaces/wt", "add-login");
+    await specs.approve("p", "/workspaces/wt", "add-login", false, false);
     expect(exec.mock.calls[0][1].slice(4)).toStrictEqual([
       "/workspaces/wt",
       "list",

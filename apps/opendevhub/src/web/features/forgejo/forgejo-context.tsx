@@ -24,9 +24,9 @@ import { fetchForgejoReviewComments } from "../../api";
 import { MarkdownBody } from "../../components/markdown-body";
 import { Chip, Note, PanelSection, Section } from "../../components/page";
 import { When } from "../../components/when";
-import { forgejoReviewers } from "./forgejo";
+import { forgejoCommentLines, forgejoReviewers } from "./forgejo";
 import { useForgejoQuery } from "./use-forgejo";
-import { usePullFeedback } from "./use-pull-feedback";
+import { pullFeedbackVersion, usePullFeedback } from "./use-pull-feedback";
 
 export interface ForgejoFeedback {
   comments: ForgejoComment[];
@@ -208,7 +208,8 @@ export const ForgejoContext = ({
       </div>
       {c.path && (
         <p className="font-mono text-xs break-all">
-          {c.path}:{c.line || c.oldLine || "?"}
+          {c.path}
+          {c.line || c.oldLine ? `:${forgejoCommentLines(c)}` : ""}
         </p>
       )}
       <MarkdownBody>{c.body}</MarkdownBody>
@@ -262,6 +263,7 @@ export const ForgejoContext = ({
           args={args}
           review={r.id}
           count={r.commentsCount}
+          version={pullFeedbackVersion(details)}
           render={commentCard}
         />
       )}
@@ -449,16 +451,18 @@ const ReviewComments = ({
   args,
   review,
   count,
+  version,
   render,
 }: {
   args: readonly [string, string, string];
   review: number;
   count: number;
+  version: string;
   render: (c: ForgejoComment) => ReactNode;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const query = useForgejoQuery(
-    ["pull", ...args, "review-comments", review],
+    ["pull", ...args, "review-comments", review, version],
     (signal) => fetchForgejoReviewComments(...args, review, signal),
     expanded
   );
@@ -470,8 +474,8 @@ const ReviewComments = ({
         onClick={() => setExpanded((v) => !v)}
       >
         {expanded
-          ? "Hide inline comments"
-          : `Show ${count} inline comment${count === 1 ? "" : "s"}`}
+          ? "Hide review comments"
+          : `Show ${count} review comment${count === 1 ? "" : "s"}`}
       </Button>
       {expanded && (
         <>

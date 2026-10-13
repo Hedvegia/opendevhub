@@ -6,6 +6,7 @@ import {
   FileDiffIcon,
   ListTreeIcon,
   LoaderCircleIcon,
+  ServerIcon,
   TerminalIcon,
   XIcon,
 } from "lucide-react";
@@ -50,7 +51,12 @@ import { TurnChanges } from "../review/turn-changes";
 import { formatCost, formatTokens } from "../tasks/tasks";
 import { turnActivity, turnDuration } from "./session-detail";
 
-export type PanelId = "turns" | "changes" | "subagents" | "terminal";
+export type PanelId =
+  | "turns"
+  | "changes"
+  | "subagents"
+  | "terminal"
+  | "runtime";
 
 const PANEL_KEY = "opendevhub.conversation.panel";
 const PANEL_WIDTH_KEY = "opendevhub.conversation.panelWidth";
@@ -103,7 +109,8 @@ const isPanelId = (value: string | null): value is PanelId =>
   value === "turns" ||
   value === "changes" ||
   value === "subagents" ||
-  value === "terminal";
+  value === "terminal" ||
+  value === "runtime";
 
 const readPanel = (): PanelId | undefined => {
   try {
@@ -127,8 +134,8 @@ const storePanel = (panel: PanelId | undefined): void => {
 };
 
 /** The open side panel, remembered on this browser; closed until the user opens one. */
-export const useSidePanel = () => {
-  const [panel, setPanel] = useState(readPanel);
+export const useSidePanel = (initialPanel?: PanelId) => {
+  const [panel, setPanel] = useState(() => initialPanel ?? readPanel());
   const show = (next: PanelId | undefined) => {
     setPanel(next);
     storePanel(next);
@@ -141,6 +148,7 @@ export const useSidePanel = () => {
 };
 
 export const PANELS = {
+  runtime: { icon: ServerIcon, label: "Runtime" },
   changes: { icon: FileDiffIcon, label: "Changes" },
   subagents: { icon: BotIcon, label: "Subagents" },
   terminal: { icon: TerminalIcon, label: "Terminal" },
@@ -321,7 +329,7 @@ const PanelColumn = (props: {
       <div
         className={cn(
           "bg-background min-h-0 flex-1 overflow-y-auto",
-          (id === "changes" || id === "terminal") && "p-4"
+          (id === "changes" || id === "terminal" || id === "runtime") && "p-4"
         )}
       >
         {children}
@@ -350,7 +358,7 @@ const PanelSheet = (props: { panel: OpenPanel; onClose: () => void }) => {
         <div
           className={cn(
             "min-h-0 flex-1 overflow-y-auto",
-            (id === "changes" || id === "terminal") && "p-4"
+            (id === "changes" || id === "terminal" || id === "runtime") && "p-4"
           )}
         >
           {children}
@@ -403,6 +411,11 @@ export const SubagentsPanel = (props: {
   session: SessionSummary;
 }) => (
   <ul>
+    {props.detail.subagents.length === 0 && (
+      <li className="text-muted-foreground px-4 py-3 text-sm">
+        No subagents in this conversation yet.
+      </li>
+    )}
     {props.detail.subagents.map((sub) => (
       <li
         key={sub.id}

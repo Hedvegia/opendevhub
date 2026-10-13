@@ -10,7 +10,7 @@ By default a task creates a [worktree](/docs/worktrees) on a branch named after 
 
 Choose an agent and model for each variant. You can save a task as a draft and start it later. If the checkout has OpenSpec available, **Spec first** asks the agent to propose the change before implementing it. The task page shows the proposal, specs, design and tasks as they progress.
 
-When the proposal is ready, comment on its text or requirements and send the comments to the agent for an update. Approve the change to start implementation. After its tasks are complete, archive the change from the task page. A proposed change can also be implemented in separate model variants for comparison.
+When the proposal is ready, comment on its text or requirements and send the comments to the agent for an update. **Approve and implement** starts implementation in a fresh conversation by default, keeping the same task, checkout and spec files. Clear **Start implementation in a new conversation** to continue the proposing conversation. After its tasks are complete, archive the change from the task page. A proposed change can also be implemented in separate model variants for comparison.
 
 ![The New task dialog with a prompt, a new worktree in the shared container, and two models to compare](./images/new-task.webp)
 
@@ -29,6 +29,8 @@ A task and its variants are stored in opendevhub's local SQLite database. Conver
 ## Conversation and changes
 
 Open a task and select **Conversation** to see the agent's messages, tool activity, cost, tokens and subagents. The composer sends another prompt to that session, queued behind its current turn if it is still working. **Changes** and **Terminal** are available on the task and checkout pages; the conversation can also show checkout changes in its side panel.
+
+A task groups multiple conversations. Use **Start a new conversation here** (or `/new` in its composer) to start with empty context in the same checkout. Earlier conversations stay attached to the task and can be reopened from the conversation list; their message history is not copied into the new session.
 
 ## Review and publish
 

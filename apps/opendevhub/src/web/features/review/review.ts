@@ -430,6 +430,8 @@ export interface DiffNote {
   file: string;
   line: number;
   side: "new" | "old";
+  /** First line of a range on the same side; `line` is its last line. */
+  start?: number;
 }
 
 export type ReviewAnnotation =

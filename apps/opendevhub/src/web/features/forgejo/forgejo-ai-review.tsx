@@ -74,6 +74,7 @@ import {
 } from "../checkouts/checkouts";
 import { ProjectSettingsDialog } from "../projects/project-settings-dialog";
 import { linesLabel, newId } from "../review/review";
+import type { DiffNote } from "../review/review";
 import {
   OCR_SECTION,
   projectOcrKey,
@@ -980,6 +981,7 @@ export const AiSuggestionCard = (props: {
 /** Someone's inline Forgejo comment, shown at its line in the diff. */
 export const ForgejoCommentNote = (props: {
   comment: ForgejoComment;
+  anchor?: DiffNote;
   selected?: boolean;
   onSelect?: (checked: boolean) => void;
 }) => {
@@ -1007,6 +1009,11 @@ export const ForgejoCommentNote = (props: {
           </label>
         )}
       </div>
+      {props.anchor?.start !== undefined && (
+        <p className="text-muted-foreground text-xs">
+          Lines {linesLabel({ ...props.anchor, startSide: props.anchor.side })}
+        </p>
+      )}
       <MarkdownBody>{c.body}</MarkdownBody>
     </div>
   );

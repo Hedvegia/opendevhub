@@ -53,6 +53,7 @@ describe("openDatabase", () => {
       "projects",
       "pull_requests",
       "reviews",
+      "task_sessions",
       "tasks",
       "tickets",
       "variants",

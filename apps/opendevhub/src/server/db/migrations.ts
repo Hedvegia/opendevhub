@@ -258,6 +258,15 @@ CREATE TABLE project_todos (
 );
 CREATE INDEX project_todos_project ON project_todos (project_id, id);
 `,
+  `
+CREATE TABLE task_sessions (
+  session_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  FOREIGN KEY (task_id, n) REFERENCES variants (task_id, n) ON DELETE CASCADE
+);
+INSERT INTO task_sessions SELECT session_id, task_id, n FROM variants WHERE session_id IS NOT NULL;
+`,
 ];
 
 export class NewerDatabaseError extends Error {

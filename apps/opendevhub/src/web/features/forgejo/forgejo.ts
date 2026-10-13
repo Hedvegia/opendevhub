@@ -11,7 +11,7 @@ import type {
 } from "../../../shared/forgejo";
 import type { PublishInfo, ReviewFile } from "../../../shared/types";
 import { linesLabel, parsePatch } from "../review/review";
-import type { DiffNote, ReviewComment } from "../review/review";
+import type { DiffLine, DiffNote, ReviewComment } from "../review/review";
 
 /** Only UI preferences go into storage; PR data stays in the in-memory query cache. */
 export const readForgejoPreference = (key: string): string => {
@@ -247,7 +247,7 @@ export const forgejoAgentPrompt = (
     ),
     ...(feedback.comments ?? []).map(
       (c) =>
-        `\nComment ${c.id} by ${c.author}${c.path ? ` on ${c.path}:${c.line || c.oldLine || "?"}` : ""}${c.resolved ? " (resolved)" : ""}:\n${c.body.slice(0, 8000)}${c.diffHunk ? `\nDiff context:\n${c.diffHunk.slice(0, 4000)}` : ""}`
+        `\nComment ${c.id} by ${c.author}${c.path ? ` on ${c.path}:${forgejoCommentLines(c)}` : ""}${c.resolved ? " (resolved)" : ""}:\n${c.body.slice(0, 8000)}${c.diffHunk ? `\nDiff context:\n${c.diffHunk.slice(0, 4000)}` : ""}`
     ),
     ...(feedback.checks ?? []).map(
       (c) =>
@@ -408,6 +408,7 @@ const SNAP_LINES = 3;
 
 export interface AiSuggestion extends AiFinding {
   id: string;
+  placement: "inline" | "general";
 }
 
 /**
@@ -427,8 +428,19 @@ export const placeAiFindings = (
     const id = `${idPrefix}-${i}`;
     const lines = f.file ? shown.get(f.file)?.[f.side ?? "new"] : undefined;
     const target = f.line;
-    if (!lines || target === undefined) {
-      general.push({ ...f, id });
+    if (target === undefined || !Number.isSafeInteger(target) || target <= 0) {
+      general.push({
+        ...f,
+        id,
+        line: undefined,
+        start: undefined,
+        side: undefined,
+        placement: "general",
+      });
+      continue;
+    }
+    if (!lines) {
+      general.push({ ...f, id, placement: "general" });
       continue;
     }
     let nearest: number | undefined;
@@ -441,7 +453,7 @@ export const placeAiFindings = (
       }
     }
     if (nearest === undefined || Math.abs(nearest - target) > SNAP_LINES) {
-      general.push({ ...f, id });
+      general.push({ ...f, id, placement: "general" });
       continue;
     }
     const start =
@@ -453,6 +465,7 @@ export const placeAiFindings = (
       file: f.file,
       id,
       line: nearest,
+      placement: "inline",
       severity: f.severity,
       side: f.side ?? "new",
       ...(start === undefined ? {} : { start }),
@@ -485,35 +498,102 @@ export const suggestionComment = (
   s: AiSuggestion,
   text = s.body
 ): ReviewComment => ({
-  file: s.file,
   id: s.id,
-  line: s.line,
-  side: s.side,
-  ...(s.start === undefined
-    ? {}
-    : { start: s.start, startSide: s.side ?? "new" }),
+  ...(s.placement === "inline"
+    ? {
+        file: s.file,
+        line: s.line,
+        side: s.side,
+        ...(s.start === undefined
+          ? {}
+          : { start: s.start, startSide: s.side ?? "new" }),
+      }
+    : {}),
   text,
 });
 
-/** Where an inline Forgejo comment sits in the current diff, if its line is still in it. */
+const COMMENT_CONTEXT_LINES = 2;
+
+/** The stored line range, for conversation labels and agent handoffs. */
+export const forgejoCommentLines = (comment: ForgejoComment): string => {
+  const first = comment.line || comment.oldLine;
+  if (!first) {
+    return "?";
+  }
+  const extra = comment.extraLines ?? 0;
+  return Number.isSafeInteger(extra) && extra > 0
+    ? `${first}-${first + extra}`
+    : String(first);
+};
+
+/**
+ * Forgejo's API returns stored positions, not its reverse-blame result or invalidated flag. Match the saved
+ * diff context on the same side instead of trusting that an old line number still identifies the same code.
+ * Missing or ambiguous context stays in the conversation without an inline annotation.
+ */
 export const forgejoCommentNote = (
   comment: ForgejoComment,
   files: ReviewFile[]
 ): DiffNote | undefined => {
-  if (!comment.path) {
+  if (!comment.path || !comment.diffHunk || comment.resolved) {
     return undefined;
   }
-  const lines = commentableLines(
-    files.filter((f) => f.file === comment.path)
-  ).get(comment.path);
-  const id = `comments-${comment.id}`;
-  if (comment.line && lines?.new.includes(comment.line)) {
-    return { file: comment.path, id, line: comment.line, side: "new" };
+  const side = comment.line ? "new" : "old";
+  const position = side === "new" ? comment.line : comment.oldLine;
+  const extraLines = comment.extraLines ?? 0;
+  if (
+    !position ||
+    !Number.isSafeInteger(position) ||
+    position < 1 ||
+    !Number.isSafeInteger(extraLines) ||
+    extraLines < 0
+  ) {
+    return undefined;
   }
-  if (comment.oldLine && lines?.old.includes(comment.oldLine)) {
-    return { file: comment.path, id, line: comment.oldLine, side: "old" };
+  const numberOf = (line: DiffLine) =>
+    side === "new" ? line.newNo : line.oldNo;
+  const saved = parsePatch(comment.diffHunk)
+    .map((hunk) => hunk.lines.filter((line) => numberOf(line) !== undefined))
+    .find((lines) => lines.some((line) => numberOf(line) === position));
+  if (!saved) {
+    return undefined;
   }
-  return undefined;
+  const anchor = saved.findIndex((line) => numberOf(line) === position);
+  const rangeEnd = anchor + extraLines;
+  if (rangeEnd >= saved.length || rangeEnd < anchor) {
+    return undefined;
+  }
+  const start = Math.max(0, anchor - COMMENT_CONTEXT_LINES);
+  const context = saved.slice(start, rangeEnd + COMMENT_CONTEXT_LINES + 1);
+  const matches: number[] = [];
+  for (const file of files.filter((f) => f.file === comment.path)) {
+    for (const hunk of parsePatch(file.patch ?? "")) {
+      const lines = hunk.lines.filter((line) => numberOf(line) !== undefined);
+      for (const [index, line] of lines.entries()) {
+        if (
+          line.text === context[0].text &&
+          context.every(
+            (expected, offset) => lines[index + offset]?.text === expected.text
+          ) &&
+          (side === "new" || lines[index + anchor - start]?.kind === "del")
+        ) {
+          const lineNumber = numberOf(lines[index + rangeEnd - start]);
+          if (lineNumber !== undefined) {
+            matches.push(lineNumber);
+          }
+        }
+      }
+    }
+  }
+  return matches.length === 1
+    ? {
+        file: comment.path,
+        id: `comments-${comment.id}`,
+        line: matches[0],
+        side,
+        ...(extraLines > 0 ? { start: matches[0] - extraLines } : {}),
+      }
+    : undefined;
 };
 
 /** An AI review in progress or done, remembered per pull request so a reload picks it up again. */

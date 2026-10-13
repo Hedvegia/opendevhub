@@ -1035,7 +1035,12 @@ export const reviseSpec = async (
 /** Approves the checkout's proposed change; its spec-first task then runs `/opsx-apply`. */
 export const approveSpec = async (
   projectId: string,
-  body: { directory: string; change: string; force?: boolean }
+  body: {
+    directory: string;
+    change: string;
+    force?: boolean;
+    newConversation?: boolean;
+  }
 ) => {
   await complete(
     project.spec.approve.$post({ param: projectParam(projectId), json: body }),

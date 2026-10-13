@@ -38,7 +38,7 @@ export const aiReviewPrompt = (details: ForgejoPullDetails): string =>
     `First check that HEAD is ${details.headSha}. If it is not, say so and stop. Do not edit, commit or push anything: this is a review only.`,
     `Read the change against its merge-base with ${details.base} and as much of the surrounding code as you need. You may run the project's tests or linters.`,
     FOCUS,
-    "For each finding, note the file, the line in the new version (or the removed line), how severe it is, and a short comment for the author. End with a short summary.",
+    "For each finding, note how severe it is and a short comment for the author. Include the file and line only when the finding concerns a specific line; otherwise make it a general comment. End with a short summary.",
     "",
     describe(details),
   ].join("\n");
@@ -67,7 +67,7 @@ export const aiQuickReviewPrompt = (
   return [
     `Review pull request ${details.pull.owner}/${details.pull.repo} #${details.pull.number}: ${details.pull.title}`,
     ...context(details),
-    "You only have the diff below; do not run anything or read other files. Comment only on lines in the diff.",
+    "You only have the diff below; do not run anything or read other files. Anchor line comments only to lines in the diff. Use general findings for feedback without a specific line.",
     FOCUS,
     FORMAT,
     "",

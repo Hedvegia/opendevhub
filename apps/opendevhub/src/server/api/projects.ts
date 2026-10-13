@@ -699,7 +699,8 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
             id,
             str(b.directory) ?? "",
             b.change,
-            b.force ?? false
+            b.force ?? false,
+            b.newConversation ?? true
           );
         })
     )

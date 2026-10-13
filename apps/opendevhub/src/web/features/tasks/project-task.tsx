@@ -198,7 +198,9 @@ export const ProjectTask = () => {
   const [params, setParams] = useSearchParams();
   const total = taskUsage(snapshot, task);
   const record = taskOf(view, task);
-  const sessions = taskSessions(view, task);
+  const sessions = taskSessions(view, task).filter((session) =>
+    record?.variants.some((v) => v.sessionId === session.id)
+  );
   const projectPath = `/p/${encodeURIComponent(view.project.id)}`;
 
   if (!record) {
@@ -257,7 +259,8 @@ export const ProjectTask = () => {
       className={cn(
         "flex flex-col gap-4",
         // The conversation fills the rest of the viewport, so its composer sits at the bottom.
-        current === "conversation" && fillViewport
+        ["conversation", "changes", "terminal", "runtime"].includes(current) &&
+          fillViewport
       )}
     >
       <ProvenanceBreadcrumb
@@ -365,14 +368,16 @@ export const ProjectTask = () => {
         />
       )}
       <TabBar label="Task">
-        {tabs.map((tab) => {
-          const { icon: Icon, label } = TAB_LABEL[tab];
-          return (
-            <TabLink key={tab} to={hrefOf(tab)} end={tab === "conversation"}>
-              <Icon className="size-4" /> {label}
-            </TabLink>
-          );
-        })}
+        {tabs
+          .filter((tab) => !["changes", "terminal", "runtime"].includes(tab))
+          .map((tab) => {
+            const { icon: Icon, label } = TAB_LABEL[tab];
+            return (
+              <TabLink key={tab} to={hrefOf(tab)} end={tab === "conversation"}>
+                <Icon className="size-4" /> {label}
+              </TabLink>
+            );
+          })}
       </TabBar>
       {variant ? (
         <TaskPageCtx value={{ sessions, task: record, variant, view }}>

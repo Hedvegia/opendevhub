@@ -16,6 +16,7 @@ import type {
   SessionSummary,
   SpecWorkflow,
 } from "../../shared/types";
+import { USER } from "../db/events";
 import type { Environments } from "../environments/environments";
 import type { HubDeps } from "../environments/ports";
 import { AlreadyAnsweredError, NotFoundError } from "../errors";
@@ -439,6 +440,22 @@ export class Sessions {
     }
     if (hub === "new") {
       const { offset } = slashOf(text);
+      const owner = this.deps.tasks.bySession(sessionId);
+      if (owner) {
+        const fresh = await this.startTaskConversation(id, sessionId, request);
+        const prompt = text.slice(offset).trim();
+        if (prompt) {
+          await client.prompt(
+            fresh,
+            prompt,
+            undefined,
+            directory,
+            attachmentsOf(directory, request, offset)
+          );
+          this.envs.reconcile(envId);
+        }
+        return { kind: "new", sessionId: fresh };
+      }
       const started = await this.startSession(
         id,
         directory,
@@ -754,6 +771,50 @@ export class Sessions {
       if (found.envId !== id) {
         this.envs.reconcile(found.envId);
       }
+    }
+  }
+
+  /** Starts with empty context while preserving ownership and the checkout. */
+  async startTaskConversation(
+    id: ProjectId,
+    sessionId: string,
+    options: { model?: ModelRef; agent?: string } = {}
+  ): Promise<string> {
+    this.envs.requireProject(id);
+    const found = this.deps.tasks.bySession(sessionId);
+    if (!found || found.task.projectId !== id || found.variant.discarded) {
+      throw new NotFoundError(sessionId, "task conversation");
+    }
+    const { task, variant } = found;
+    const { directory } = variant;
+    if (!directory) {
+      throw new InvalidRequestError("the task has no checkout");
+    }
+    this.envs.checkDirectory(id, directory);
+    const envId = variant.envId ?? id;
+    const release = this.deps.tasks.claim(envId, directory);
+    try {
+      const session = await this.envs
+        .opencodeClient(envId)
+        .createSession(directory, {
+          title: task.title,
+          model:
+            options.model ??
+            this.deps.store.sessionsOf(id).find((s) => s.id === sessionId)
+              ?.model ??
+            variant.model,
+          agent: options.agent ?? variant.agent,
+        });
+      this.deps.tasks.attachSession(
+        task.id,
+        variant.n,
+        { sessionId: session.id, envId, directory },
+        USER
+      );
+      this.envs.reconcile(envId);
+      return session.id;
+    } finally {
+      release();
     }
   }
 

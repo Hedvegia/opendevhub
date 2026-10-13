@@ -7,6 +7,7 @@ import {
   forgejoAgentPrompt,
   forgejoRoute,
   forgejoCommentNote,
+  forgejoCommentLines,
   placeAiFindings,
   suggestionComment,
   withSuggestion,
@@ -373,6 +374,7 @@ describe("placeAiFindings", () => {
     expect(inline).toEqual([
       {
         id: "r-0",
+        placement: "inline",
         file: "src/a.ts",
         line: 11,
         side: "new",
@@ -381,6 +383,7 @@ describe("placeAiFindings", () => {
       },
       {
         id: "r-1",
+        placement: "inline",
         file: "src/a.ts",
         line: 14,
         side: "new",
@@ -389,6 +392,7 @@ describe("placeAiFindings", () => {
       },
       {
         id: "r-3",
+        placement: "inline",
         file: "src/a.ts",
         line: 11,
         side: "old",
@@ -397,6 +401,7 @@ describe("placeAiFindings", () => {
       },
       {
         id: "r-4",
+        placement: "inline",
         file: "src/a.ts",
         line: 12,
         start: 10,
@@ -406,6 +411,13 @@ describe("placeAiFindings", () => {
       },
     ]);
     expect(general.map((g) => g.id)).toEqual(["r-2", "r-5", "r-6"]);
+    for (const suggestion of general) {
+      expect(suggestion.placement).toBe("general");
+      const draft = suggestionComment(suggestion);
+      expect(draft.file).toBeUndefined();
+      expect(draft.line).toBeUndefined();
+      expect(forgejoReviewComments([draft])).toEqual([]);
+    }
     expect(suggestionComment(inline[3], "edited")).toEqual({
       id: "r-4",
       file: "src/a.ts",
@@ -416,10 +428,32 @@ describe("placeAiFindings", () => {
       text: "edited",
     });
   });
+  it("keeps missing and invalid line references out of the diff, including near its first line", () => {
+    const firstLines = forgejoReviewFiles(
+      "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n"
+    );
+    const findings = [undefined, 0, -1, 0.5, Number.NaN].map((line) => ({
+      body: "General feedback",
+      file: "a.ts",
+      line,
+      severity: "minor" as const,
+    }));
+    const { inline, general } = placeAiFindings(findings, firstLines);
+    expect(inline).toEqual([]);
+    expect(general).toHaveLength(findings.length);
+    expect(general.every((s) => s.placement === "general")).toBe(true);
+    expect(general.every((s) => s.line === undefined)).toBe(true);
+  });
 });
 
 describe("forgejoCommentNote", () => {
-  const comment = { id: 5, author: "bob", body: "x", updatedAt: "now" };
+  const comment = {
+    id: 5,
+    author: "bob",
+    body: "x",
+    updatedAt: "now",
+    diffHunk: PATCH,
+  };
   it("places inline comments on lines still in the diff", () => {
     expect(
       forgejoCommentNote({ ...comment, path: "src/a.ts", line: 12 }, files)
@@ -431,6 +465,131 @@ describe("forgejoCommentNote", () => {
       forgejoCommentNote({ ...comment, path: "src/a.ts", line: 99 }, files)
     ).toBeUndefined();
     expect(forgejoCommentNote(comment, files)).toBeUndefined();
+    expect(
+      forgejoCommentNote(
+        { ...comment, path: "src/a.ts", line: 0, oldLine: 0 },
+        files
+      )
+    ).toBeUndefined();
+  });
+
+  it("follows unchanged context when preceding lines move", () => {
+    const moved = forgejoReviewFiles(
+      PATCH.replace("@@ -10,4 +10,5 @@", "@@ -20,4 +30,5 @@")
+    );
+    expect(
+      forgejoCommentNote({ ...comment, path: "src/a.ts", line: 12 }, moved)
+    ).toEqual({ id: "comments-5", file: "src/a.ts", line: 32, side: "new" });
+    expect(
+      forgejoCommentNote({ ...comment, path: "src/a.ts", oldLine: 11 }, moved)
+    ).toEqual({ id: "comments-5", file: "src/a.ts", line: 21, side: "old" });
+  });
+
+  it("removes inline markers when code or saved context is changed, missing or ambiguous", () => {
+    const anchored = { ...comment, path: "src/a.ts", line: 12 };
+    const changed = forgejoReviewFiles(
+      PATCH.replace("+eleven and a half", "+different code")
+    );
+    expect(forgejoCommentNote(anchored, changed)).toBeUndefined();
+    expect(
+      forgejoCommentNote({ ...anchored, diffHunk: undefined }, files)
+    ).toBeUndefined();
+    expect(
+      forgejoCommentNote({ ...anchored, resolved: true }, files)
+    ).toBeUndefined();
+    expect(
+      forgejoCommentNote(
+        anchored,
+        forgejoReviewFiles(
+          `${PATCH}\n${PATCH.replace("@@ -10,4 +10,5 @@", "@@ -20,4 +20,5 @@")}`
+        )
+      )
+    ).toBeUndefined();
+    expect(
+      forgejoCommentNote({ ...anchored, line: 100 }, files)
+    ).toBeUndefined();
+  });
+
+  it("invalidates removed-line comments when the line is restored", () => {
+    const restored = forgejoReviewFiles(
+      PATCH.replace("-eleven\n+eleven!", " eleven")
+    );
+    expect(
+      forgejoCommentNote(
+        { ...comment, path: "src/a.ts", oldLine: 11 },
+        restored
+      )
+    ).toBeUndefined();
+  });
+
+  it("places range comments below the last line and validates the whole range", () => {
+    const range = { ...comment, path: "src/a.ts", line: 11, extraLines: 2 };
+    expect(forgejoCommentNote(range, files)).toEqual({
+      id: "comments-5",
+      file: "src/a.ts",
+      line: 13,
+      side: "new",
+      start: 11,
+    });
+    expect(
+      forgejoCommentNote(
+        range,
+        forgejoReviewFiles(PATCH.replace(" twelve", " changed"))
+      )
+    ).toBeUndefined();
+    expect(
+      forgejoCommentNote({ ...range, extraLines: 20 }, files)
+    ).toBeUndefined();
+    expect(
+      forgejoCommentNote({ ...range, extraLines: Number.NaN }, files)
+    ).toBeUndefined();
+    expect(
+      forgejoCommentNote({ ...range, extraLines: -1 }, files)
+    ).toBeUndefined();
+  });
+
+  it("retains both ends of ranges when lines move on either side", () => {
+    const moved = forgejoReviewFiles(
+      PATCH.replace("@@ -10,4 +10,5 @@", "@@ -20,4 +30,5 @@")
+    );
+    expect(
+      forgejoCommentNote(
+        { ...comment, path: "src/a.ts", line: 11, extraLines: 2 },
+        moved
+      )
+    ).toEqual({
+      id: "comments-5",
+      file: "src/a.ts",
+      start: 31,
+      line: 33,
+      side: "new",
+    });
+    expect(
+      forgejoCommentNote(
+        { ...comment, path: "src/a.ts", oldLine: 11, extraLines: 2 },
+        moved
+      )
+    ).toEqual({
+      id: "comments-5",
+      file: "src/a.ts",
+      start: 21,
+      line: 23,
+      side: "old",
+    });
+  });
+
+  it("labels stored ranges in the conversation and handoff", () => {
+    const range = { ...comment, path: "src/a.ts", line: 11, extraLines: 2 };
+    expect(forgejoCommentLines(range)).toBe("11-13");
+    expect(forgejoCommentLines({ ...range, line: 0, oldLine: 11 })).toBe(
+      "11-13"
+    );
+    expect(forgejoCommentLines({ ...range, extraLines: 0 })).toBe("11");
+    expect(forgejoCommentLines({ ...range, extraLines: undefined })).toBe("11");
+    expect(forgejoCommentLines({ ...range, extraLines: -1 })).toBe("11");
+    expect(forgejoAgentPrompt(details, { comments: [range] })).toContain(
+      "src/a.ts:11-13"
+    );
   });
 });
 

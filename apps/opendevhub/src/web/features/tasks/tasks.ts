@@ -126,7 +126,10 @@ export const removals = (
   dirty: Record<string, boolean>
 ): Removal[] => {
   const ws = workspaceFolderOf(view);
-  const others = taskSessions(view, task).filter((s) => s.id !== keep);
+  const kept = view.sessions.find((s) => s.id === keep);
+  const others = taskSessions(view, task).filter(
+    (s) => s.task?.n !== kept?.task?.n
+  );
   const branchOf = (s: SessionSummary) => variantOf(view, s)?.variant.branch;
   const inUse = new Set(
     view.sessions.filter((s) => !others.includes(s)).map((s) => s.directory)

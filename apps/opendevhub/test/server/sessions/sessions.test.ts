@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { USER } from "../../../src/server/db/events";
 import {
   AlreadyAnsweredError,
   NotFoundError,
@@ -465,6 +466,32 @@ describe("composer", () => {
       idle.hub.sessions.sendMessage(project.id, "ses_1", { text: "/interrupt" })
     ).rejects.toThrow(InvalidRequestError);
     expect(idle.client.interrupt).not.toHaveBeenCalled();
+  });
+
+  it("starts a fresh task conversation without copying context or making a separate chat", async () => {
+    const { hub, client, tasks } = await started();
+    tasks.createTask({
+      id: "task_1",
+      projectId: project.id,
+      title: "Implement login",
+      prompt: "Login",
+      createdAt: 1,
+      variants: [{}],
+    });
+    tasks.attachSession(
+      "task_1",
+      1,
+      { sessionId: "ses_1", envId: project.id, directory: ws },
+      USER
+    );
+    await expect(
+      hub.sessions.sendMessage(project.id, "ses_1", { text: "/new" })
+    ).resolves.toStrictEqual({ kind: "new", sessionId: "ses_new" });
+    expect(client.prompt).not.toHaveBeenCalled();
+    expect(client.command).not.toHaveBeenCalled();
+    expect(tasks.bySession("ses_1")?.task.id).toBe("task_1");
+    expect(tasks.bySession("ses_new")?.task.id).toBe("task_1");
+    expect(tasks.get("task_1")?.variants[0].sessionId).toBe("ses_new");
   });
 
   it("starts a new conversation in the same checkout with /new, prompting it with the rest", async () => {
