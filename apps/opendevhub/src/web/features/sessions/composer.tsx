@@ -485,6 +485,24 @@ export const Composer = (props: {
       .finally(() => setBusy(false));
   };
 
+  const interrupt = async () => {
+    if (busy || !target.ready) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await props.onSend({ mentions: [], text: "/interrupt" });
+      setError(undefined);
+      if (result) {
+        props.onSent?.(sentNotice(result));
+      }
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : String(error_));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -506,6 +524,11 @@ export const Composer = (props: {
     if (open && e.key === "Escape") {
       e.preventDefault();
       setDismissed(trigger.start);
+      return;
+    }
+    if (e.key === "Escape" && running) {
+      e.preventDefault();
+      void interrupt();
       return;
     }
     const el = e.currentTarget;

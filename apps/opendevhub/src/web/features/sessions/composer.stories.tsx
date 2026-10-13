@@ -1,4 +1,4 @@
-import { expect, fn, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 
 import preview from "../../../../.storybook/preview";
 import type {
@@ -48,6 +48,26 @@ const meta = preview.meta({
 
 /** Ready to send: the box, with attach, agent, model and send under it. */
 export const Idle = meta.story();
+
+/** Escape interrupts a running turn without discarding a draft message. */
+export const InterruptWithEscape = meta.story({
+  args: {
+    initialText: "Keep this draft",
+    onSend: fn(() => Promise.resolve({ kind: "interrupt" as const })),
+    running: true,
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const input = canvas.getByRole("combobox");
+    await userEvent.click(input);
+    await userEvent.keyboard("{Escape}");
+    await expect(args.onSend).toHaveBeenCalledWith({
+      mentions: [],
+      text: "/interrupt",
+    });
+    await expect(input).toHaveValue("Keep this draft");
+  },
+});
 
 /** `/` at the start of the message lists the hub's commands, then the checkout's opencode commands. */
 export const CommandListOpen = meta.story({
