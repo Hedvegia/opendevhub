@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionTurn } from "../../../../src/shared/types";
 import {
   breakdownLabel,
+  contextLevel,
   contextShare,
   turnActivity,
   turnDuration,
@@ -26,6 +27,16 @@ describe(contextShare, () => {
     expect(contextShare(undefined, 200_000)).toBeUndefined();
     expect(contextShare(50_000, undefined)).toBeUndefined();
     expect(contextShare(50_000, 0)).toBeUndefined();
+  });
+});
+
+describe(contextLevel, () => {
+  it("warns above 70% and becomes critical above 90%", () => {
+    expect(contextLevel(undefined)).toBe("normal");
+    expect(contextLevel(0.7)).toBe("normal");
+    expect(contextLevel(0.701)).toBe("warning");
+    expect(contextLevel(0.9)).toBe("warning");
+    expect(contextLevel(0.901)).toBe("critical");
   });
 });
 

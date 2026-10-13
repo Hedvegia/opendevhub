@@ -9,6 +9,19 @@ export const contextShare = (
 ): number | undefined =>
   context === undefined || !limit ? undefined : Math.min(1, context / limit);
 
+/** Warning level for a known context share. */
+export const contextLevel = (
+  share: number | undefined
+): "normal" | "warning" | "critical" => {
+  if (share !== undefined && share > 0.9) {
+    return "critical";
+  }
+  if (share !== undefined && share > 0.7) {
+    return "warning";
+  }
+  return "normal";
+};
+
 /** "in 12.0k · out 900 · cache 40.1k read, 2.0k written", leaving out the kinds that are zero. */
 export const breakdownLabel = (t: TokenBreakdown): string => {
   const parts = [

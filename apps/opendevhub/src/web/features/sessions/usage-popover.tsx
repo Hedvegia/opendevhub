@@ -7,12 +7,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import type { SessionDetail, SessionSummary } from "../../../shared/types";
 import { When } from "../../components/when";
 import { formatCost, formatTokens } from "../tasks/tasks";
-import { breakdownLabel, contextShare } from "./session-detail";
+import { breakdownLabel, contextLevel, contextShare } from "./session-detail";
 
 const Figure = (props: {
   label: string;
@@ -45,26 +50,41 @@ export const UsagePopover = ({
 }) => {
   const share = contextShare(session.context, detail?.contextLimit);
   const percent = share === undefined ? undefined : Math.round(share * 100);
+  const level = contextLevel(share);
   const shown =
     percent === undefined ? formatTokens(session.context) : `${percent}%`;
+  let tooltip = `Context: ${percent}% of the window used`;
+  if (percent === undefined) {
+    tooltip = `Context: ${shown} tokens used; window size unknown`;
+  } else if (level === "critical") {
+    tooltip = `Context: ${percent}% used. The context window is nearly full.`;
+  } else if (level === "warning") {
+    tooltip = `Context: ${percent}% used. The context window is getting full.`;
+  }
   const withSubagents =
     detail && detail.subagents.length > 0 ? "subagents included" : undefined;
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "tabular-nums",
-            share !== undefined && share > 0.8 && "text-warn"
-          )}
-          aria-label={`Usage: ${shown} context`}
-        >
-          <GaugeIcon />
-          {shown}
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "tabular-nums",
+                level === "critical" && "text-destructive",
+                level === "warning" && "text-warn"
+              )}
+              aria-label={`Usage: ${shown} context`}
+            >
+              <GaugeIcon />
+              {shown}
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
       <PopoverContent align="end" className="grid w-72 grid-cols-2 gap-4">
         <Figure
           label="Cost"
@@ -119,7 +139,9 @@ export const UsagePopover = ({
                 <div
                   className={cn(
                     "h-full rounded-full",
-                    share > 0.8 ? "bg-warn" : "bg-primary"
+                    level === "critical" && "bg-destructive",
+                    level === "warning" && "bg-warn",
+                    level === "normal" && "bg-primary"
                   )}
                   style={{ width: `${share * 100}%` }}
                 />

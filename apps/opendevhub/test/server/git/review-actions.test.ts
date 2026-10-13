@@ -399,6 +399,39 @@ describe("review", () => {
     expect(d.session.title).toBe("Login");
   });
 
+  it("uses the latest assistant model when the session summary has no model", async () => {
+    const { hub, client, store } = await running();
+    store.setSessions(project.id, [
+      {
+        id: "ses_1",
+        projectId: project.id,
+        title: "Chat",
+        directory: wt,
+        updatedAt: 5,
+        status: "idle",
+      },
+    ]);
+    client.models.mockResolvedValueOnce([
+      { id: "new", providerID: "p", name: "New", limit: { context: 128_000 } },
+    ]);
+    client.messages.mockResolvedValueOnce([
+      {
+        id: "msg_new",
+        type: "assistant",
+        model: { id: "new", providerID: "p" },
+      },
+      {
+        id: "msg_old",
+        type: "assistant",
+        model: { id: "old", providerID: "p" },
+      },
+    ]);
+
+    const detail = await hub.sessions.sessionDetail(project.id, "ses_1");
+    expect(client.models).toHaveBeenCalledWith(wt);
+    expect(detail.contextLimit).toBe(128_000);
+  });
+
   it("prompts a session, queued while it runs, and starts a session with a first prompt", async () => {
     const { hub, client, store } = await running();
     store.setSessions(project.id, [

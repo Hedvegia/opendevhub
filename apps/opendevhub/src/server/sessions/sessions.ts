@@ -352,13 +352,16 @@ export class Sessions {
       client.session(sessionId),
       client.messages(sessionId, DETAIL_MESSAGES),
       client.sessions(),
-      session.model
-        ? client.models(session.directory).catch(() => [])
-        : Promise.resolve([]),
+      client.models(session.directory).catch(() => []),
     ]);
+    const model =
+      messages.find((message) => message.type === "assistant" && message.model)
+        ?.model ??
+      raw.model ??
+      session.model;
     const contextLimit = models.find(
-      (m) =>
-        m.id === session.model?.id && m.providerID === session.model.providerID
+      (candidate) =>
+        candidate.id === model?.id && candidate.providerID === model.providerID
     )?.limit?.context;
     return {
       createdAt: raw.time.created,
