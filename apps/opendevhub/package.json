@@ -48,12 +48,14 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.7",
     "@blazediff/react": "1.8.0",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
     "@opendevhub/ui": "workspace:*",
     "@pierre/diffs": "1.5.1",
     "@pierre/trees": "1.0.0-beta.6",
+    "@rolldown/plugin-babel": "^0.2.4",
     "@storybook/addon-a11y": "10.6.1",
     "@storybook/addon-docs": "10.6.1",
     "@storybook/react-vite": "10.6.1",
@@ -73,6 +75,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
+    "babel-plugin-react-compiler": "^1.0.0",
     "class-variance-authority": "^0.7.1",
     "idb-keyval": "6.3.0",
     "lucide-react": "^1.52.0",

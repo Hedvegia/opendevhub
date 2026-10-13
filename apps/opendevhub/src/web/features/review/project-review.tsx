@@ -36,7 +36,14 @@ import {
   ScanSearchIcon,
   SparklesIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -181,9 +188,11 @@ const ReviewTarget = ({
   // Comment boxes live inside @pierre/diffs annotations, which can hold on to an older render's callbacks; the
   // handlers below therefore read the current comments and draft key from refs instead of from their closure.
   const commentsRef = useRef(comments);
-  commentsRef.current = comments;
   const keyRef = useRef(key);
-  keyRef.current = key;
+  useLayoutEffect(() => {
+    commentsRef.current = comments;
+    keyRef.current = key;
+  }, [comments, key]);
   const saveComments = useCallback((next: ReviewComment[]) => {
     commentsRef.current = next;
     setComments(next);
