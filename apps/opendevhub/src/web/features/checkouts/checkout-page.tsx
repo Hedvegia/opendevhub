@@ -48,6 +48,7 @@ import { ActivityButton } from "../activity/activity-button";
 import { ProvenanceBreadcrumb } from "../activity/provenance-breadcrumb";
 import { checkoutChats } from "../chat/chat";
 import { ChatRow } from "../chat/chat-rows";
+import { CheckoutChecks } from "../checks/checks-panel";
 import { PublishedPr } from "../forgejo/published-pr";
 import { projectFlags, StartStopButton } from "../projects/project-actions";
 import { useProjectView } from "../projects/project-layout";
@@ -239,6 +240,12 @@ export const CheckoutPage = () => {
         }
         actions={
           <>
+            {!checkout.worktree?.node && (
+              <CheckoutChecks
+                projectId={view.project.id}
+                directory={checkout.directory}
+              />
+            )}
             {checkoutReady(view, checkout) ? (
               <Button
                 variant="outline"

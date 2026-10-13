@@ -20,6 +20,12 @@ import type { ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 import type { CheckResult, ChecksView } from "../../../shared/types";
@@ -87,6 +93,47 @@ const STATE_ICON: Record<ChecksState, ReactNode> = {
 export const ChecksIcon = ({ state }: { state: ChecksState }) =>
   STATE_ICON[state];
 
+/** Opens a checkout's checks from pages that do not have a Review toolbar. */
+export const CheckoutChecks = ({
+  projectId,
+  directory,
+}: {
+  projectId: string;
+  directory: string;
+}) => {
+  const checks = useChecks(projectId, directory);
+  const [open, setOpen] = useState(false);
+  const available =
+    (checks.view?.checks.length ?? 0) > 0 ||
+    (checks.view?.errors.length ?? 0) > 0 ||
+    !!checks.error;
+
+  if (!available) {
+    return null;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" aria-label="Checks">
+          <ChecksIcon state={checks.state} /> Checks
+        </Button>
+      </DialogTrigger>
+      <DialogContent
+        className="max-h-[min(85vh,48rem)] gap-0 overflow-y-auto p-0 sm:max-w-3xl"
+        showCloseButton={false}
+      >
+        <DialogTitle className="sr-only">Checks</DialogTitle>
+        <ChecksPanel
+          checks={checks}
+          busy={false}
+          onClose={() => setOpen(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const ResultIcon = ({ result }: { result?: CheckResult }) => {
   const cls = "size-4 shrink-0";
   if (!result) {
@@ -136,7 +183,7 @@ const outcome = (r: CheckResult | undefined): string => {
 export const ChecksPanel = (props: {
   checks: ReturnType<typeof useChecks>;
   busy: boolean;
-  onFix: (results: CheckResult[]) => void;
+  onFix?: (results: CheckResult[]) => void;
   onClose: () => void;
 }) => {
   const { view, error, start, state } = props.checks;
@@ -202,12 +249,12 @@ export const ChecksPanel = (props: {
           <ChecksIcon state={state} /> {STATE_LABEL[state]}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
-          {failed.length > 0 && !running && (
+          {failed.length > 0 && !running && props.onFix && (
             <Button
               variant="outline"
               size="sm"
               disabled={props.busy}
-              onClick={() => props.onFix(failed)}
+              onClick={() => props.onFix?.(failed)}
             >
               <WrenchIcon /> Ask agent to fix
             </Button>

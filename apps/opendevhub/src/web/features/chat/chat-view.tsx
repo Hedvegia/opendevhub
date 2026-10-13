@@ -17,6 +17,7 @@ import { archiveChat, fetchChat } from "../../api";
 import { Chip, Empty, muted } from "../../components/page";
 import { useDash } from "../../dashboard-context";
 import { Link, Navigate, useNavigate } from "../../routing";
+import { CheckoutChecks } from "../checks/checks-panel";
 import { SessionView } from "../sessions/session-page";
 import { startStepLabel } from "../tasks/tasks";
 import { conversationCheckout } from "../tasks/variant-waiting";
@@ -102,7 +103,7 @@ const ChatPage = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
       {chat.archived && <Chip>archived</Chip>}
     </>
   );
-  const actions = <ChatActions view={view} chat={chat} />;
+  const actions = <ChatActions view={view} chat={chat} directory={directory} />;
 
   return (
     <ChatColumn centred={false}>
@@ -188,7 +189,15 @@ const SetupLog = ({ lines }: { lines: string[] }) => (
 );
 
 /** The chat header's buttons: Make task and Archive. */
-const ChatActions = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
+const ChatActions = ({
+  view,
+  chat,
+  directory,
+}: {
+  view: ProjectView;
+  chat: Chat;
+  directory?: string;
+}) => {
   const navigate = useNavigate();
   const [making, setMaking] = useState(false);
   const [error, setError] = useState<string>();
@@ -206,6 +215,9 @@ const ChatActions = ({ view, chat }: { view: ProjectView; chat: Chat }) => {
   return (
     <>
       {error && <span className="text-destructive text-xs">{error}</span>}
+      {directory && (
+        <CheckoutChecks projectId={view.project.id} directory={directory} />
+      )}
       <Tooltip>
         <TooltipTrigger asChild>
           {/* A disabled button gets no pointer events, so its tooltip hangs on a wrapper. */}

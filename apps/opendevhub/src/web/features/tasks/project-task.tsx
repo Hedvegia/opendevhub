@@ -65,6 +65,7 @@ import { checkoutOf } from "../checkouts/checkouts";
 import { OpenInMenu } from "../checkouts/open-in-menu";
 import { checksState, failedNames } from "../checks/checks";
 import type { ChecksState } from "../checks/checks";
+import { CheckoutChecks } from "../checks/checks-panel";
 import { checksQuery } from "../checks/checks-queries";
 import { PullRequestBadge } from "../forgejo/pull-request-badge";
 import { useProjectView } from "../projects/project-layout";
@@ -423,6 +424,13 @@ export const ProjectTask = () => {
           )}
         </span>
         <span className="ml-auto flex items-center gap-1">
+          {variant?.directory && !variant.node && (
+            <CheckoutChecks
+              key={variant.directory}
+              projectId={view.project.id}
+              directory={variant.directory}
+            />
+          )}
           {checkout && !checkout.worktree?.node && (
             <OpenInMenu
               view={view}

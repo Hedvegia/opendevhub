@@ -1,10 +1,10 @@
 ---
 title: Checks
-description: The commands a change must pass before you publish it, run from Changes.
+description: The commands a change must pass before you publish it, run from the task, chat or worktree.
 icon: ListChecks
 ---
 
-Checks are the commands a change has to pass before it goes out: tests, lint, a Docker build. Define them once per project, and the **Changes** tab runs them on the checkout you're looking at.
+Checks are the commands a change has to pass before it goes out: tests, lint, a Docker build. Define them once per project, then run them from a task, chat or worktree, or from its **Changes** tab. They run on the checkout you're looking at.
 
 ## Define them
 
@@ -32,11 +32,11 @@ To use a different list without touching the repo, open the project's settings (
 
 ## Run them
 
-The **Checks** button in the Review toolbar shows where things stand: not run, out of date, running, passed or failed. Click it to open the panel, then **Run all**, or the play button next to one check to run just that one. Checks run one after another, and all of them run even when an earlier one fails. Click a check to read its output; failed ones open by themselves.
+The **Checks** button in the task, chat or worktree header, and in the Changes toolbar, shows where things stand: not run, out of date, running, passed or failed. Click it to open the panel, then **Run all**, or the play button next to one check to run just that one. Checks run one after another, and all of them run even when an earlier one fails. Click a check to read its output; failed ones open by themselves.
 
 A result belongs to the commit it ran on. Once you commit, or the uncommitted changes differ from the ones that were tested, the button shows the results as out of date.
 
-**Ask agent to fix** sends the failed checks' commands and the end of their output to the session you picked for review comments.
+In Changes, **Ask agent to fix** sends the failed checks' commands and the end of their output to the session you picked for review comments.
 
 **Publish…** never blocks on checks, but it warns you when they haven't all passed on the current commit.
 
