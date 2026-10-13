@@ -1,8 +1,8 @@
+import { Button } from "@opendevhub/ui/button";
 import { PlusIcon } from "lucide-react";
 
 import preview from "../../../.storybook/preview";
 import { Chip, Empty, Note, Page, PageHeader, Section } from "./page";
-import { Button } from "./ui/button";
 
 const meta = preview.meta({
   component: Page,

@@ -1,17 +1,17 @@
-import { GaugeIcon } from "lucide-react";
-import type { ReactNode } from "react";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@opendevhub/ui/popover";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@opendevhub/ui/tooltip";
+import { GaugeIcon } from "lucide-react";
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 
 import type { SessionDetail, SessionSummary } from "../../../shared/types";

@@ -1,3 +1,11 @@
+import { Button } from "@opendevhub/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@opendevhub/ui/sheet";
 import {
   BotIcon,
   ChevronDownIcon,
@@ -13,14 +21,6 @@ import {
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import {
   Sidebar,
   SidebarContent,

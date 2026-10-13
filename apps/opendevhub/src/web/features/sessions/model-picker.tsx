@@ -1,7 +1,4 @@
-import { CheckIcon, ChevronDownIcon, CpuIcon } from "lucide-react";
-import { useState } from "react";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -9,12 +6,15 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
+} from "@opendevhub/ui/command";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@opendevhub/ui/popover";
+import { CheckIcon, ChevronDownIcon, CpuIcon } from "lucide-react";
+import { useState } from "react";
+
 import { cn } from "@/lib/utils";
 
 import { modelShortName } from "../../../shared/tasks";

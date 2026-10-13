@@ -1,7 +1,3 @@
-import { ArrowRightIcon, ExternalLinkIcon } from "lucide-react";
-import { Fragment } from "react";
-import type { ReactNode } from "react";
-
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,7 +5,11 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
+} from "@opendevhub/ui/breadcrumb";
+import { ArrowRightIcon, ExternalLinkIcon } from "lucide-react";
+import { Fragment } from "react";
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 
 import type {

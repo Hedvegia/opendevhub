@@ -1,10 +1,9 @@
-import type { ComponentProps, ReactElement, ReactNode } from "react";
-
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@opendevhub/ui/tooltip";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 /** A tooltip on any element; the child must take a ref (a DOM element or a forwarding component). */
 export const Tip = ({

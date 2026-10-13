@@ -1,11 +1,10 @@
+import { Button } from "@opendevhub/ui/button";
+import { Input } from "@opendevhub/ui/input";
+import { Label } from "@opendevhub/ui/label";
 import { useLocation } from "@tanstack/react-router";
 import { BookOpenIcon, PlusIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 import { saveRoots } from "../../api";
 import { Note } from "../../components/page";

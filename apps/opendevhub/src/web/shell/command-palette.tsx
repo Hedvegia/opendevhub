@@ -1,6 +1,3 @@
-import { useLocation } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-
 import {
   CommandDialog,
   CommandEmpty,
@@ -9,7 +6,9 @@ import {
   CommandItem,
   CommandList,
   CommandShortcut,
-} from "@/components/ui/command";
+} from "@opendevhub/ui/command";
+import { useLocation } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 
 import { taskHref } from "../../shared/urls";
 import { StatusDot } from "../components/status";

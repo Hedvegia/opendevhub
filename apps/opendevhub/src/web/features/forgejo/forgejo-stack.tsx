@@ -1,12 +1,12 @@
-import { ChevronDownIcon } from "lucide-react";
-
-import type { ForgejoPullDetails } from "../../../shared/forgejo";
-import { PanelSection } from "../../components/page";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../../components/ui/collapsible";
+} from "@opendevhub/ui/collapsible";
+import { ChevronDownIcon } from "lucide-react";
+
+import type { ForgejoPullDetails } from "../../../shared/forgejo";
+import { PanelSection } from "../../components/page";
 import { useMediaQuery } from "../../hooks/use-media-query";
 import { cn } from "../../lib/utils";
 import { Link } from "../../routing";

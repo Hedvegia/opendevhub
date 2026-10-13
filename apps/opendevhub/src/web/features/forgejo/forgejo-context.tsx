@@ -1,3 +1,5 @@
+import { Button } from "@opendevhub/ui/button";
+import { Card } from "@opendevhub/ui/card";
 import {
   CircleCheckIcon,
   CircleDashedIcon,
@@ -9,8 +11,6 @@ import {
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 import type {

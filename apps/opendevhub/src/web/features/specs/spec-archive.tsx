@@ -1,7 +1,6 @@
+import { Button } from "@opendevhub/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-
-import { Button } from "@/components/ui/button";
 
 import { archiveSpec } from "../../api";
 import { muted } from "../../components/page";

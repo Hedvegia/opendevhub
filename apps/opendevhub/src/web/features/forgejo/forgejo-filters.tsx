@@ -1,8 +1,5 @@
-import { CheckIcon, ListFilterIcon, UserPlusIcon, XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@opendevhub/ui/badge";
+import { Button } from "@opendevhub/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -10,14 +7,16 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@opendevhub/ui/command";
+import { Input } from "@opendevhub/ui/input";
+import { Label } from "@opendevhub/ui/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@opendevhub/ui/popover";
+import { CheckIcon, ListFilterIcon, UserPlusIcon, XIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import {
   fetchForgejoOrganizations,

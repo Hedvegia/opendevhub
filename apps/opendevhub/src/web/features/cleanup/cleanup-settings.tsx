@@ -1,8 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import type { ReactNode } from "react";
-
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@opendevhub/ui/button";
+import { Checkbox } from "@opendevhub/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +7,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@opendevhub/ui/dialog";
+import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 
 import type {

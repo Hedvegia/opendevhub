@@ -1,9 +1,9 @@
 import { DifferenceMode, OnionSkinMode, SwipeMode } from "@blazediff/react";
+import { Card } from "@opendevhub/ui/card";
+import { ToggleGroup, ToggleGroupItem } from "@opendevhub/ui/toggle-group";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 
-import { Card } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 import type { ImageSide } from "../../../shared/images";

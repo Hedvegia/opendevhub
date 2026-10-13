@@ -1,10 +1,10 @@
+import { Alert, AlertDescription } from "@opendevhub/ui/alert";
+import { Badge } from "@opendevhub/ui/badge";
+import { Button } from "@opendevhub/ui/button";
+import { Input } from "@opendevhub/ui/input";
 import { GitBranchIcon, InfoIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useEffect } from "react";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import type { ProjectView } from "../../../shared/types";

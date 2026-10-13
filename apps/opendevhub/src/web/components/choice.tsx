@@ -1,5 +1,3 @@
-import { Fragment } from "react";
-
 import {
   Select,
   SelectContent,
@@ -8,7 +6,8 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@opendevhub/ui/select";
+import { Fragment } from "react";
 
 export interface ChoiceOption {
   value: string;

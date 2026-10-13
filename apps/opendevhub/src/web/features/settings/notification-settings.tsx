@@ -1,8 +1,7 @@
+import { Button } from "@opendevhub/ui/button";
+import { Switch } from "@opendevhub/ui/switch";
 import { SendIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 
 import { Note } from "../../components/page";
 import { useDash } from "../../dashboard-context";

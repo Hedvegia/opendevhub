@@ -1,3 +1,4 @@
+import { TooltipProvider } from "@opendevhub/ui/tooltip";
 import addonA11y from "@storybook/addon-a11y";
 import addonDocs from "@storybook/addon-docs";
 import { definePreview } from "@storybook/react-vite";
@@ -11,7 +12,6 @@ import { setupWorker } from "msw/browser";
 import { useState } from "react";
 
 import { ConfirmDialogHost } from "@/components/confirm-dialog";
-import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { createAppRouter } from "../src/web/app";
 import { DashboardProvider } from "../src/web/dashboard-context";

@@ -1,3 +1,4 @@
+import { TooltipProvider } from "@opendevhub/ui/tooltip";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
@@ -8,7 +9,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ConfirmDialogHost } from "@/components/confirm-dialog";
-import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { App, createAppRouter } from "./app";
 import { DashboardProvider } from "./dashboard-context";

@@ -1,3 +1,5 @@
+import { Button } from "@opendevhub/ui/button";
+import { Input } from "@opendevhub/ui/input";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import type { InfiniteData } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
@@ -26,8 +28,6 @@ import {
 import type { ReactNode } from "react";
 
 import { confirm } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import type {

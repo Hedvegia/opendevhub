@@ -1,10 +1,10 @@
+import { Badge } from "@opendevhub/ui/badge";
+import { Card } from "@opendevhub/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@opendevhub/ui/tabs";
 import type { InfoIcon } from "lucide-react";
 import { CircleAlertIcon, TriangleAlertIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 import { Link, useIsActive } from "../routing";

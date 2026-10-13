@@ -1,5 +1,16 @@
+import { Button } from "@opendevhub/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@opendevhub/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@opendevhub/ui/tabs";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
+
+import "@xterm/xterm/css/xterm.css";
 import {
   CheckIcon,
   CopyIcon,
@@ -11,16 +22,6 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
-import "@xterm/xterm/css/xterm.css";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 import { useCheckoutContext } from "./checkout-context";

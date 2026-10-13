@@ -1,9 +1,8 @@
+import { Button } from "@opendevhub/ui/button";
+import { Input } from "@opendevhub/ui/input";
 import { RotateCcwIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 import type { ProjectView } from "../../../shared/types";
 import { renameProject } from "../../api";

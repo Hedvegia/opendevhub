@@ -1,12 +1,12 @@
+import { Button } from "@opendevhub/ui/button";
+import { Input } from "@opendevhub/ui/input";
+import { Label } from "@opendevhub/ui/label";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheckIcon, DownloadIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { confirm } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 import {
   OCR_CUSTOM_PRESET,

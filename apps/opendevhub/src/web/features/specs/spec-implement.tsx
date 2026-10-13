@@ -1,10 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { TriangleAlertIcon } from "lucide-react";
-import { useState } from "react";
-import type { FormEvent } from "react";
-
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@opendevhub/ui/alert";
+import { Button } from "@opendevhub/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +7,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@opendevhub/ui/dialog";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { TriangleAlertIcon } from "lucide-react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 
 import type { SpecChange } from "../../../shared/types";
 import { fetchModels, implementSpec } from "../../api";

@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "../utils";
 
 const Kbd = ({ className, ...props }: React.ComponentProps<"kbd">) => (
   <kbd

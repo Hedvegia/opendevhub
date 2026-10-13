@@ -1,3 +1,10 @@
+import { Button } from "@opendevhub/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@opendevhub/ui/dropdown-menu";
 import {
   EllipsisIcon,
   ExternalLinkIcon,
@@ -7,13 +14,6 @@ import {
 import { Fragment, useState } from "react";
 
 import { confirm } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 import type { SessionSummary } from "../../../shared/types";

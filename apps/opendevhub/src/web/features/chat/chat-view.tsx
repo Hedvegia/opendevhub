@@ -1,15 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
-import { ArchiveIcon, ListTodoIcon } from "lucide-react";
-import { useState } from "react";
-
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@opendevhub/ui/button";
+import { Skeleton } from "@opendevhub/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@opendevhub/ui/tooltip";
+import { useQuery } from "@tanstack/react-query";
+import { useParams } from "@tanstack/react-router";
+import { ArchiveIcon, ListTodoIcon } from "lucide-react";
+import { useState } from "react";
 
 import type { ChatView as Chat, ProjectView } from "../../../shared/types";
 import { taskHref } from "../../../shared/urls";

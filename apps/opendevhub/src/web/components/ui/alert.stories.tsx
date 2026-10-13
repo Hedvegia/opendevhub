@@ -1,7 +1,7 @@
+import { Alert, AlertDescription, AlertTitle } from "@opendevhub/ui/alert";
 import { CircleAlertIcon, InfoIcon } from "lucide-react";
 
 import preview from "../../../../.storybook/preview";
-import { Alert, AlertDescription, AlertTitle } from "./alert";
 
 const meta = preview.meta({
   component: Alert,

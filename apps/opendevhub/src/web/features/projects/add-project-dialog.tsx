@@ -1,16 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-import { PlayIcon } from "lucide-react";
-import { useState } from "react";
-
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@opendevhub/ui/alert";
+import { Button } from "@opendevhub/ui/button";
 import {
   Command,
   CommandEmpty,
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
+} from "@opendevhub/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -18,9 +14,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@opendevhub/ui/dialog";
+import { Label } from "@opendevhub/ui/label";
+import { Skeleton } from "@opendevhub/ui/skeleton";
+import { useQuery } from "@tanstack/react-query";
+import { PlayIcon } from "lucide-react";
+import { useState } from "react";
 
 import { renderDevcontainer, STACK_IDS, STACKS } from "../../../shared/stacks";
 import type { StackId } from "../../../shared/stacks";

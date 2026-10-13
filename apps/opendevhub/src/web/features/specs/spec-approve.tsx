@@ -1,10 +1,10 @@
+import { Alert, AlertDescription, AlertTitle } from "@opendevhub/ui/alert";
+import { Button } from "@opendevhub/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
 
 import { confirm } from "@/components/confirm-dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import type { SpecChange } from "../../../shared/types";

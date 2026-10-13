@@ -1,3 +1,7 @@
+import { Badge } from "@opendevhub/ui/badge";
+import { Button } from "@opendevhub/ui/button";
+import { Card } from "@opendevhub/ui/card";
+import { Input } from "@opendevhub/ui/input";
 import { Outlet, useLocation, useParams } from "@tanstack/react-router";
 import {
   ChevronRightIcon,
@@ -13,10 +17,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import type {

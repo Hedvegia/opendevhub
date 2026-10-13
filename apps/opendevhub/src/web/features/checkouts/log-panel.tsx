@@ -1,9 +1,8 @@
+import { Card } from "@opendevhub/ui/card";
+import { Label } from "@opendevhub/ui/label";
+import { Switch } from "@opendevhub/ui/switch";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-
-import { Card } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 
 import { CopyButton } from "../../components/copy-button";
 

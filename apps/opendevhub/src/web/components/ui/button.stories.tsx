@@ -1,8 +1,8 @@
+import { Button } from "@opendevhub/ui/button";
 import { PlusIcon, TrashIcon } from "lucide-react";
 import { fn } from "storybook/test";
 
 import preview from "../../../../.storybook/preview";
-import { Button } from "./button";
 
 const meta = preview.meta({
   args: { children: "New task", onClick: fn() },

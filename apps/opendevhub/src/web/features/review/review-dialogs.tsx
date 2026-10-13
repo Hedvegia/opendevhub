@@ -1,15 +1,11 @@
-import { ChevronRightIcon, XIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
-
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@opendevhub/ui/alert";
+import { Button } from "@opendevhub/ui/button";
+import { Checkbox } from "@opendevhub/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@opendevhub/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -17,10 +13,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+} from "@opendevhub/ui/dialog";
+import { Input } from "@opendevhub/ui/input";
+import { Label } from "@opendevhub/ui/label";
+import { Textarea } from "@opendevhub/ui/textarea";
+import { ChevronRightIcon, XIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 
 import { commitChanges, suggestCommitMessage } from "../../api";
 import { Choice } from "../../components/choice";

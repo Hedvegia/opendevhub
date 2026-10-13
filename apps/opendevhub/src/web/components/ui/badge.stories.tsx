@@ -1,5 +1,6 @@
+import { Badge } from "@opendevhub/ui/badge";
+
 import preview from "../../../../.storybook/preview";
-import { Badge } from "./badge";
 
 const meta = preview.meta({
   args: { children: "opencode healthy" },

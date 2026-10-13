@@ -1,4 +1,5 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@opendevhub/ui/badge";
+
 import { cn } from "@/lib/utils";
 
 import type { ContainerState, SessionStatus } from "../../shared/types";

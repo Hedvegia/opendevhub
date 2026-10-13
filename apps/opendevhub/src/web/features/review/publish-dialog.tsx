@@ -1,9 +1,5 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
-
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@opendevhub/ui/alert";
+import { Button } from "@opendevhub/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,10 +7,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+} from "@opendevhub/ui/dialog";
+import { Input } from "@opendevhub/ui/input";
+import { Label } from "@opendevhub/ui/label";
+import { Textarea } from "@opendevhub/ui/textarea";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 
 import type {
   PublishInfo,

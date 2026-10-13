@@ -1,10 +1,5 @@
-import { BoxIcon, ChevronDownIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { useCallback, useState } from "react";
-import type { ComponentProps, FormEvent } from "react";
-
-import { confirm } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@opendevhub/ui/button";
+import { Checkbox } from "@opendevhub/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -12,16 +7,21 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@opendevhub/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@opendevhub/ui/dropdown-menu";
+import { Input } from "@opendevhub/ui/input";
+import { Label } from "@opendevhub/ui/label";
+import { BoxIcon, ChevronDownIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { useCallback, useState } from "react";
+import type { ComponentProps, FormEvent } from "react";
+
+import { confirm } from "@/components/confirm-dialog";
 
 import type { EnvironmentView, ProjectView } from "../../../shared/types";
 import { chatHref } from "../../../shared/urls";

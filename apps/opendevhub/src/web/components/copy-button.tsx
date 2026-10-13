@@ -1,12 +1,11 @@
-import { CheckIcon, CopyIcon } from "lucide-react";
-import { useState } from "react";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@opendevhub/ui/tooltip";
+import { CheckIcon, CopyIcon } from "lucide-react";
+import { useState } from "react";
 
 export const CopyButton = ({
   text,

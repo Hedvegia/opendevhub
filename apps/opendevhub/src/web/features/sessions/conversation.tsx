@@ -1,10 +1,10 @@
+import { Alert, AlertDescription } from "@opendevhub/ui/alert";
+import { Button } from "@opendevhub/ui/button";
+import { Skeleton } from "@opendevhub/ui/skeleton";
 import { ArrowDownIcon, ExternalLinkIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import { modelShortName } from "../../../shared/tasks";

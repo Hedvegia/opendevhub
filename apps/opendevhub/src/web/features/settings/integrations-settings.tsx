@@ -1,3 +1,7 @@
+import { Button } from "@opendevhub/ui/button";
+import { Input } from "@opendevhub/ui/input";
+import { Label } from "@opendevhub/ui/label";
+import { Switch } from "@opendevhub/ui/switch";
 import {
   ChevronRightIcon,
   CircleCheckIcon,
@@ -8,10 +12,6 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { confirm } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 import type {

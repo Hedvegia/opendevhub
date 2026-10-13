@@ -1,14 +1,13 @@
-import { HistoryIcon } from "lucide-react";
-import { useState } from "react";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@opendevhub/ui/dialog";
+import { HistoryIcon } from "lucide-react";
+import { useState } from "react";
 
 import type { ActivityFilter } from "../../../shared/activity";
 import { Tip } from "../../components/tip";

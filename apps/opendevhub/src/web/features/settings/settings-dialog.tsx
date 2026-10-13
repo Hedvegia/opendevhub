@@ -1,4 +1,20 @@
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@opendevhub/ui/dialog";
+import { Input } from "@opendevhub/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@opendevhub/ui/select";
+import {
   ActivityIcon,
   BellIcon,
   CircleDollarSignIcon,
@@ -18,22 +34,6 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 import { Count } from "../../components/status";

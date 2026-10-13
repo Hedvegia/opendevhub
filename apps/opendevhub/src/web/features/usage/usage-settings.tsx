@@ -1,3 +1,14 @@
+import { Button } from "@opendevhub/ui/button";
+import { Card } from "@opendevhub/ui/card";
+import { Input } from "@opendevhub/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@opendevhub/ui/table";
 import {
   keepPreviousData,
   useQuery,
@@ -6,17 +17,6 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 import type { Usage, UsageReport } from "../../../shared/types";

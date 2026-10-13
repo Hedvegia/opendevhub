@@ -1,7 +1,6 @@
+import { Button } from "@opendevhub/ui/button";
 import { PlusIcon, XIcon } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
-
-import { Button } from "@/components/ui/button";
 
 import { MAX_VARIANTS } from "../../../shared/tasks";
 import type { ModelsInfo, TaskVariantSpec } from "../../../shared/types";

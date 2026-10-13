@@ -1,8 +1,8 @@
+import { Button } from "@opendevhub/ui/button";
+import { Input } from "@opendevhub/ui/input";
 import { FolderPlusIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import type { ProjectView, SessionStatus } from "../../../shared/types";

@@ -1,6 +1,4 @@
-import { ChevronDownIcon, CodeXmlIcon } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,7 +6,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@opendevhub/ui/dropdown-menu";
+import { ChevronDownIcon, CodeXmlIcon } from "lucide-react";
 
 import type { ProjectView } from "../../../shared/types";
 import { openInEditor } from "../../api";

@@ -1,3 +1,4 @@
+import { Button } from "@opendevhub/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import {
   CircleAlertIcon,
@@ -8,7 +9,6 @@ import {
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import type {

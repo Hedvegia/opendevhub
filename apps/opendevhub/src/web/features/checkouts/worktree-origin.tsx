@@ -1,6 +1,5 @@
+import { Badge } from "@opendevhub/ui/badge";
 import { ExternalLinkIcon, GitPullRequestIcon, TicketIcon } from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
 
 import { useDash } from "../../dashboard-context";
 import { Link } from "../../routing";

@@ -1,3 +1,20 @@
+import { Button } from "@opendevhub/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@opendevhub/ui/dialog";
+import { Input } from "@opendevhub/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@opendevhub/ui/select";
 import {
   ClipboardCheckIcon,
   LinkIcon,
@@ -10,23 +27,6 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 import type { ProjectView } from "../../../shared/types";

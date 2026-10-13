@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@opendevhub/ui/badge";
 
 import type { EnvironmentView } from "../../shared/types";
 import { useDash } from "../dashboard-context";

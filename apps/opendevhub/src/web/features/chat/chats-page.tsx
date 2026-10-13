@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@opendevhub/ui/button";
+import { Input } from "@opendevhub/ui/input";
 
 import { Choice } from "../../components/choice";
 import { Empty, muted, Page, PageHeader, Section } from "../../components/page";

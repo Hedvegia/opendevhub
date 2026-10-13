@@ -1,4 +1,4 @@
-import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { Kbd, KbdGroup } from "@opendevhub/ui/kbd";
 
 import { isMac, keyLabel, SHORTCUT_GROUPS } from "../../shell/shortcuts";
 import type { ShortcutKey } from "../../shell/shortcuts";

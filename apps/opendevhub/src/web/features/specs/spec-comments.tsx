@@ -1,10 +1,10 @@
+import { Button } from "@opendevhub/ui/button";
+import { Textarea } from "@opendevhub/ui/textarea";
 import { useMutation } from "@tanstack/react-query";
 import { MessageSquarePlusIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import { reviseSpec } from "../../api";

@@ -1,18 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ListTodoIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { useState } from "react";
-import type { FormEvent } from "react";
-
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@opendevhub/ui/button";
+import { Checkbox } from "@opendevhub/ui/checkbox";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+} from "@opendevhub/ui/dialog";
+import { Input } from "@opendevhub/ui/input";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ListTodoIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { useState } from "react";
+import type { FormEvent } from "react";
+
 import { cn } from "@/lib/utils";
 
 import type { ProjectTodo } from "../../../shared/types";

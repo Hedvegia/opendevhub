@@ -1,6 +1,3 @@
-import { useQueries } from "@tanstack/react-query";
-import { ExternalLinkIcon, SparklesIcon } from "lucide-react";
-
 import {
   Table,
   TableBody,
@@ -8,7 +5,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@opendevhub/ui/table";
+import { useQueries } from "@tanstack/react-query";
+import { ExternalLinkIcon, SparklesIcon } from "lucide-react";
 
 import { modelShortName } from "../../../shared/tasks";
 import type {

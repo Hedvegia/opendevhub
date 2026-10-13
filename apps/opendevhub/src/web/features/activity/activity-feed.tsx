@@ -1,8 +1,8 @@
+import { Button } from "@opendevhub/ui/button";
+import { Skeleton } from "@opendevhub/ui/skeleton";
 import { ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import type { ActivityEvent, ActivityFilter } from "../../../shared/activity";

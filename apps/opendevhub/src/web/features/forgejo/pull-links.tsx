@@ -1,7 +1,6 @@
+import { Button } from "@opendevhub/ui/button";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { GitBranchIcon, ListTodoIcon, SparklesIcon } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
 
 import type { ForgejoPullDetails } from "../../../shared/forgejo";
 import type { PullLinks, StoredAiReview } from "../../../shared/types";

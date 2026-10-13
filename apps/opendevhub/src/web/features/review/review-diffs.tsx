@@ -1,3 +1,7 @@
+import { Button } from "@opendevhub/ui/button";
+import { Card } from "@opendevhub/ui/card";
+import { Textarea } from "@opendevhub/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@opendevhub/ui/toggle-group";
 import { useStableCallback } from "@pierre/diffs/react";
 import type {
   DiffLineAnnotation,
@@ -16,10 +20,6 @@ import {
 import { Component, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 import { imageType } from "../../../shared/images";

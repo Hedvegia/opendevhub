@@ -1,3 +1,7 @@
+import { Alert, AlertDescription } from "@opendevhub/ui/alert";
+import { Button } from "@opendevhub/ui/button";
+import { Card } from "@opendevhub/ui/card";
+import { Skeleton } from "@opendevhub/ui/skeleton";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Outlet, useLocation, useParams } from "@tanstack/react-router";
@@ -19,10 +23,6 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { confirm } from "@/components/confirm-dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import { modelShortName } from "../../../shared/tasks";

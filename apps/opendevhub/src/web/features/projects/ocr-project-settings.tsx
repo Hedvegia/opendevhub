@@ -1,10 +1,9 @@
+import { Button } from "@opendevhub/ui/button";
+import { Label } from "@opendevhub/ui/label";
+import { RadioGroup, RadioGroupItem } from "@opendevhub/ui/radio-group";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { FormEvent } from "react";
-
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 import type { OcrEffective, OcrProjectSettings } from "../../../shared/ocr";
 import { saveProjectOcr } from "../../api";

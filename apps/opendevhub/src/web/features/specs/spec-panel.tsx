@@ -1,3 +1,6 @@
+import { Alert, AlertDescription, AlertTitle } from "@opendevhub/ui/alert";
+import { Badge } from "@opendevhub/ui/badge";
+import { Skeleton } from "@opendevhub/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRightIcon,
@@ -9,9 +12,6 @@ import {
 import { lazy, Suspense, useState } from "react";
 import type { ReactNode } from "react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import type {

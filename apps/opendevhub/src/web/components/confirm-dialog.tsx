@@ -1,5 +1,3 @@
-import { useSyncExternalStore } from "react";
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,7 +7,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from "@opendevhub/ui/alert-dialog";
+import { useSyncExternalStore } from "react";
 
 export interface ConfirmOptions {
   title: string;

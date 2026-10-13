@@ -1,3 +1,8 @@
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@opendevhub/ui/collapsible";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   BrainIcon,
@@ -12,11 +17,6 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import type { RefObject } from "react";
 
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 import type {

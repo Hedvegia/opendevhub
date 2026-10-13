@@ -1,6 +1,5 @@
+import { Badge } from "@opendevhub/ui/badge";
 import { ExternalLinkIcon } from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
 
 import { chatHref, taskHref } from "../../../shared/urls";
 import { useDash } from "../../dashboard-context";

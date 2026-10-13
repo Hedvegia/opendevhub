@@ -1,7 +1,6 @@
+import { Badge } from "@opendevhub/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLinkIcon, GitPullRequestIcon } from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
 
 import { useDash } from "../../dashboard-context";
 import { Link } from "../../routing";

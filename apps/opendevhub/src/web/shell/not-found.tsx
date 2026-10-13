@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 
 import { Empty, muted } from "../components/page";
 import { Link } from "../routing";

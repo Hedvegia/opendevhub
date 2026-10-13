@@ -1,7 +1,6 @@
+import { Button } from "@opendevhub/ui/button";
 import { PencilIcon, PlayIcon, TicketIcon } from "lucide-react";
 import { useState } from "react";
-
-import { Button } from "@/components/ui/button";
 
 import { modelShortName } from "../../../shared/tasks";
 import type { ProjectView, TaskPlan, TaskView } from "../../../shared/types";

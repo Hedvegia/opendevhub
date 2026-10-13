@@ -1,6 +1,4 @@
-import { BotIcon, ChevronDownIcon } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,7 +6,9 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@opendevhub/ui/dropdown-menu";
+import { BotIcon, ChevronDownIcon } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
 import type { AgentOption } from "../../../shared/types";

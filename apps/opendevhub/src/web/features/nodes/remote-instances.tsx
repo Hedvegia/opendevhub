@@ -1,7 +1,4 @@
-import { useState } from "react";
-import type { FormEvent } from "react";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,9 +6,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@opendevhub/ui/dialog";
+import { Input } from "@opendevhub/ui/input";
+import { Label } from "@opendevhub/ui/label";
+import { useState } from "react";
+import type { FormEvent } from "react";
+
 import { cn } from "@/lib/utils";
 
 import type { NodeView } from "../../../shared/types";

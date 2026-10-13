@@ -1,13 +1,13 @@
-import { EllipsisIcon, PlayIcon, SquareIcon } from "lucide-react";
-
-import { confirm } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@opendevhub/ui/dropdown-menu";
+import { EllipsisIcon, PlayIcon, SquareIcon } from "lucide-react";
+
+import { confirm } from "@/components/confirm-dialog";
 
 import type { ProjectView } from "../../../shared/types";
 import { sessionUrl } from "../../../shared/urls";

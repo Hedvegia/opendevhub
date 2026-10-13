@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@opendevhub/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -8,9 +6,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+} from "@opendevhub/ui/dialog";
+import { Label } from "@opendevhub/ui/label";
+import { Textarea } from "@opendevhub/ui/textarea";
+import { useEffect, useState } from "react";
 
 import type { ForgejoPullDetails } from "../../../shared/forgejo";
 import { chatHref } from "../../../shared/urls";
