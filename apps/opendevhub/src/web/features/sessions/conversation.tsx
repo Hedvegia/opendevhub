@@ -213,7 +213,12 @@ export const Conversation = (props: {
         </header>
 
         <div className="relative min-h-48 flex-1">
-          <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
+          <div
+            ref={scrollRef}
+            aria-label="Conversation transcript"
+            role="region"
+            className="absolute inset-0 overflow-y-auto"
+          >
             <div ref={contentRef} className={cn("mx-auto px-1 py-5", COLUMN)}>
               {props.error && (
                 <Alert variant="destructive">
@@ -233,6 +238,7 @@ export const Conversation = (props: {
                   more={detail.more}
                   openHref={openHref}
                   working={running && !needsAttention(session.status)}
+                  scrollRef={scrollRef}
                 />
               )}
             </div>

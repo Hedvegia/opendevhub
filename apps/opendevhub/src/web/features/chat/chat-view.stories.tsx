@@ -1,4 +1,4 @@
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import preview from "../../../../.storybook/preview";
 import { App } from "../../app";
@@ -26,6 +26,13 @@ export const Conversation = meta.story({
     await expect(
       canvas.getByRole("button", { name: /changes/iu })
     ).toBeEnabled();
+    const transcript = canvas.getByRole("region", {
+      name: "Conversation transcript",
+    });
+    await waitFor(() =>
+      expect(transcript.scrollHeight).toBeGreaterThan(transcript.clientHeight)
+    );
+    transcript.scrollTop = 0;
     // The first prompt opens the transcript; the newest is near the composer.
     await expect(
       await canvas.findByText(
@@ -33,6 +40,7 @@ export const Conversation = meta.story({
       )
     ).toBeVisible();
     await expect(canvas.getByText("6 tool calls")).toBeInTheDocument();
+    transcript.scrollTop = transcript.scrollHeight;
     await expect(canvas.queryByText("Cost")).not.toBeInTheDocument();
     await expect(
       canvas.getByRole("combobox", { name: "Message the agent" })

@@ -38,6 +38,7 @@
     "@napi-rs/keyring": "2.1.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/charts": "1.0.0",
+    "@tanstack/react-virtual": "^3.14.15",
     "cn": "0.4.0",
     "hono": "^4.13.13",
     "node-pty": "^1.1.0",

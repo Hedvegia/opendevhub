@@ -1,3 +1,4 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   BrainIcon,
   CheckIcon,
@@ -8,7 +9,8 @@ import {
   LoaderCircleIcon,
   XIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import type { RefObject } from "react";
 
 import {
   Collapsible,
@@ -47,6 +49,13 @@ type Block =
     }
   | { key: string; kind: "agent"; items: AgentItem[] }
   | { key: string; kind: "compaction" };
+
+type Row =
+  | Exclude<Block, { kind: "agent" }>
+  | { key: string; kind: "agent-item"; item: AgentItem; lastInRun: boolean }
+  | { key: string; kind: "more" }
+  | { key: string; kind: "empty" }
+  | { key: string; kind: "working" };
 
 const agentItems = (messages: AgentMessage[]): AgentItem[] => {
   const items: AgentItem[] = [];
@@ -191,121 +200,182 @@ const Thinking = ({ text }: { text: string }) => (
   </Collapsible>
 );
 
-const AgentBlock = ({ items }: { items: AgentItem[] }) => (
-  <div className="flex min-w-0 flex-col gap-2.5">
-    {items.map((item) => {
-      if (item.kind === "text") {
-        return <MarkdownBody key={item.key}>{item.text}</MarkdownBody>;
-      }
-      if (item.kind === "reasoning") {
-        return <Thinking key={item.key} text={item.text} />;
-      }
-      if (item.kind === "tools") {
-        return <ToolGroup key={item.key} tools={item.tools} />;
-      }
-      return (
-        <p
-          key={item.key}
-          role="alert"
-          className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm break-words"
-        >
-          {item.error}
-        </p>
-      );
-    })}
-  </div>
-);
+const AgentItemView = ({ item }: { item: AgentItem }) => {
+  if (item.kind === "text") {
+    return <MarkdownBody>{item.text}</MarkdownBody>;
+  }
+  if (item.kind === "reasoning") {
+    return <Thinking text={item.text} />;
+  }
+  if (item.kind === "tools") {
+    return <ToolGroup tools={item.tools} />;
+  }
+  return (
+    <p
+      role="alert"
+      className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm break-words"
+    >
+      {item.error}
+    </p>
+  );
+};
 
 /**
  * A conversation's messages, oldest at the top: the user's as bubbles, the agent's text as markdown with its
  * reasoning and tool calls collapsed. `more` says older messages are left out and links to `openHref` for them.
  */
+const TranscriptRow = ({ row, openHref }: { row: Row; openHref: string }) => {
+  if (row.kind === "more") {
+    return (
+      <p className={cn(muted, "text-center text-xs")}>
+        Older messages are left out;{" "}
+        <a
+          className="underline underline-offset-4"
+          href={openHref}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          open the conversation in opencode
+        </a>{" "}
+        for its whole history.
+      </p>
+    );
+  }
+  if (row.kind === "empty") {
+    return (
+      <p className={cn(muted, "py-8 text-center")}>
+        No messages yet: the conversation hasn&apos;t been prompted.
+      </p>
+    );
+  }
+  if (row.kind === "working") {
+    return (
+      <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+        <LoaderCircleIcon className="size-3.5 animate-spin" /> Working
+      </p>
+    );
+  }
+  if (row.kind === "user") {
+    return (
+      <div className="flex flex-col items-end">
+        <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+          {row.attachments.length > 0 && (
+            <ul
+              aria-label="Attached files"
+              className="flex flex-wrap justify-end gap-1.5"
+            >
+              {row.attachments.map((a, i) => (
+                <li
+                  key={`${i}:${a.name}`}
+                  className="bg-muted text-muted-foreground flex max-w-56 items-center gap-1.5 rounded-md border px-2 py-1 text-xs"
+                >
+                  {a.mime?.startsWith("image/") ? (
+                    <ImageIcon className="size-3.5 shrink-0" aria-hidden />
+                  ) : (
+                    <FileIcon className="size-3.5 shrink-0" aria-hidden />
+                  )}
+                  <span className="truncate" title={a.name}>
+                    {a.name}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {(row.text || row.attachments.length === 0) && (
+            <div className="bg-muted rounded-2xl rounded-br-sm px-4 py-2.5 text-sm break-words whitespace-pre-wrap">
+              {row.text || "(empty message)"}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (row.kind === "compaction") {
+    return (
+      <div
+        role="separator"
+        className="text-muted-foreground flex items-center gap-3 text-xs"
+      >
+        <span className="bg-border h-px flex-1" />
+        Conversation compacted
+        <span className="bg-border h-px flex-1" />
+      </div>
+    );
+  }
+  return <AgentItemView item={row.item} />;
+};
+
 export const Transcript = (props: {
   transcript: TranscriptMessage[];
   more: boolean;
   openHref: string;
   /** The agent is at it and not waiting on the user. */
   working: boolean;
+  scrollRef: RefObject<HTMLDivElement | null>;
 }) => {
-  const blocks = toBlocks(props.transcript);
+  const rows = useMemo(() => {
+    const flattened: Row[] = [];
+    for (const block of toBlocks(props.transcript)) {
+      if (block.kind === "agent") {
+        for (const [index, item] of block.items.entries()) {
+          flattened.push({
+            item,
+            key: item.key,
+            kind: "agent-item",
+            lastInRun: index === block.items.length - 1,
+          });
+        }
+      } else {
+        flattened.push(block);
+      }
+    }
+    if (props.more) {
+      flattened.unshift({ key: "more", kind: "more" });
+    }
+    if (props.transcript.length === 0) {
+      flattened.push({ key: "empty", kind: "empty" });
+    }
+    if (props.working) {
+      flattened.push({ key: "working", kind: "working" });
+    }
+    return flattened;
+  }, [props.transcript, props.more, props.working]);
+  const getScrollElement = useCallback(
+    () => props.scrollRef.current,
+    [props.scrollRef]
+  );
+  const getItemKey = useCallback((index: number) => rows[index].key, [rows]);
+  // TanStack Virtual owns its measurement functions; React Compiler skips this component.
+  // oxlint-disable-next-line react/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement,
+    getItemKey,
+    estimateSize: () => 180,
+    overscan: 4,
+    anchorTo: "end",
+    directDomUpdates: true,
+  });
+
   return (
-    <div className="flex flex-col gap-5">
-      {props.more && (
-        <p className={cn(muted, "text-center text-xs")}>
-          Older messages are left out;{" "}
-          <a
-            className="underline underline-offset-4"
-            href={props.openHref}
-            target="_blank"
-            rel="noopener noreferrer"
+    <div ref={virtualizer.containerRef} className="relative w-full">
+      {virtualizer.getVirtualItems().map((item) => {
+        const row = rows[item.index];
+        return (
+          <div
+            key={item.key}
+            ref={virtualizer.measureElement}
+            data-index={item.index}
+            className={cn(
+              "absolute top-0 left-0 w-full",
+              row.kind === "agent-item" && !row.lastInRun ? "pb-2.5" : "pb-5"
+            )}
+            style={{ transform: `translateY(${item.start}px)` }}
           >
-            open the conversation in opencode
-          </a>{" "}
-          for its whole history.
-        </p>
-      )}
-      {blocks.length === 0 && (
-        <p className={cn(muted, "py-8 text-center")}>
-          No messages yet: the conversation hasn&apos;t been prompted.
-        </p>
-      )}
-      {blocks.map((block) => {
-        if (block.kind === "user") {
-          return (
-            <div
-              key={block.key}
-              className="flex max-w-[85%] flex-col items-end gap-1.5 self-end"
-            >
-              {block.attachments.length > 0 && (
-                <ul
-                  aria-label="Attached files"
-                  className="flex flex-wrap justify-end gap-1.5"
-                >
-                  {block.attachments.map((a, i) => (
-                    <li
-                      key={`${i}:${a.name}`}
-                      className="bg-muted text-muted-foreground flex max-w-56 items-center gap-1.5 rounded-md border px-2 py-1 text-xs"
-                    >
-                      {a.mime?.startsWith("image/") ? (
-                        <ImageIcon className="size-3.5 shrink-0" aria-hidden />
-                      ) : (
-                        <FileIcon className="size-3.5 shrink-0" aria-hidden />
-                      )}
-                      <span className="truncate" title={a.name}>
-                        {a.name}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {(block.text || block.attachments.length === 0) && (
-                <div className="bg-muted rounded-2xl rounded-br-sm px-4 py-2.5 text-sm break-words whitespace-pre-wrap">
-                  {block.text || "(empty message)"}
-                </div>
-              )}
-            </div>
-          );
-        }
-        if (block.kind === "compaction") {
-          return (
-            <div
-              key={block.key}
-              role="separator"
-              className="text-muted-foreground flex items-center gap-3 text-xs"
-            >
-              <span className="bg-border h-px flex-1" />
-              Conversation compacted
-              <span className="bg-border h-px flex-1" />
-            </div>
-          );
-        }
-        return <AgentBlock key={block.key} items={block.items} />;
+            <TranscriptRow row={row} openHref={props.openHref} />
+          </div>
+        );
       })}
-      {props.working && (
-        <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
-          <LoaderCircleIcon className="size-3.5 animate-spin" /> Working
-        </p>
-      )}
     </div>
   );
 };
