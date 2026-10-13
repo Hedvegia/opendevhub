@@ -29,12 +29,19 @@ export const useStickToBottom = () => {
     if (!el || !content) {
       return;
     }
+    let lastScrollTop = el.scrollTop;
     const onScroll = () => {
-      atBottom.current =
+      const nearBottom =
         el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX;
-      if (atBottom.current) {
+      if (nearBottom) {
+        atBottom.current = true;
         setBehind(false);
+      } else if (el.scrollTop < lastScrollTop) {
+        // Growing content can put the bottom out of reach before ResizeObserver runs.
+        // Only an upward scroll should stop following it.
+        atBottom.current = false;
       }
+      lastScrollTop = el.scrollTop;
     };
     let height = content.offsetHeight;
     // Opens at the newest message.
@@ -44,6 +51,7 @@ export const useStickToBottom = () => {
       height = content.offsetHeight;
       if (atBottom.current) {
         el.scrollTop = el.scrollHeight;
+        lastScrollTop = el.scrollTop;
       } else if (grew) {
         setBehind(true);
       }
