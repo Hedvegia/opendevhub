@@ -19,6 +19,7 @@ import type {
   OcrSettingsInput,
   OcrTestInput,
 } from "../shared/ocr";
+import type { ProjectColor } from "../shared/project-appearance";
 import type { StackId } from "../shared/stacks";
 import type {
   ChatStartRequest,
@@ -897,6 +898,18 @@ export const renameProject = async (projectId: string, name: string) => {
     "rename project"
   );
 };
+
+export const saveProjectAppearance = (
+  projectId: string,
+  appearance: { shortName: string; color: ProjectColor | "" }
+) =>
+  read(
+    project.appearance.$post({
+      json: appearance,
+      param: projectParam(projectId),
+    }),
+    "save project appearance"
+  );
 
 export const fetchProjectPorts = (projectId: string, signal?: AbortSignal) =>
   read(

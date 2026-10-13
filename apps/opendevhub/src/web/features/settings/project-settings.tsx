@@ -124,7 +124,7 @@ export const ProjectSettings = () => {
     <>
       <SettingsHeader
         title="Projects"
-        description="Rename the projects opendevhub found. Each one's gear links it to a Jira board and a Forgejo repository, and sets its ports and checks."
+        description="Rename projects or open a project's gear to set its sidebar letters, color, integrations, ports and checks."
         action={
           <Button variant="outline" size="sm" onClick={openAddProject}>
             Add project…

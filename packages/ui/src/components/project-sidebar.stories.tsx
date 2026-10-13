@@ -36,24 +36,26 @@ const projects = [
 const projectDetails = {
   status: "Running · 2 containers",
   statusActivity: "running" as const,
-  newChatHref: "#new-chat",
   pages: {
     overview: { href: "#overview" },
     pullRequests: { href: "#project-pull-requests", count: 2 },
     tickets: { href: "#project-tickets" },
   },
   activePage: "overview" as const,
-  worktrees: [
+  tasks: [
     {
       id: "user-id-types",
-      label: "fix/userid-types",
-      href: "#worktree-user-id-types",
+      label: "Fix user ID types",
+      href: "#task-user-id-types",
       activity: "attention" as const,
+      meta: "4h",
     },
     {
       id: "openspec-tasks",
-      label: "feat/openspec-tasks",
-      href: "#worktree-openspec-tasks",
+      label: "Implement OpenSpec tasks",
+      href: "#task-openspec-tasks",
+      activity: "running" as const,
+      meta: "6h",
     },
   ],
   chats: [
@@ -85,6 +87,7 @@ const projectDetails = {
       meta: "8h",
     },
   ],
+  onAddTask: fn(),
   onAddChat: fn(),
 };
 

@@ -37,6 +37,8 @@ import { DevcontainerExistsError } from "../../src/server/projects/onboarding";
 import type { OnboardingPort } from "../../src/server/projects/onboarding";
 import { StateStore } from "../../src/server/projects/state";
 import type { ActivityPage, Provenance } from "../../src/shared/activity";
+import { readProjectAppearance } from "../../src/shared/project-appearance";
+import type { ProjectAppearance } from "../../src/shared/project-appearance";
 import type {
   Candidate,
   CheckRun,
@@ -1356,6 +1358,78 @@ describe("dashboard API", () => {
     expect(renameProject).toHaveBeenCalledWith(project.id, "Acme");
     expect((await post(app, { name: 3 })).status).toBe(400);
     expect((await post(deps.app, { name: "Acme" })).status).toBe(412);
+  });
+
+  it("accepts two or three project initials and palette colors", async () => {
+    const deps = setup();
+    const save = vi.fn((id: string, appearance: ProjectAppearance) => {
+      expect(id).toBe(project.id);
+      return appearance;
+    });
+    const app = createDashboardApp({
+      ...deps,
+      projectAppearance: { save },
+    });
+    const post = (body: unknown) =>
+      app.request(`/api/projects/${project.id}/appearance`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    const saved = await post({ shortName: "OD", color: "violet" });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toStrictEqual({
+      shortName: "OD",
+      color: "violet",
+    });
+    expect(save).toHaveBeenCalledWith(project.id, {
+      shortName: "OD",
+      color: "violet",
+    });
+    expect((await post({ shortName: "ODE", color: "blue" })).status).toBe(200);
+    expect(save).toHaveBeenLastCalledWith(project.id, {
+      shortName: "ODE",
+      color: "blue",
+    });
+    expect((await post({ shortName: "", color: "" })).status).toBe(200);
+    expect(save).toHaveBeenLastCalledWith(project.id, {
+      shortName: undefined,
+      color: undefined,
+    });
+    expect((await post({ shortName: "O", color: "red" })).status).toBe(400);
+    expect((await post({ shortName: "ODEV", color: "red" })).status).toBe(400);
+    expect((await post({ shortName: "12", color: "red" })).status).toBe(400);
+    expect((await post({ shortName: "OD", color: "chartreuse" })).status).toBe(
+      400
+    );
+    expect(save).toHaveBeenCalledTimes(3);
+  });
+
+  it("includes saved project appearance in dashboard snapshots", () => {
+    const store = new StateStore({
+      ...stateStores(),
+      port: 7777,
+      projectAppearance: () => ({ shortName: "OD", color: "blue" }),
+    });
+    store.setProjects([project]);
+    expect(store.snapshot().projects[0]?.appearance).toStrictEqual({
+      shortName: "OD",
+      color: "blue",
+    });
+
+    store.setProjectAppearance(project.id, { shortName: "DH", color: "teal" });
+    expect(store.snapshot().projects[0]?.appearance).toStrictEqual({
+      shortName: "DH",
+      color: "teal",
+    });
+  });
+
+  it("reads three-letter names from project settings", () => {
+    expect(
+      readProjectAppearance({ shortName: "ode", color: "violet" })
+    ).toStrictEqual({ shortName: "ODE", color: "violet" });
+    expect(readProjectAppearance({ shortName: "four" })).toStrictEqual({});
   });
 
   it("answers an unknown API path with a JSON 404, not the page", async () => {

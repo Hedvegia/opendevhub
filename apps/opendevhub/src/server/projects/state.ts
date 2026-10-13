@@ -1,3 +1,4 @@
+import type { ProjectAppearance } from "../../shared/project-appearance";
 import type {
   ChatView,
   DashboardSnapshot,
@@ -32,6 +33,7 @@ import { compareSessions } from "../sessions/status";
 
 export interface StoreOptions {
   port: number;
+  projectAppearance?: (project: Project) => ProjectAppearance;
   /** Where tasks live; the snapshot lists them and sessions show theirs. */
   tasks: TaskStore;
   /** Where chats live; the snapshot lists them and hides internal chats' sessions. Absent: no chats are listed. */
@@ -79,6 +81,7 @@ const defaultRuntime = (projectId: ProjectId): ProjectRuntime => ({
 
 export class StateStore {
   private projectsById = new Map<ProjectId, Project>();
+  private projectAppearances = new Map<ProjectId, ProjectAppearance>();
   private runtimes = new Map<ProjectId, ProjectRuntime>();
   private sessions = new Map<ProjectId, SessionSummary[]>();
   private listeners = new Set<() => void>();
@@ -120,6 +123,12 @@ export class StateStore {
 
   setProjects(list: Project[]): void {
     this.projectsById = new Map(list.map((p) => [p.id, p]));
+    this.projectAppearances = new Map(
+      list.map((project) => [
+        project.id,
+        this.opts.projectAppearance?.(project) ?? {},
+      ])
+    );
     for (const p of list) {
       if (!this.runtimes.has(p.id)) {
         this.runtimes.set(p.id, defaultRuntime(p.id));
@@ -134,6 +143,11 @@ export class StateStore {
 
   project(id: ProjectId): Project | undefined {
     return this.projectsById.get(id);
+  }
+
+  setProjectAppearance(id: ProjectId, appearance: ProjectAppearance): void {
+    this.projectAppearances.set(id, appearance);
+    this.emit();
   }
 
   runtime(id: ProjectId): ProjectRuntime {
@@ -430,6 +444,9 @@ export class StateStore {
           })),
           openUrl: projectUrl(project.id, this.opts.port),
           project,
+          ...(this.opts.projectAppearance
+            ? { appearance: this.projectAppearances.get(project.id) ?? {} }
+            : {}),
           runtime:
             remote.length > 0 || runtime.worktrees
               ? {

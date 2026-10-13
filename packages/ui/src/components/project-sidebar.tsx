@@ -1,12 +1,11 @@
 import {
+  ChevronDown,
   Folder,
-  GitBranch,
   GitPullRequest,
   Inbox,
   MessageSquare,
   Plus,
   SquareCheckBig,
-  SquarePen,
   Ticket,
   X,
 } from "lucide-react";
@@ -16,6 +15,7 @@ import type {
   ReactElement,
   ReactNode,
 } from "react";
+import { useId, useState } from "react";
 
 import { cn } from "../utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
@@ -33,9 +33,24 @@ interface SidebarProject {
   id: string;
   name: string;
   shortName: string;
+  color?: string;
   activity?: Activity;
   count?: number;
 }
+
+const projectColors: Record<string, string> = {
+  slate: "bg-slate-300 text-slate-950 dark:bg-slate-700 dark:text-slate-50",
+  red: "bg-red-300 text-red-950 dark:bg-red-800 dark:text-red-50",
+  orange:
+    "bg-orange-300 text-orange-950 dark:bg-orange-800 dark:text-orange-50",
+  amber: "bg-amber-300 text-amber-950 dark:bg-amber-700 dark:text-amber-50",
+  green: "bg-green-300 text-green-950 dark:bg-green-800 dark:text-green-50",
+  teal: "bg-teal-300 text-teal-950 dark:bg-teal-800 dark:text-teal-50",
+  blue: "bg-blue-300 text-blue-950 dark:bg-blue-800 dark:text-blue-50",
+  violet:
+    "bg-violet-300 text-violet-950 dark:bg-violet-800 dark:text-violet-50",
+  pink: "bg-pink-300 text-pink-950 dark:bg-pink-800 dark:text-pink-50",
+};
 
 interface SidebarEntry {
   id: string;
@@ -49,11 +64,11 @@ interface SidebarEntry {
 interface SidebarProjectDetails {
   status?: string;
   statusActivity?: Activity;
-  newChatHref?: string;
   pages: Record<ProjectPage, SidebarGlobalLink>;
   activePage?: ProjectPage;
-  worktrees?: readonly SidebarEntry[];
+  tasks?: readonly SidebarEntry[];
   chats?: readonly SidebarEntry[];
+  onAddTask?: () => void;
   onAddChat?: () => void;
 }
 
@@ -136,23 +151,50 @@ const SidebarEntries = ({
   entries,
   addAction,
   onNavigate,
+  open,
+  onToggle,
+  listId,
 }: {
-  kind: "worktrees" | "chats";
+  kind: "tasks" | "chats";
   entries: readonly SidebarEntry[];
   addAction?: () => void;
   onNavigate?: (href: string) => void;
+  open: boolean;
+  onToggle: () => void;
+  listId: string;
 }) => {
-  const label = kind === "worktrees" ? "Worktrees" : "Chats";
+  const label = kind === "tasks" ? "Tasks" : "Chats";
   return (
-    <section aria-label={label} className="mt-5 min-w-0">
-      <div className="text-muted-foreground flex items-center justify-between px-3 text-xs">
-        <span>{label}</span>
+    <section
+      aria-label={label}
+      className={cn(
+        "mt-5 flex min-h-0 min-w-0 flex-col",
+        open ? "flex-1" : "shrink-0"
+      )}
+    >
+      <div className="text-muted-foreground flex shrink-0 items-center justify-between px-3 text-xs">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={listId}
+          onClick={onToggle}
+          className="hover:text-sidebar-foreground focus-visible:ring-sidebar-ring flex min-w-0 items-center gap-1 rounded py-1 outline-none focus-visible:ring-2"
+        >
+          <ChevronDown
+            aria-hidden="true"
+            className={cn(
+              "size-3.5 shrink-0 transition-transform",
+              !open && "-rotate-90"
+            )}
+          />
+          {label}
+        </button>
         <span className="flex items-center gap-2">
           <span>{entries.length}</span>
           {addAction && (
             <button
               type="button"
-              aria-label="Add chat"
+              aria-label={`Add ${kind === "tasks" ? "task" : "chat"}`}
               onClick={addAction}
               className="hover:bg-sidebar-accent focus-visible:ring-sidebar-ring rounded p-0.5 outline-none focus-visible:ring-2"
             >
@@ -161,7 +203,11 @@ const SidebarEntries = ({
           )}
         </span>
       </div>
-      <ul className="mt-2 space-y-1">
+      <ul
+        id={listId}
+        hidden={!open}
+        className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto"
+      >
         {entries.map((entry) => (
           <li key={entry.id}>
             <SidebarTip label={entry.label}>
@@ -176,18 +222,8 @@ const SidebarEntries = ({
                   entry.active && "bg-sidebar-accent"
                 )}
               >
-                {kind === "worktrees" ? (
-                  <GitBranch
-                    aria-hidden="true"
-                    className="text-muted-foreground size-3.5 shrink-0"
-                  />
-                ) : (
-                  <ActivityDot activity={entry.activity ?? "idle"} />
-                )}
+                <ActivityDot activity={entry.activity ?? "idle"} />
                 <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                {entry.activity && kind === "worktrees" && (
-                  <ActivityDot activity={entry.activity} />
-                )}
                 {entry.meta && (
                   <span className="text-muted-foreground shrink-0 text-xs">
                     {entry.meta}
@@ -216,6 +252,9 @@ const ProjectSidebar = ({
   className,
   ...props
 }: ProjectSidebarProps) => {
+  const [tasksOpen, setTasksOpen] = useState(true);
+  const [chatsOpen, setChatsOpen] = useState(true);
+  const sectionId = useId();
   const activeProject = projects.find(
     (project) => project.id === activeProjectId
   );
@@ -286,9 +325,13 @@ const ProjectSidebar = ({
                       onClick={() => onSelectProject(project.id)}
                       className={cn(
                         "bg-sidebar-accent text-sidebar-accent-foreground focus-visible:ring-sidebar-ring relative flex size-10 items-center justify-center rounded-lg text-[13px] font-semibold outline-none focus-visible:ring-2",
-                        isActive
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "hover:bg-sidebar-accent/70"
+                        isActive &&
+                          "bg-sidebar-primary text-sidebar-primary-foreground",
+                        !isActive &&
+                          (project.color
+                            ? "hover:brightness-95 dark:hover:brightness-110"
+                            : "hover:bg-sidebar-accent/70"),
+                        project.color && projectColors[project.color]
                       )}
                     >
                       <span className="max-w-full truncate px-1">
@@ -373,24 +416,11 @@ const ProjectSidebar = ({
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-            {projectDetails.newChatHref && (
-              <a
-                href={projectDetails.newChatHref}
-                onClick={(event) =>
-                  handleLinkClick(
-                    event,
-                    projectDetails.newChatHref ?? "",
-                    onNavigate
-                  )
-                }
-                className="text-sidebar-foreground hover:bg-sidebar-accent focus-visible:ring-sidebar-ring flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] outline-none focus-visible:ring-2"
-              >
-                <SquarePen aria-hidden="true" className="size-3.5" />
-                New chat
-              </a>
-            )}
-            <nav aria-label={`${activeProject.name} pages`} className="mt-2">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-4">
+            <nav
+              aria-label={`${activeProject.name} pages`}
+              className="shrink-0"
+            >
               <ul className="space-y-1">
                 {projectPages.map(({ id, label, icon: Icon }) => {
                   const link = projectDetails.pages[id];
@@ -427,11 +457,15 @@ const ProjectSidebar = ({
               </ul>
             </nav>
 
-            {projectDetails.worktrees && (
+            {projectDetails.tasks && (
               <SidebarEntries
-                kind="worktrees"
-                entries={projectDetails.worktrees}
+                kind="tasks"
+                entries={projectDetails.tasks}
+                addAction={projectDetails.onAddTask}
                 onNavigate={onNavigate}
+                open={tasksOpen}
+                onToggle={() => setTasksOpen((current) => !current)}
+                listId={`${sectionId}-tasks`}
               />
             )}
             {projectDetails.chats && (
@@ -440,6 +474,9 @@ const ProjectSidebar = ({
                 entries={projectDetails.chats}
                 addAction={projectDetails.onAddChat}
                 onNavigate={onNavigate}
+                open={chatsOpen}
+                onToggle={() => setChatsOpen((current) => !current)}
+                listId={`${sectionId}-chats`}
               />
             )}
           </div>

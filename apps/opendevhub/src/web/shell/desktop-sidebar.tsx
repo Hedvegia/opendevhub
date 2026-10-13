@@ -8,6 +8,7 @@ import { useLocation } from "@tanstack/react-router";
 import { BellIcon, SettingsIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { taskHref } from "../../shared/urls";
 import { STATE_LABEL } from "../components/status";
 import { Tip } from "../components/tip";
 import { useDash } from "../dashboard-context";
@@ -21,11 +22,7 @@ import {
   shortAgo,
   sidebarChats,
 } from "../features/chat/chat";
-import {
-  checkoutPath,
-  checkouts,
-  checkoutTone,
-} from "../features/checkouts/checkouts";
+import { projectTasks } from "../features/checkouts/checkouts";
 import {
   projectPullsHref,
   projectTicketsHref,
@@ -78,8 +75,14 @@ const globalPageOf = (pathname: string) => {
 };
 
 export const DesktopSidebar = () => {
-  const { snapshot, connected, permission, requestPermission, openAddProject } =
-    useDash();
+  const {
+    snapshot,
+    connected,
+    permission,
+    requestPermission,
+    openAddProject,
+    newTask,
+  } = useDash();
   const { view, projects, choose } = useCurrentProject();
   const navigate = useNavigate();
   const settingsHref = useSettingsHref();
@@ -105,7 +108,9 @@ export const DesktopSidebar = () => {
   const sidebarProjects: SidebarProject[] = projects.map((projectView) => ({
     id: projectView.project.id,
     name: projectView.project.name,
-    shortName: shortName(projectView.project.name),
+    shortName:
+      projectView.appearance?.shortName ?? shortName(projectView.project.name),
+    color: projectView.appearance?.color,
     activity:
       projectView.runtime.containerState === "running"
         ? activityOf(projectTone(projectView))
@@ -125,7 +130,6 @@ export const DesktopSidebar = () => {
     ? {
         status: `${STATE_LABEL[selectedView.runtime.containerState]} · ${runningContainers} ${runningContainers === 1 ? "container" : "containers"}`,
         statusActivity: activityOf(projectTone(selectedView)),
-        newChatHref: "/chat",
         pages: {
           overview: {
             href: `/p/${encodeURIComponent(selectedView.project.id)}`,
@@ -141,19 +145,33 @@ export const DesktopSidebar = () => {
           pathname === `/p/${encodeURIComponent(selectedView.project.id)}`
             ? "overview"
             : undefined,
-        worktrees: checkouts(selectedView)
-          .slice(1)
-          .map((checkout) => ({
-            id: checkout.directory,
-            label: checkout.label,
-            href: checkoutPath(selectedView.project.id, checkout.target),
-            active:
-              pathname ===
-              checkoutPath(selectedView.project.id, checkout.target),
-            activity: activityOf(
-              checkoutTone(selectedView, checkout.directory)
-            ),
-          })),
+        tasks: projectTasks(selectedView)
+          .filter(
+            (task) => task.state === "starting" || task.state === "running"
+          )
+          .map((task) => {
+            const taskPath = taskHref(selectedView.project.id, task.task);
+            const href = taskHref(
+              selectedView.project.id,
+              task.task,
+              task.waiting === undefined ? {} : { v: task.waiting }
+            );
+            let activity: "attention" | "running" | "idle" = "idle";
+            if (task.attention) {
+              activity = "attention";
+            } else if (task.running) {
+              activity = "running";
+            }
+            return {
+              id: task.task,
+              label: task.title || "Task",
+              href,
+              active:
+                pathname === taskPath || pathname.startsWith(`${taskPath}/`),
+              activity,
+              meta: shortAgo(task.updatedAt),
+            };
+          }),
         chats: sidebarChats(selectedView).map((chat) => ({
           id: chat.id,
           label: chat.title || "Untitled chat",
@@ -164,6 +182,7 @@ export const DesktopSidebar = () => {
           ),
           meta: shortAgo(chatActivity(chat)),
         })),
+        onAddTask: () => newTask(selectedView.project.id),
         onAddChat: () => void navigate("/chat"),
       }
     : undefined;

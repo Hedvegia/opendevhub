@@ -1,5 +1,6 @@
 import type { AiFinding, AiReviewMode, OcrRunStats } from "./forgejo";
 import type { JiraTaskSource } from "./jira";
+import type { ProjectAppearance } from "./project-appearance";
 import type { StackId } from "./stacks";
 
 export type ProjectId = string;
@@ -846,6 +847,7 @@ export interface Preflight {
 
 export interface ProjectView {
   project: Project;
+  appearance?: ProjectAppearance;
   runtime: PublicRuntime;
   sessions: SessionSummary[];
   openUrl: string;

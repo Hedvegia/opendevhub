@@ -80,6 +80,21 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
         await deps.renameProject(id, c.req.valid("json").name);
       })
     )
+    .post(
+      "/api/projects/:id/appearance",
+      validateJson(bodies.projectAppearance),
+      (c) =>
+        json(c, (id) => {
+          if (!deps.projectAppearance) {
+            throw new UnavailableError("Project appearance is not available");
+          }
+          const appearance = c.req.valid("json");
+          return deps.projectAppearance.save(id, {
+            shortName: appearance.shortName || undefined,
+            color: appearance.color || undefined,
+          });
+        })
+    )
     .get("/api/projects/:id/ports", (c) =>
       json(c, (id) => {
         if (!deps.projectPorts) {

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { Hono } from "hono";
 
+import type { ProjectAppearance } from "../shared/project-appearance";
 import type { ProjectLinks } from "../shared/types";
 import { createActivityRoutes } from "./api/activity";
 import { createCoreRoutes } from "./api/core";
@@ -124,6 +125,9 @@ export interface DashboardDeps {
   saveRoots?: (input: unknown) => void;
   /** Shows the project under `name`, or its folder name again when `name` is blank. */
   renameProject?: (id: string, name: string) => Promise<void>;
+  projectAppearance?: {
+    save: (id: string, appearance: ProjectAppearance) => ProjectAppearance;
+  };
   /** Ports a project forwards on top of devcontainer.json's `forwardPorts`; saving forwards them right away. */
   projectPorts?: {
     get: (id: string) => number[];

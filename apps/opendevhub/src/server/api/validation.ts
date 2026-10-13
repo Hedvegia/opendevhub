@@ -11,6 +11,10 @@ import {
   JIRA_STATUSES,
   normalizeJql,
 } from "../../shared/jira";
+import {
+  PROJECT_COLORS,
+  PROJECT_SHORT_NAME,
+} from "../../shared/project-appearance";
 import { STACK_IDS } from "../../shared/stacks";
 import { ATTACHMENTS_MAX } from "../../shared/types";
 import { parseCleanupItems } from "../git/cleanup";
@@ -224,6 +228,10 @@ export const bodies = {
   }),
   roots: z.object({ roots: z.array(z.string()) }),
   projectName: z.object({ name: z.string().max(200) }),
+  projectAppearance: z.object({
+    shortName: z.union([z.literal(""), z.string().regex(PROJECT_SHORT_NAME)]),
+    color: z.union([z.literal(""), z.enum(PROJECT_COLORS)]),
+  }),
   todo: z.object({ text: todoText }),
   todoUpdate: z.object({ text: todoText.optional(), done: flag }),
   projectPorts: z.object({

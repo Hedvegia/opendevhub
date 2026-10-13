@@ -19,6 +19,7 @@ import {
   ClipboardCheckIcon,
   LinkIcon,
   NetworkIcon,
+  PaletteIcon,
   ScanSearchIcon,
   SearchIcon,
   SettingsIcon,
@@ -35,11 +36,13 @@ import { useDash } from "../../dashboard-context";
 import { matches } from "../../derive";
 import { ChecksSettings } from "../checks/checks-settings";
 import { SettingsHeader } from "../settings/settings-layout";
+import { AppearanceSettings } from "./appearance-settings";
 import { LinksSettings } from "./links-settings";
 import { OcrProjectSettingsBlock } from "./ocr-project-settings";
 import { HostPortsSettings, PortsSettings } from "./ports-settings";
 
 const GROUPS = [
+  { id: "general", label: "General" },
   { id: "integrations", label: "Integrations" },
   { id: "environments", label: "Environments" },
   { id: "review", label: "Review" },
@@ -51,10 +54,17 @@ interface ProjectSection {
   group: (typeof GROUPS)[number]["id"];
   icon: LucideIcon;
   keywords: string;
-  component: typeof LinksSettings;
+  component?: typeof LinksSettings;
 }
 
 const SECTIONS: ProjectSection[] = [
+  {
+    group: "general",
+    icon: PaletteIcon,
+    id: "appearance",
+    keywords: "sidebar short name initials letters color background",
+    label: "Appearance",
+  },
   {
     component: LinksSettings,
     group: "integrations",
@@ -217,6 +227,12 @@ const ProjectSettingsPanel = ({ view }: { view: ProjectView }) => {
       {/* Keep each section mounted so switching pages preserves unsaved edits. */}
       {sections.map((section) => {
         const Component = section.component;
+        let content = null;
+        if (section.id === "appearance") {
+          content = <AppearanceSettings view={view} />;
+        } else if (Component) {
+          content = <Component projectId={view.project.id} />;
+        }
         return (
           <div
             key={section.id}
@@ -230,7 +246,7 @@ const ProjectSettingsPanel = ({ view }: { view: ProjectView }) => {
                 title="Project settings"
                 description={view.project.name}
               />
-              <Component projectId={view.project.id} />
+              {content}
             </div>
           </div>
         );

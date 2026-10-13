@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 
 import open from "open";
 
+import { readProjectAppearance } from "../shared/project-appearance";
 import type { NodeId, Project } from "../shared/types";
 import {
   FileForgeStore,
@@ -278,6 +279,7 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
   // The jobs that were setting these variants up died with the previous process.
   tasks.failInterrupted();
   chats.failInterrupted();
+  const projectSettings = new FileProjectSettings(dir);
   const store = new StateStore({
     chats,
     checkouts,
@@ -285,6 +287,8 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
     events,
     links,
     port: config.port,
+    projectAppearance: (project) =>
+      readProjectAppearance(projectSettings.get(project.path)),
     tasks,
   });
   store.setRoots(roots);
@@ -311,7 +315,6 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
   const editors = new EditorLauncher(await detectEditors(pathWhich()));
   store.setEditors(editors.list());
   const git = new GitOps({ containers });
-  const projectSettings = new FileProjectSettings(dir);
   /** A name set in Settings replaces the folder name discovery gives a project. */
   const withNames = (list: Project[]): Project[] => {
     const entries = loadConfig(dir).projects ?? {};
@@ -448,6 +451,21 @@ export const main = async (argv = process.argv.slice(2)): Promise<void> => {
       }
       projectSettings.update(project.path, { name: name.trim() || undefined });
       await hub.environments.rescan();
+    },
+    projectAppearance: {
+      save: (id, appearance) => {
+        const project = store.project(id);
+        if (!project) {
+          throw new NotFoundError(id);
+        }
+        projectSettings.update(project.path, {
+          shortName: appearance.shortName || undefined,
+          color: appearance.color || undefined,
+        });
+        const saved = readProjectAppearance(projectSettings.get(project.path));
+        store.setProjectAppearance(id, saved);
+        return saved;
+      },
     },
     ...projectLinkSettings({
       project: (id) => store.project(id),
