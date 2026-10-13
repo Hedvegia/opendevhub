@@ -9,6 +9,7 @@ import { BellIcon, SettingsIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { STATE_LABEL } from "../components/status";
+import { Tip } from "../components/tip";
 import { useDash } from "../dashboard-context";
 import { attentionCounts, projectCounts, projectTone } from "../derive";
 import type { Tone } from "../derive";
@@ -191,33 +192,36 @@ export const DesktopSidebar = () => {
         onNavigate={(href) => void navigate(href)}
         footer={
           <div className="flex flex-col items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Settings"
-              aria-current={params.has("settings") ? "page" : undefined}
-              title="Settings"
-              onClick={() => void navigate(settingsHref())}
-            >
-              <SettingsIcon />
-            </Button>
-            {permission === "default" && (
+            <Tip label="Settings" side="right">
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Enable notifications"
-                title="Enable notifications"
-                onClick={() => void requestPermission()}
+                aria-label="Settings"
+                aria-current={params.has("settings") ? "page" : undefined}
+                onClick={() => void navigate(settingsHref())}
               >
-                <BellIcon />
+                <SettingsIcon />
               </Button>
+            </Tip>
+            {permission === "default" && (
+              <Tip label="Enable notifications" side="right">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Enable notifications"
+                  onClick={() => void requestPermission()}
+                >
+                  <BellIcon />
+                </Button>
+              </Tip>
             )}
-            <span
-              className={`mb-1 size-2 rounded-full ${connected ? "bg-ok" : "bg-warn animate-pulse"}`}
-              role="img"
-              aria-label={connected ? "Connected" : "Reconnecting"}
-              title={connected ? "Connected" : "Reconnecting"}
-            />
+            <Tip label={connected ? "Connected" : "Reconnecting"} side="right">
+              <span
+                className={`mb-1 size-2 rounded-full ${connected ? "bg-ok" : "bg-warn animate-pulse"}`}
+                role="img"
+                aria-label={connected ? "Connected" : "Reconnecting"}
+              />
+            </Tip>
           </div>
         }
         {...(panelOpen && activeProjectId && projectDetails

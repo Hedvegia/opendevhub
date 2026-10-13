@@ -10,9 +10,15 @@ import {
   Ticket,
   X,
 } from "lucide-react";
-import type { ComponentProps, MouseEvent, ReactNode } from "react";
+import type {
+  ComponentProps,
+  MouseEvent,
+  ReactElement,
+  ReactNode,
+} from "react";
 
 import { cn } from "../utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 type GlobalPage = "inbox" | "tasks" | "chats" | "pullRequests" | "tickets";
 type ProjectPage = "overview" | "pullRequests" | "tickets";
@@ -112,6 +118,19 @@ const ActivityDot = ({ activity }: { activity: Activity }) => (
   />
 );
 
+const SidebarTip = ({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactElement;
+}) => (
+  <Tooltip>
+    <TooltipTrigger asChild>{children}</TooltipTrigger>
+    <TooltipContent side="right">{label}</TooltipContent>
+  </Tooltip>
+);
+
 const SidebarEntries = ({
   kind,
   entries,
@@ -145,37 +164,37 @@ const SidebarEntries = ({
       <ul className="mt-2 space-y-1">
         {entries.map((entry) => (
           <li key={entry.id}>
-            <a
-              href={entry.href}
-              onClick={(event) =>
-                handleLinkClick(event, entry.href, onNavigate)
-              }
-              aria-current={entry.active ? "page" : undefined}
-              className={cn(
-                "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:ring-sidebar-ring flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-[13px] outline-none focus-visible:ring-2",
-                entry.active && "bg-sidebar-accent"
-              )}
-            >
-              {kind === "worktrees" ? (
-                <GitBranch
-                  aria-hidden="true"
-                  className="text-muted-foreground size-3.5 shrink-0"
-                />
-              ) : (
-                <ActivityDot activity={entry.activity ?? "idle"} />
-              )}
-              <span className="min-w-0 flex-1 truncate" title={entry.label}>
-                {entry.label}
-              </span>
-              {entry.activity && kind === "worktrees" && (
-                <ActivityDot activity={entry.activity} />
-              )}
-              {entry.meta && (
-                <span className="text-muted-foreground shrink-0 text-xs">
-                  {entry.meta}
-                </span>
-              )}
-            </a>
+            <SidebarTip label={entry.label}>
+              <a
+                href={entry.href}
+                onClick={(event) =>
+                  handleLinkClick(event, entry.href, onNavigate)
+                }
+                aria-current={entry.active ? "page" : undefined}
+                className={cn(
+                  "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:ring-sidebar-ring flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-[13px] outline-none focus-visible:ring-2",
+                  entry.active && "bg-sidebar-accent"
+                )}
+              >
+                {kind === "worktrees" ? (
+                  <GitBranch
+                    aria-hidden="true"
+                    className="text-muted-foreground size-3.5 shrink-0"
+                  />
+                ) : (
+                  <ActivityDot activity={entry.activity ?? "idle"} />
+                )}
+                <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                {entry.activity && kind === "worktrees" && (
+                  <ActivityDot activity={entry.activity} />
+                )}
+                {entry.meta && (
+                  <span className="text-muted-foreground shrink-0 text-xs">
+                    {entry.meta}
+                  </span>
+                )}
+              </a>
+            </SidebarTip>
           </li>
         ))}
       </ul>
@@ -217,27 +236,30 @@ const ProjectSidebar = ({
               const link = globalLinks[id];
               return (
                 <li key={id}>
-                  <a
-                    href={link.href}
-                    onClick={(event) =>
-                      handleLinkClick(event, link.href, onNavigate)
-                    }
-                    aria-label={label}
-                    aria-current={activeGlobalPage === id ? "page" : undefined}
-                    title={label}
-                    className={cn(
-                      "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-sidebar-ring relative flex size-10 items-center justify-center rounded-lg outline-none focus-visible:ring-2",
-                      activeGlobalPage === id &&
-                        "bg-sidebar-accent text-sidebar-accent-foreground"
-                    )}
-                  >
-                    <Icon aria-hidden="true" className="size-4" />
-                    {Boolean(link.count) && (
-                      <span className="bg-attention text-attention-foreground absolute -top-1 -right-1 flex min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold">
-                        {link.count}
-                      </span>
-                    )}
-                  </a>
+                  <SidebarTip label={label}>
+                    <a
+                      href={link.href}
+                      onClick={(event) =>
+                        handleLinkClick(event, link.href, onNavigate)
+                      }
+                      aria-label={label}
+                      aria-current={
+                        activeGlobalPage === id ? "page" : undefined
+                      }
+                      className={cn(
+                        "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-sidebar-ring relative flex size-10 items-center justify-center rounded-lg outline-none focus-visible:ring-2",
+                        activeGlobalPage === id &&
+                          "bg-sidebar-accent text-sidebar-accent-foreground"
+                      )}
+                    >
+                      <Icon aria-hidden="true" className="size-4" />
+                      {Boolean(link.count) && (
+                        <span className="bg-attention text-attention-foreground absolute -top-1 -right-1 flex min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold">
+                          {link.count}
+                        </span>
+                      )}
+                    </a>
+                  </SidebarTip>
                 </li>
               );
             })}
@@ -256,61 +278,63 @@ const ProjectSidebar = ({
               const hasNotifications = (project.count ?? 0) > 0;
               return (
                 <li key={project.id}>
-                  <button
-                    type="button"
-                    aria-label={project.name}
-                    aria-expanded={isActive && Boolean(projectDetails)}
-                    title={project.name}
-                    onClick={() => onSelectProject(project.id)}
-                    className={cn(
-                      "bg-sidebar-accent text-sidebar-accent-foreground focus-visible:ring-sidebar-ring relative flex size-10 items-center justify-center rounded-lg text-[13px] font-semibold outline-none focus-visible:ring-2",
-                      isActive
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "hover:bg-sidebar-accent/70"
-                    )}
-                  >
-                    <span className="max-w-full truncate px-1">
-                      {project.shortName}
-                    </span>
-                    {hasNotifications && (
-                      <span
-                        aria-hidden="true"
-                        className="bg-attention text-attention-foreground absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold"
-                      >
-                        {project.count}
+                  <SidebarTip label={project.name}>
+                    <button
+                      type="button"
+                      aria-label={project.name}
+                      aria-expanded={isActive && Boolean(projectDetails)}
+                      onClick={() => onSelectProject(project.id)}
+                      className={cn(
+                        "bg-sidebar-accent text-sidebar-accent-foreground focus-visible:ring-sidebar-ring relative flex size-10 items-center justify-center rounded-lg text-[13px] font-semibold outline-none focus-visible:ring-2",
+                        isActive
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "hover:bg-sidebar-accent/70"
+                      )}
+                    >
+                      <span className="max-w-full truncate px-1">
+                        {project.shortName}
                       </span>
-                    )}
-                    {!hasNotifications &&
-                      project.activity &&
-                      project.activity !== "idle" && (
+                      {hasNotifications && (
                         <span
                           aria-hidden="true"
-                          className={cn(
-                            "border-sidebar absolute -top-1 -right-1 size-3 rounded-full border-2",
-                            activityColors[project.activity]
-                          )}
-                        />
+                          className="bg-attention text-attention-foreground absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+                        >
+                          {project.count}
+                        </span>
                       )}
-                    {hasNotifications && (
-                      <span className="sr-only">
-                        {project.count} notifications
-                      </span>
-                    )}
-                  </button>
+                      {!hasNotifications &&
+                        project.activity &&
+                        project.activity !== "idle" && (
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "border-sidebar absolute -top-1 -right-1 size-3 rounded-full border-2",
+                              activityColors[project.activity]
+                            )}
+                          />
+                        )}
+                      {hasNotifications && (
+                        <span className="sr-only">
+                          {project.count} notifications
+                        </span>
+                      )}
+                    </button>
+                  </SidebarTip>
                 </li>
               );
             })}
             {onAddProject && (
               <li>
-                <button
-                  type="button"
-                  aria-label="Add project"
-                  title="Add project"
-                  onClick={onAddProject}
-                  className="text-muted-foreground hover:bg-sidebar-accent focus-visible:ring-sidebar-ring border-sidebar-border flex size-10 items-center justify-center rounded-lg border border-dashed outline-none focus-visible:ring-2"
-                >
-                  <Plus aria-hidden="true" className="size-4" />
-                </button>
+                <SidebarTip label="Add project">
+                  <button
+                    type="button"
+                    aria-label="Add project"
+                    onClick={onAddProject}
+                    className="text-muted-foreground hover:bg-sidebar-accent focus-visible:ring-sidebar-ring border-sidebar-border flex size-10 items-center justify-center rounded-lg border border-dashed outline-none focus-visible:ring-2"
+                  >
+                    <Plus aria-hidden="true" className="size-4" />
+                  </button>
+                </SidebarTip>
               </li>
             )}
           </ul>
@@ -322,23 +346,23 @@ const ProjectSidebar = ({
         <div className="flex min-h-0 w-72 min-w-0 flex-col">
           <div className="border-sidebar-border relative border-b px-5 py-5 pr-11">
             {onCloseProject && (
-              <button
-                type="button"
-                aria-label="Close project sidebar"
-                title="Close project sidebar"
-                onClick={onCloseProject}
-                className="text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-sidebar-ring absolute top-4 right-3 flex size-6 items-center justify-center rounded-md outline-none focus-visible:ring-2"
-              >
-                <X aria-hidden="true" className="size-3.5" />
-              </button>
+              <SidebarTip label="Close project sidebar">
+                <button
+                  type="button"
+                  aria-label="Close project sidebar"
+                  onClick={onCloseProject}
+                  className="text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-sidebar-ring absolute top-4 right-3 flex size-6 items-center justify-center rounded-md outline-none focus-visible:ring-2"
+                >
+                  <X aria-hidden="true" className="size-3.5" />
+                </button>
+              </SidebarTip>
             )}
             <p className="text-muted-foreground text-xs">Project</p>
-            <p
-              className="mt-1 truncate text-sm font-semibold"
-              title={activeProject.name}
-            >
-              {activeProject.name}
-            </p>
+            <SidebarTip label={activeProject.name}>
+              <p className="mt-1 truncate text-sm font-semibold">
+                {activeProject.name}
+              </p>
+            </SidebarTip>
             {projectDetails.status && (
               <p className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
                 {projectDetails.statusActivity && (

@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils";
 
 import type { ProjectView } from "../../shared/types";
 import { Count, StatusDot, TONE_LABEL } from "../components/status";
+import { Tip } from "../components/tip";
 import { useDash } from "../dashboard-context";
 import { attentionCounts, projectTone } from "../derive";
 import {
@@ -118,29 +119,37 @@ const ProjectPicker = () => {
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent"
-              title={
-                view ? `${view.project.name} — ${TONE_LABEL[tone]}` : undefined
-              }
-            >
-              <span className="bg-primary text-primary-foreground grid size-8 shrink-0 place-content-center rounded-md">
-                <Logo size={16} />
-              </span>
-              <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                <span className="text-muted-foreground text-xs">Project</span>
-                <span className="flex min-w-0 items-center gap-1.5 font-semibold">
-                  <span className="truncate">
-                    {view?.project.name ?? "No project"}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  size="lg"
+                  className="data-[state=open]:bg-sidebar-accent"
+                >
+                  <span className="bg-primary text-primary-foreground grid size-8 shrink-0 place-content-center rounded-md">
+                    <Logo size={16} />
                   </span>
-                  {view && <StatusDot tone={tone} />}
-                </span>
-              </span>
-              <ChevronsUpDownIcon className="text-muted-foreground ml-auto" />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
+                  <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                    <span className="text-muted-foreground text-xs">
+                      Project
+                    </span>
+                    <span className="flex min-w-0 items-center gap-1.5 font-semibold">
+                      <span className="truncate">
+                        {view?.project.name ?? "No project"}
+                      </span>
+                      {view && <StatusDot tone={tone} />}
+                    </span>
+                  </span>
+                  <ChevronsUpDownIcon className="text-muted-foreground ml-auto" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {view
+                ? `${view.project.name} — ${TONE_LABEL[tone]}`
+                : "No project"}
+            </TooltipContent>
+          </Tooltip>
           <DropdownMenuContent
             align="start"
             className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
@@ -185,11 +194,13 @@ const ProjectChats = ({ view }: { view: ProjectView }) => {
         <span>Chats</span>
         <span>{chats.length}</span>
       </SidebarGroupLabel>
-      <SidebarGroupAction title="New chat" aria-label="New chat" asChild>
-        <Link to="/chat">
-          <PlusIcon />
-        </Link>
-      </SidebarGroupAction>
+      <Tip label="New chat" side="right">
+        <SidebarGroupAction aria-label="New chat" asChild>
+          <Link to="/chat">
+            <PlusIcon />
+          </Link>
+        </SidebarGroupAction>
+      </Tip>
       <SidebarMenu>
         {shown.map((chat) => {
           const to = chatPath(view.project.id, chat.id);
@@ -197,22 +208,23 @@ const ProjectChats = ({ view }: { view: ProjectView }) => {
           const title = chat.title || "Untitled chat";
           return (
             <SidebarMenuItem key={chat.id}>
-              <SidebarMenuButton
-                asChild
-                isActive={location.pathname === to}
-                title={`${title}${chat.branch ? ` — ${chat.branch}` : ""}${needsYou ? " — needs you" : ""}`}
+              <Tip
+                label={`${title}${chat.branch ? ` — ${chat.branch}` : ""}${needsYou ? " — needs you" : ""}`}
+                side="right"
               >
-                <Link to={to}>
-                  <StatusDot
-                    tone={needsYou ? "attention" : chatTone(chat)}
-                    label={needsYou ? "Needs you" : undefined}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{title}</span>
-                  <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                    {shortAgo(chatActivity(chat))}
-                  </span>
-                </Link>
-              </SidebarMenuButton>
+                <SidebarMenuButton asChild isActive={location.pathname === to}>
+                  <Link to={to}>
+                    <StatusDot
+                      tone={needsYou ? "attention" : chatTone(chat)}
+                      label={needsYou ? "Needs you" : undefined}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{title}</span>
+                    <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                      {shortAgo(chatActivity(chat))}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </Tip>
             </SidebarMenuItem>
           );
         })}
@@ -376,18 +388,20 @@ const AppSidebar = () => {
               <BellIcon />
             </FooterButton>
           )}
-          <div
-            className="text-muted-foreground ml-auto flex items-center gap-2 px-2 text-xs"
-            title={connected ? "Connected to opendevhub" : "Reconnecting…"}
+          <Tip
+            label={connected ? "Connected to opendevhub" : "Reconnecting…"}
+            side="right"
           >
-            <span
-              className={cn(
-                "size-2 rounded-full",
-                connected ? "bg-ok" : "bg-warn animate-pulse"
-              )}
-            />{" "}
-            {connected ? "Live" : "Reconnecting…"}
-          </div>
+            <div className="text-muted-foreground ml-auto flex items-center gap-2 px-2 text-xs">
+              <span
+                className={cn(
+                  "size-2 rounded-full",
+                  connected ? "bg-ok" : "bg-warn animate-pulse"
+                )}
+              />{" "}
+              {connected ? "Live" : "Reconnecting…"}
+            </div>
+          </Tip>
         </div>
       </SidebarFooter>
       <SidebarResizeHandle />
