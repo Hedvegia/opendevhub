@@ -123,6 +123,7 @@ export const useLocalAiReview = (input: {
         patch(current.id, { stage: "reviewing", startedAt: Date.now() });
         const result = await runLocalOcrReview(projectId, {
           directory,
+          runId: current.id,
           mode: current.headSha === "working" ? "working" : "branch",
           ...(current.headSha === "working"
             ? {}

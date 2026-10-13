@@ -21,6 +21,7 @@ import {
   parseAiReview,
 } from "../integrations/ai-review";
 import { ForgejoError } from "../integrations/forgejo";
+import { startOcrLog } from "../ocr/logs";
 import { errorStatus, imageResponse, json, ok, param, str } from "./helpers";
 import { bodies, queries, validateJson, validateQuery } from "./validation";
 
@@ -278,12 +279,16 @@ export const createForgejoRoutes = (deps: DashboardDeps) => {
             throw new UnavailableError("Open Code Review is not available");
           }
           const b = c.req.valid("json");
+          if (b.runId) {
+            startOcrLog(b.runId);
+          }
           const details = await pullAt(c, b.commitId);
           const pull = reviewedPull(details);
           const review = await deps.ocr.service.review({
             details,
             directory: b.directory,
             projectId: b.projectId,
+            runId: b.runId,
           });
           if (pull && links) {
             links.insertReview(

@@ -11,6 +11,7 @@ export interface RunOptions {
   timeoutMs?: number;
   env?: Record<string, string>;
   onLine?: (line: string) => void;
+  onStderrLine?: (line: string) => void;
   /** Working directory; defaults to the server's. */
   cwd?: string;
   /** Run in a new session without a controlling terminal, so ssh can't open /dev/tty to prompt. */
@@ -62,14 +63,16 @@ export const spawnRunner: Runner = (cmd, args, opts = {}) =>
       } else {
         stderr += text;
       }
-      if (!opts.onLine) {
+      const callback =
+        key === "err" ? (opts.onStderrLine ?? opts.onLine) : opts.onLine;
+      if (!callback) {
         return;
       }
       const parts = (carry[key] + text).split(/\r?\n/u);
       carry[key] = parts.pop() ?? "";
       for (const line of parts) {
         if (line.trim()) {
-          opts.onLine(line);
+          callback(line);
         }
       }
     };
@@ -90,12 +93,11 @@ export const spawnRunner: Runner = (cmd, args, opts = {}) =>
       }
       settled = true;
       clearTimeout(timer);
-      if (opts.onLine) {
-        for (const rest of [carry.out, carry.err]) {
-          if (rest.trim()) {
-            opts.onLine(rest);
-          }
-        }
+      if (carry.out.trim()) {
+        opts.onLine?.(carry.out);
+      }
+      if (carry.err.trim()) {
+        (opts.onStderrLine ?? opts.onLine)?.(carry.err);
       }
       resolve({ exitCode, stderr, stdout, timedOut });
     };

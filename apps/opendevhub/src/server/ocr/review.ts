@@ -57,7 +57,7 @@ export const ocrReviewCommand = (run: OcrReviewRun): string[] => [
   "--format",
   "json",
   "--audience",
-  "agent",
+  "human",
   "--concurrency",
   String(run.limits.concurrency),
   "--timeout",
@@ -223,6 +223,9 @@ const stats = (doc: Record<string, unknown>): OcrRunStats => {
       typeof summary.files_reviewed === "number" ? summary.files_reviewed : 0,
     filesSkipped: count(coverage.failed) || subtaskErrors,
     status: text(doc.status) || "success",
+    inputTokens: count(summary.input_tokens),
+    outputTokens: count(summary.output_tokens),
+    totalTokens: count(summary.total_tokens),
   };
 };
 

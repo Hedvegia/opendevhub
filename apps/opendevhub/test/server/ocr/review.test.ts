@@ -69,7 +69,7 @@ describe("ocrReviewCommand", () => {
       "--format",
       "json",
       "--audience",
-      "agent",
+      "human",
       "--concurrency",
       "2",
       "--timeout",
@@ -204,6 +204,9 @@ describe("parseOcrOutput", () => {
       filesReviewed: 3,
       filesSkipped: 1,
       status: "partial",
+      inputTokens: 45_002,
+      outputTokens: 3209,
+      totalTokens: 48_211,
     });
     expect(
       out.findings.map((f) => [f.file, f.start, f.line, f.severity, f.category])
@@ -219,7 +222,14 @@ describe("parseOcrOutput", () => {
     const out = parseOcrOutput(fixture("no-comments.json"), "", 0);
     expect(out).toStrictEqual({
       findings: [],
-      stats: { filesReviewed: 2, filesSkipped: 0, status: "success" },
+      stats: {
+        filesReviewed: 2,
+        filesSkipped: 0,
+        status: "success",
+        inputTokens: 8800,
+        outputTokens: 320,
+        totalTokens: 9120,
+      },
       summary: "Renames a helper; no issues found.",
     });
   });

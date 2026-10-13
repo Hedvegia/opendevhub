@@ -2,6 +2,7 @@ import { Hono } from "hono";
 
 import type { DashboardDeps } from "../dashboard-api";
 import { UnavailableError } from "../errors";
+import { ocrLogLines } from "../ocr/logs";
 import { json } from "./helpers";
 import { bodies, validateJson } from "./validation";
 
@@ -36,6 +37,10 @@ export const createOcrRoutes = (deps: DashboardDeps) => {
         return requireOcr().service.install(b.projectId, b.directory);
       })
     )
+    .get("/api/ocr/runs/:id/logs", (c) => {
+      requireOcr();
+      return c.json({ lines: ocrLogLines(c.req.param("id")) });
+    })
     .get("/api/projects/:id/ocr", (c) =>
       json(c, (id) => requireOcr().settings.projectView(id))
     )

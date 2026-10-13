@@ -281,6 +281,9 @@ export const createHandlers = (options: MockOptions = {}): AnyHandler[] => {
         return HttpResponse.json(ocrReview);
       }
     ),
+    http.get("/api/ocr/runs/:id/logs", () =>
+      HttpResponse.json({ lines: ["[ocr] Reviewing changed files…"] })
+    ),
     http.get("/api/ocr/settings", async () => {
       await wait();
       return HttpResponse.json(ocr);

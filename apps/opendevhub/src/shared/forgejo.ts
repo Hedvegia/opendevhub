@@ -235,6 +235,9 @@ export interface OcrRunStats {
   filesReviewed: number;
   /** Files OCR selected but could not review. */
   filesSkipped: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
 }
 
 export interface AiReviewResult {

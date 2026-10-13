@@ -88,6 +88,10 @@ const aiReview = z.object({
   projectId: z.string(),
   directory: z.string(),
   commitId: z.string(),
+  runId: z
+    .string()
+    .regex(/^[a-z0-9-]{1,100}$/u)
+    .optional(),
 });
 const ocrProvider = z.object({
   preset: z.string().max(100),
@@ -197,6 +201,10 @@ export const bodies = {
     directory: z.string(),
     mode: z.enum(["working", "branch"]),
     base: text,
+    runId: z
+      .string()
+      .regex(/^[a-z0-9-]{1,100}$/u)
+      .optional(),
   }),
   localAiFindings: z.object({ directory: z.string(), sessionId: z.string() }),
   ocrSettings: z.object({ provider: ocrProvider, limits: ocrLimits }),

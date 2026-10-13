@@ -571,6 +571,7 @@ export class Containers {
       env?: Record<string, string>;
       timeoutMs?: number;
       onLine?: (line: string) => void;
+      onStderrLine?: (line: string) => void;
       /** Written to the command's stdin: for secrets, which `--remote-env` would show in the process list. */
       input?: string;
     } = {}
@@ -582,6 +583,7 @@ export class Containers {
     return this.run("devcontainer", [...args, ...command], {
       timeoutMs: opts.timeoutMs ?? EXEC_TIMEOUT_MS,
       ...(opts.onLine ? { onLine: opts.onLine } : {}),
+      ...(opts.onStderrLine ? { onStderrLine: opts.onStderrLine } : {}),
       ...(opts.input === undefined ? {} : { input: opts.input }),
     });
   }

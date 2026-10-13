@@ -1,4 +1,4 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   BotIcon,
   ChevronDownIcon,
@@ -7,6 +7,7 @@ import {
   MessageSquareIcon,
   ScanSearchIcon,
   SparklesIcon,
+  TerminalIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -57,6 +58,7 @@ import {
   collectAiReview,
   createForgejoWorktree,
   fetchProjectOcr,
+  fetchOcrLog,
   installOcr,
   runOcrReview,
   startAiReviewSession,
@@ -228,7 +230,7 @@ export const useAiReview = (details: ForgejoPullDetails): AiReview => {
           pull.owner,
           pull.repo,
           String(pull.number),
-          { ...where, commitId: headSha }
+          { ...where, commitId: headSha, runId: current.id }
         );
         patch(current.id, {
           findings: result.findings,
@@ -743,6 +745,14 @@ export const AiReviewPanel = (props: {
 }) => {
   const { ai } = props;
   const { run } = ai;
+  const [ocrLogOpen, setOcrLogOpen] = useState(false);
+  const log = useQuery({
+    queryKey: ["ocr-log", run?.id, run?.stage],
+    queryFn: () => fetchOcrLog(run?.id ?? ""),
+    enabled: ocrLogOpen && run?.kind === "ocr",
+    refetchInterval:
+      run?.stage === "installing" || run?.stage === "reviewing" ? 1000 : false,
+  });
   if (!run) {
     return null;
   }
@@ -751,6 +761,12 @@ export const AiReviewPanel = (props: {
     run.stage === "installing" ||
     run.stage === "reviewing" ||
     run.stage === "collecting";
+  let logText =
+    log.data?.lines.join("\n") ||
+    "No progress logs are available for this run.";
+  if (!log.data?.lines.length && working) {
+    logText = "Waiting for Open Code Review progress…";
+  }
   const isOcr = run.kind === "ocr";
   return (
     <section
@@ -769,6 +785,16 @@ export const AiReviewPanel = (props: {
           </span>
         )}
         <div className="ml-auto flex flex-wrap gap-2">
+          {isOcr && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={ocrLogOpen}
+              onClick={() => setOcrLogOpen((value) => !value)}
+            >
+              <TerminalIcon /> {ocrLogOpen ? "Hide progress" : "View progress"}
+            </Button>
+          )}
           {ai.sessionLink && (
             <Button asChild variant="ghost" size="sm">
               <Link to={ai.sessionLink}>
@@ -812,6 +838,16 @@ export const AiReviewPanel = (props: {
           </Button>
         </div>
       </div>
+      {isOcr && ocrLogOpen && (
+        <div className="rounded-lg border bg-zinc-950 p-3 text-zinc-100">
+          <pre
+            className="max-h-72 overflow-auto font-mono text-xs break-words whitespace-pre-wrap"
+            aria-label="Open Code Review progress logs"
+          >
+            {logText}
+          </pre>
+        </div>
+      )}
       {working && (
         // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         <p role="status" className="text-muted-foreground text-sm">
@@ -836,6 +872,14 @@ export const AiReviewPanel = (props: {
       {run.stage === "done" && run.stats?.status === "skipped" && (
         <p className="text-muted-foreground text-sm">
           Open Code Review found nothing to review: no supported files changed.
+        </p>
+      )}
+      {run.stage === "done" && !!run.stats?.totalTokens && (
+        <p className="text-muted-foreground text-sm">
+          {run.stats.totalTokens.toLocaleString()} tokens used
+          {run.stats.inputTokens !== undefined &&
+            run.stats.outputTokens !== undefined &&
+            ` (${run.stats.inputTokens.toLocaleString()} input, ${run.stats.outputTokens.toLocaleString()} output)`}
         </p>
       )}
       {run.stage === "done" && run.summary && (

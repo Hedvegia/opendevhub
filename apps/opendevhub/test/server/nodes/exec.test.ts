@@ -41,6 +41,20 @@ describe(spawnRunner, () => {
     expect(lines).toStrictEqual(["a", "bc"]);
   });
 
+  it("streams stderr lines without exposing stdout to the log callback", async () => {
+    const lines: string[] = [];
+    const result = await spawnRunner(
+      node,
+      [
+        "-e",
+        "console.log('{\\\"result\\\":true}'); console.error('[ocr] scanning')",
+      ],
+      { onStderrLine: (line) => lines.push(line) }
+    );
+    expect(lines).toStrictEqual(["[ocr] scanning"]);
+    expect(result.stdout).toContain("result");
+  });
+
   it("reports a missing binary as exit code 127", async () => {
     const r = await spawnRunner("opendevhub-no-such-binary", []);
     expect(r.exitCode).toBe(127);

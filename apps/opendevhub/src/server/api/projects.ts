@@ -9,6 +9,7 @@ import {
   aiFindingsPrompt,
   parseAiReview,
 } from "../integrations/ai-review";
+import { startOcrLog } from "../ocr/logs";
 import {
   errorStatus,
   errorResponse,
@@ -539,6 +540,9 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
             throw new UnavailableError("Open Code Review is not available");
           }
           const input = c.req.valid("json");
+          if (input.runId) {
+            startOcrLog(input.runId);
+          }
           const data = await hub.reviews.review(id, input.directory, {
             base: input.base,
             mode: input.mode,
@@ -551,6 +555,7 @@ export const createProjectsRoutes = (deps: DashboardDeps) => {
             directory: input.directory,
             mode: data.mode === "branch" ? "branch" : "working",
             base: data.base?.name,
+            runId: input.runId,
           });
         })
     )

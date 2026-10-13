@@ -583,7 +583,12 @@ export const collectLocalAiReview = (
 
 export const runLocalOcrReview = (
   projectId: string,
-  input: { directory: string; mode: "working" | "branch"; base?: string }
+  input: {
+    directory: string;
+    mode: "working" | "branch";
+    base?: string;
+    runId?: string;
+  }
 ) =>
   read(
     project.review.ocr.$post({ param: projectParam(projectId), json: input }),
@@ -1385,7 +1390,12 @@ export const runOcrReview = (
   owner: string,
   repo: string,
   number: string,
-  input: { projectId: string; directory: string; commitId: string }
+  input: {
+    projectId: string;
+    directory: string;
+    commitId: string;
+    runId?: string;
+  }
 ) =>
   read(
     pull["ocr-review"].$post({
@@ -1393,4 +1403,10 @@ export const runOcrReview = (
       json: input,
     }),
     "Open Code Review"
+  );
+
+export const fetchOcrLog = (id: string) =>
+  read(
+    api.ocr.runs[":id"].logs.$get({ param: { id } }),
+    "Open Code Review progress"
   );

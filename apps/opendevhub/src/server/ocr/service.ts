@@ -12,6 +12,7 @@ import { InvalidRequestError, validateBranch } from "../git/worktrees";
 import type { Runner } from "../nodes/exec";
 import { ensureInEnv, hostPlatform } from "./binary";
 import type { OcrBinaries } from "./binary";
+import { appendOcrLog } from "./logs";
 import {
   OcrRunError,
   ocrReviewCommand,
@@ -41,6 +42,7 @@ export interface OcrReviewRequest {
   projectId: string;
   directory: string;
   details: ForgejoPullDetails;
+  runId?: string;
 }
 
 export interface OcrLocalReviewRequest {
@@ -48,6 +50,7 @@ export interface OcrLocalReviewRequest {
   directory: string;
   mode: "working" | "branch";
   base?: string;
+  runId?: string;
 }
 
 /** The pull request's base repository as `host` and `owner/repo`, from its web URL. */
@@ -157,6 +160,15 @@ export class OcrService {
       {
         input: ocrStdin(provider.key),
         timeoutMs: limits.runLimit * MINUTE_MS,
+        ...(req.runId
+          ? {
+              onStderrLine: (line: string) =>
+                appendOcrLog(
+                  req.runId ?? "",
+                  line.replaceAll(provider.key, "[redacted]")
+                ),
+            }
+          : {}),
       }
     );
     if (result.timedOut) {
@@ -206,7 +218,19 @@ export class OcrService {
         limits,
         provider,
       }),
-      { input: ocrStdin(provider.key), timeoutMs: limits.runLimit * MINUTE_MS }
+      {
+        input: ocrStdin(provider.key),
+        timeoutMs: limits.runLimit * MINUTE_MS,
+        ...(req.runId
+          ? {
+              onStderrLine: (line: string) =>
+                appendOcrLog(
+                  req.runId ?? "",
+                  line.replaceAll(provider.key, "[redacted]")
+                ),
+            }
+          : {}),
+      }
     );
     if (result.timedOut) {
       throw new OcrRunError(

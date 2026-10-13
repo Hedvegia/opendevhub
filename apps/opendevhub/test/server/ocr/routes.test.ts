@@ -86,7 +86,11 @@ const setup = (opts: { head?: string; review?: RunResult } = {}) => {
   const exec = vi.fn(
     async (
       command: string[],
-      _opts?: { input?: string; timeoutMs?: number }
+      runOpts?: {
+        input?: string;
+        timeoutMs?: number;
+        onStderrLine?: (line: string) => void;
+      }
     ): Promise<RunResult> => {
       if (command.includes("rev-parse")) {
         return ok(`${opts.head ?? SHA}\n`);
@@ -100,6 +104,8 @@ const setup = (opts: { head?: string; review?: RunResult } = {}) => {
         return ok("x86_64\npresent\n");
       }
       if (command[3] === "ocr-review") {
+        runOpts?.onStderrLine?.("[ocr] Reviewing file 1 with sk-default");
+        runOpts?.onStderrLine?.('{"status":"success"}');
         return opts.review ?? ok(fixture("comments.json"));
       }
       return ok();
@@ -192,6 +198,17 @@ describe("local Open Code Review", () => {
 });
 
 describe("POST …/ocr-review", () => {
+  it("makes live OCR progress available without the JSON result or provider key", async () => {
+    const { app, post, settings } = setup();
+    await configure(settings);
+    const runId = "ocr-progress-test";
+    const result = await post({ ...where, runId });
+    expect(result.status).toBe(200);
+    const logs = await app.request(`/api/ocr/runs/${runId}/logs`);
+    expect(await logs.json()).toStrictEqual({
+      lines: ["[ocr] Reviewing file 1 with [redacted]"],
+    });
+  });
   it("asks to set up OCR first when the project has no provider", async () => {
     const { post, exec } = setup();
     const res = await post(where);
@@ -224,6 +241,9 @@ describe("POST …/ocr-review", () => {
       filesReviewed: 3,
       filesSkipped: 1,
       status: "partial",
+      inputTokens: 45_002,
+      outputTokens: 3209,
+      totalTokens: 48_211,
     });
 
     const fetch = exec.mock.calls.find(([c]) => c.includes("fetch"))?.[0];
