@@ -2745,7 +2745,7 @@ describe("Hono RPC contract", () => {
     type Input = InferRequestType<typeof taskRoute.$post>["json"];
     expectTypeOf<Input["prompt"]>().toEqualTypeOf<string>();
     expectTypeOf<Input["where"]>().toEqualTypeOf<
-      "workspace" | "worktree" | undefined
+      "workspace" | "worktree" | "existing" | undefined
     >();
     expectTypeOf<
       Awaited<ReturnType<typeof createTaskViaRpc>>

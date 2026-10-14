@@ -188,7 +188,7 @@ export const parseTaskRequest = (
     );
   }
   const where = body.where ?? "worktree";
-  if (where !== "worktree" && where !== "workspace") {
+  if (where !== "worktree" && where !== "workspace" && where !== "existing") {
     throw new InvalidRequestError(`invalid where "${String(where)}"`);
   }
   const environment = body.environment ?? undefined;
@@ -213,6 +213,7 @@ export const parseTaskRequest = (
   const branch = rawBranch?.trim() ? validateBranch(rawBranch) : undefined;
   const rawBase = str(body.base);
   const base = rawBase?.trim() ? validateBranch(rawBase) : undefined;
+  const directory = str(body.directory)?.trim();
   const raw =
     body.variants === undefined || body.variants === null
       ? [{}]
@@ -251,11 +252,36 @@ export const parseTaskRequest = (
       );
     }
   }
+  if (where === "existing") {
+    if (!directory) {
+      throw new InvalidRequestError("choose an existing worktree");
+    }
+    if (variants.length > 1) {
+      throw new InvalidRequestError(
+        "several variants need a new worktree each"
+      );
+    }
+    if (branch || base) {
+      throw new InvalidRequestError(
+        "branch and base only apply to a new worktree"
+      );
+    }
+    if (node) {
+      throw new InvalidRequestError(
+        "an existing worktree must run on this machine"
+      );
+    }
+  } else if (directory !== undefined) {
+    throw new InvalidRequestError(
+      "directory only applies to an existing worktree"
+    );
+  }
   return {
     prompt,
     ...(jira ? { jira } : {}),
     ...(title ? { title } : {}),
     where,
+    ...(directory ? { directory } : {}),
     ...(environment ? { environment } : {}),
     ...(node ? { node } : {}),
     ...(branch ? { branch } : {}),

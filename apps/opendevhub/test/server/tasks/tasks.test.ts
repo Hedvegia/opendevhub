@@ -146,6 +146,75 @@ describe("tasks", () => {
     });
   });
 
+  it("runs in a known worktree without creating another checkout", async () => {
+    const { hub, client, worktrees, store } = await started();
+    const path = "/workspaces/demo.worktrees/fix";
+    store.updateRuntime(project.id, {
+      worktrees: [{ branch: "fix", hostPath: "/src/demo.worktrees/fix", path }],
+    });
+    const result = await hub.tasks.createTask(project.id, {
+      directory: path,
+      environment: "shared",
+      prompt: "Continue the fix",
+      where: "existing",
+    });
+    expect(result.variants).toStrictEqual([
+      { branch: "fix", directory: path, sessionId: "ses_1" },
+    ]);
+    expect(client.createSession).toHaveBeenCalledWith(path, {
+      title: "Continue the fix",
+    });
+    expect(worktrees.add).not.toHaveBeenCalled();
+  });
+
+  it("starts an existing worktree in its own container", async () => {
+    const { hub, worktrees, store } = await started();
+    const path = "/workspaces/demo.worktrees/fix";
+    store.updateRuntime(project.id, {
+      worktrees: [{ branch: "fix", hostPath: "/src/demo.worktrees/fix", path }],
+    });
+    const result = await hub.tasks.createTask(project.id, {
+      directory: path,
+      environment: "isolated",
+      prompt: "Continue the fix",
+      where: "existing",
+    });
+    expect(result.variants[0]).toMatchObject({
+      branch: "fix",
+      directory: path,
+      sessionId: "ses_1",
+    });
+    expect(result.variants[0].envId).toBeDefined();
+    expect(worktrees.add).not.toHaveBeenCalled();
+  });
+
+  it("rejects a worktree that is no longer known", async () => {
+    const { hub, worktrees } = await started();
+    await expect(
+      hub.tasks.createTask(project.id, {
+        directory: "/workspaces/demo.worktrees/gone",
+        prompt: "Continue",
+        where: "existing",
+      })
+    ).rejects.toThrow(/no longer available/u);
+    expect(worktrees.add).not.toHaveBeenCalled();
+  });
+
+  it("requires a local folder before giving an existing worktree its own container", async () => {
+    const { hub, store } = await started();
+    store.updateRuntime(project.id, {
+      worktrees: [{ branch: "fix", path: "/workspaces/demo.worktrees/fix" }],
+    });
+    await expect(
+      hub.tasks.createTask(project.id, {
+        directory: "/workspaces/demo.worktrees/fix",
+        environment: "isolated",
+        prompt: "Continue",
+        where: "existing",
+      })
+    ).rejects.toThrow(/cannot run in its own container/u);
+  });
+
   it("runs several variants, one worktree each, and keeps going when one fails", async () => {
     const { hub, client, worktrees, tasks } = await started();
     client.createSession

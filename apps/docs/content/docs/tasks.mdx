@@ -6,7 +6,7 @@ icon: ListChecks
 
 **New task** starts agent work from a prompt. Open it from a project overview, the command palette (`Ctrl/⌘ K`), or **Start as task** in [New chat](/docs/chats). The **Tasks** page lists tasks across projects and filters them by state and project.
 
-By default a task creates a [worktree](/docs/worktrees) on a branch named after the prompt's first line (`-2`, `-3`… when the name is taken), starts a session there and sends the prompt. **Main checkout** runs it in the project folder instead. **Environment: Own container** runs it in its [own container](/docs/worktrees#own-containers).
+By default a task creates a [worktree](/docs/worktrees) on a branch named after the prompt's first line (`-2`, `-3`… when the name is taken), starts a session there and sends the prompt. Under **Where and environment**, choose **Existing worktree** to continue in a checkout already in the project, or **Main checkout** to work in the project folder. A worktree can use the shared project container or its [own container](/docs/worktrees#own-containers). Existing worktrees and the main checkout run one variant; comparing models creates a new worktree for each variant.
 
 Choose an agent and model for each variant. You can save a task as a draft and start it later. If the checkout has OpenSpec available, **Spec first** asks the agent to propose the change before implementing it. The task page shows the proposal, specs, design and tasks as they progress.
 

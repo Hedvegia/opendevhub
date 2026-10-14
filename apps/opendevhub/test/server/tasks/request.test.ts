@@ -62,6 +62,27 @@ describe(parseTaskRequest, () => {
     ).toThrow(/new worktree/u);
   });
 
+  it("requires a checkout for an existing-worktree task", () => {
+    expect(
+      parseTaskRequest({
+        directory: "/workspaces/demo.worktrees/fix",
+        prompt: "Continue",
+        where: "existing",
+      }).directory
+    ).toBe("/workspaces/demo.worktrees/fix");
+    expect(() =>
+      parseTaskRequest({ prompt: "Continue", where: "existing" })
+    ).toThrow(/choose an existing worktree/u);
+    expect(() =>
+      parseTaskRequest({
+        directory: "/workspaces/demo.worktrees/fix",
+        prompt: "Continue",
+        variants: [{}, {}],
+        where: "existing",
+      })
+    ).toThrow(/new worktree each/u);
+  });
+
   it("fills in the defaults", () => {
     expect(parseTaskRequest({ prompt: " Fix it \n" })).toStrictEqual({
       prompt: "Fix it",

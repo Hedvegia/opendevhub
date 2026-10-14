@@ -40,6 +40,7 @@ interface Prepared {
 const planOf = (req: TaskRequest): TaskPlan => ({
   variants: req.variants,
   where: req.where,
+  ...(req.directory ? { directory: req.directory } : {}),
   ...(req.branch ? { branch: req.branch } : {}),
   ...(req.base ? { base: req.base } : {}),
   ...(req.environment ? { environment: req.environment } : {}),
@@ -319,6 +320,26 @@ export class Tasks {
     ) {
       throw new UnavailableError(NO_WORKTREE_MOUNT);
     }
+    if (req.where === "existing") {
+      const known = this.deps.store
+        .runtime(id)
+        .worktrees?.find(
+          (worktree) => worktree.path === req.directory && !worktree.node
+        );
+      if (!known) {
+        throw new InvalidRequestError(
+          "the selected worktree is no longer available"
+        );
+      }
+      if (
+        this.envs.isolationFor(project, req.environment).isolated &&
+        (!known.hostPath || !known.branch)
+      ) {
+        throw new InvalidRequestError(
+          "this worktree cannot run in its own container"
+        );
+      }
+    }
     let { base } = req;
     if (remoteKit && !base) {
       base = await this.deps.git.currentBranch(
@@ -372,6 +393,7 @@ export class Tasks {
       title,
       turn: firstTurn(req),
       where: req.where,
+      ...(req.directory ? { directory: req.directory } : {}),
       ...(base ? { base } : {}),
       ...(remoteKit ? { remoteKit } : {}),
       ...(req.branch ? { branch: req.branch } : {}),

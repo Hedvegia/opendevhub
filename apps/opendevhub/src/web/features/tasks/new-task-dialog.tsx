@@ -19,7 +19,12 @@ import { Label } from "@opendevhub/ui/label";
 import { RadioGroup, RadioGroupItem } from "@opendevhub/ui/radio-group";
 import { Textarea } from "@opendevhub/ui/textarea";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRightIcon, PlayIcon } from "lucide-react";
+import {
+  BoxesIcon,
+  ChevronRightIcon,
+  GitBranchIcon,
+  PlayIcon,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 
@@ -90,6 +95,7 @@ const TaskForm = ({
   const [branch, setBranch] = useState(plan?.branch ?? "");
   const [base, setBase] = useState(draft?.base ?? plan?.base ?? "");
   const [where, setWhere] = useState<TaskWhere>(plan?.where ?? "worktree");
+  const [directory, setDirectory] = useState(plan?.directory ?? "");
   const [environment, setEnvironment] = useState<Isolation | undefined>(
     plan?.environment
   );
@@ -112,24 +118,45 @@ const TaskForm = ({
     : undefined;
   const canOpen = flags?.canOpen ?? false;
   const worktreesReady = view?.runtime.worktreeRoot?.mounted === true;
+  const localWorktrees = (view?.runtime.worktrees ?? []).filter(
+    (worktree) => !worktree.node
+  );
   let effectiveWhere: TaskWhere;
   if (remote) {
     effectiveWhere = "worktree";
+  } else if (where === "existing") {
+    effectiveWhere = "existing";
   } else if (worktreesReady) {
     effectiveWhere = where;
   } else {
     effectiveWhere = "workspace";
   }
   const isolation = view?.isolation;
+  const selectedWorktree = localWorktrees.find(
+    (worktree) => worktree.path === directory
+  );
+  const existingEnvironment = view?.environments.some(
+    (candidate) => candidate.worktree.path === selectedWorktree?.path
+  );
+  const canIsolate =
+    !isolation?.unsupported &&
+    (effectiveWhere !== "existing" ||
+      !!(selectedWorktree?.hostPath && selectedWorktree.branch));
   let chosenEnv: Isolation;
   if (remote) {
     chosenEnv = "isolated";
-  } else if (isolation?.unsupported) {
-    chosenEnv = "shared";
+  } else if (canIsolate) {
+    chosenEnv =
+      environment ??
+      (effectiveWhere === "existing" && existingEnvironment
+        ? "isolated"
+        : (isolation?.default ?? "shared"));
   } else {
-    chosenEnv = environment ?? isolation?.default ?? "shared";
+    chosenEnv = "shared";
   }
   const shownRows = effectiveWhere === "worktree" ? rows : rows.slice(0, 1);
+  const locationReady =
+    effectiveWhere !== "existing" || selectedWorktree !== undefined;
   const isMac =
     typeof navigator !== "undefined" && /mac/iu.test(navigator.platform);
 
@@ -165,7 +192,10 @@ const TaskForm = ({
       ...(jira ? { jira } : {}),
       ...(title.trim() ? { title: title.trim() } : {}),
       where: effectiveWhere,
-      ...(worktree ? { environment: chosenEnv } : {}),
+      ...(effectiveWhere === "workspace" ? {} : { environment: chosenEnv }),
+      ...(effectiveWhere === "existing" && selectedWorktree
+        ? { directory: selectedWorktree.path }
+        : {}),
       ...(remote ? { node } : {}),
       ...(worktree && branch.trim() ? { branch: branch.trim() } : {}),
       ...(worktree && base.trim() ? { base: base.trim() } : {}),
@@ -193,7 +223,7 @@ const TaskForm = ({
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
-    if (!view || !prompt.trim() || !canOpen || busy) {
+    if (!view || !prompt.trim() || !canOpen || !locationReady || busy) {
       return;
     }
     if (saved?.mode === "edit") {
@@ -211,7 +241,7 @@ const TaskForm = ({
 
   /** Saves the form as a draft, or saves the draft being edited; nothing starts. */
   const saveDraft = () => {
-    if (!view || (!prompt.trim() && !title.trim()) || busy) {
+    if (!view || (!prompt.trim() && !title.trim()) || !locationReady || busy) {
       return;
     }
     const { id } = view.project;
@@ -312,84 +342,167 @@ const TaskForm = ({
             </div>
           )}
 
-          {nodes.length > 1 && (
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              <Label
-                htmlFor="task-node"
-                className="text-muted-foreground font-normal"
-              >
-                Node
-              </Label>
-              <Choice
-                id="task-node"
-                value={node}
-                options={nodeChoices(nodes)}
-                onChange={setNode}
-              />
-              {remote && (
-                <span className="text-muted-foreground">
-                  {isolation?.unsupported ??
-                    "Runs in a new worktree with its own container, from the base pushed to that node."}
-                </span>
-              )}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            <span className="text-muted-foreground">Where</span>
-            <RadioGroup
-              className="flex flex-wrap gap-4"
-              value={effectiveWhere}
-              onValueChange={(v) => setWhere(v as TaskWhere)}
-              aria-label="Where"
-            >
-              <Label className="font-normal">
-                <RadioGroupItem
-                  value="worktree"
-                  disabled={remote || !worktreesReady}
-                />{" "}
-                New worktree
-              </Label>
-              <Label className="font-normal">
-                <RadioGroupItem value="workspace" disabled={remote} /> Main
-                checkout
-              </Label>
-            </RadioGroup>
-            {view && canOpen && !worktreesReady && (
-              <span className="text-muted-foreground">
-                Rebuild the container to enable worktrees.
-              </span>
+          <fieldset className="border-border bg-muted/20 grid gap-4 rounded-xl border p-4">
+            <legend className="px-1 text-sm font-semibold">
+              Where and environment
+            </legend>
+            {nodes.length > 1 && (
+              <div className="grid gap-2">
+                <Label htmlFor="task-node">Run on</Label>
+                <Choice
+                  id="task-node"
+                  value={node}
+                  options={nodeChoices(nodes)}
+                  onChange={setNode}
+                  className="w-full sm:w-64"
+                />
+                {remote && (
+                  <p className="text-muted-foreground text-xs">
+                    A new worktree and its own container will be created on this
+                    node.
+                  </p>
+                )}
+              </div>
             )}
-          </div>
-
-          {effectiveWhere === "worktree" && (
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              <span className="text-muted-foreground">Environment</span>
+            <div className="grid gap-2">
+              <span className="text-sm font-medium" id="task-location-label">
+                Checkout
+              </span>
               <RadioGroup
-                className="flex flex-wrap gap-4"
-                value={chosenEnv}
-                onValueChange={(v) => setEnvironment(v as Isolation)}
-                aria-label="Environment"
+                className="grid gap-2 sm:grid-cols-3"
+                value={effectiveWhere}
+                onValueChange={(value) => setWhere(value as TaskWhere)}
+                aria-labelledby="task-location-label"
               >
-                <Label className="font-normal">
-                  <RadioGroupItem value="shared" disabled={remote} /> Shared
-                  container
-                </Label>
-                <Label className="font-normal" title={isolation?.unsupported}>
+                <Label className="border-border has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-background flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm shadow-xs has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50">
                   <RadioGroupItem
-                    value="isolated"
-                    disabled={remote || !!isolation?.unsupported}
-                  />{" "}
-                  Own container
+                    value="worktree"
+                    disabled={!worktreesReady && !remote}
+                  />
+                  <span className="grid gap-1">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <GitBranchIcon className="size-4" /> New worktree
+                    </span>
+                    <span className="text-muted-foreground text-xs font-normal">
+                      A fresh branch for this task
+                    </span>
+                  </span>
+                </Label>
+                <Label className="border-border has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-background flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm shadow-xs has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50">
+                  <RadioGroupItem
+                    value="existing"
+                    disabled={remote || localWorktrees.length === 0}
+                  />
+                  <span className="grid gap-1">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <GitBranchIcon className="size-4" /> Existing worktree
+                    </span>
+                    <span className="text-muted-foreground text-xs font-normal">
+                      Continue in a checkout
+                    </span>
+                  </span>
+                </Label>
+                <Label className="border-border has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-background flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm shadow-xs has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50">
+                  <RadioGroupItem value="workspace" disabled={remote} />
+                  <span className="grid gap-1">
+                    <span className="font-medium">Main checkout</span>
+                    <span className="text-muted-foreground text-xs font-normal">
+                      Use the project’s current files
+                    </span>
+                  </span>
                 </Label>
               </RadioGroup>
-              {isolation?.unsupported && (
-                <span className="text-muted-foreground">
-                  {isolation.unsupported}
-                </span>
+              {view && canOpen && !worktreesReady && !remote && (
+                <p className="text-muted-foreground text-xs">
+                  Rebuild the container to create new worktrees.
+                </p>
               )}
             </div>
-          )}
+            {effectiveWhere === "existing" && (
+              <div className="grid gap-2">
+                <Label htmlFor="task-directory">Worktree</Label>
+                <Choice
+                  id="task-directory"
+                  value={selectedWorktree?.path ?? ""}
+                  options={[
+                    { value: "", label: "Choose a worktree" },
+                    ...localWorktrees.map((worktree) => ({
+                      value: worktree.path,
+                      label: worktree.branch ?? worktree.path,
+                      title: worktree.path,
+                    })),
+                  ]}
+                  onChange={setDirectory}
+                  className="w-full"
+                />
+                {directory && !selectedWorktree && (
+                  <p className="text-destructive text-xs">
+                    This worktree is no longer available. Choose another.
+                  </p>
+                )}
+              </div>
+            )}
+            {effectiveWhere === "workspace" && (
+              <p className="text-muted-foreground text-xs">
+                The main checkout uses the project’s running container.
+              </p>
+            )}
+            {effectiveWhere !== "workspace" && (
+              <div className="grid gap-2">
+                <span
+                  className="text-sm font-medium"
+                  id="task-environment-label"
+                >
+                  Environment
+                </span>
+                <RadioGroup
+                  className="grid gap-2 sm:grid-cols-2"
+                  value={chosenEnv}
+                  onValueChange={(value) => setEnvironment(value as Isolation)}
+                  aria-labelledby="task-environment-label"
+                >
+                  <Label className="border-border has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-background flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm shadow-xs has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50">
+                    <RadioGroupItem value="shared" disabled={remote} />
+                    <span className="grid gap-1">
+                      <span className="font-medium">Shared container</span>
+                      <span className="text-muted-foreground text-xs font-normal">
+                        Use the project’s running environment
+                      </span>
+                    </span>
+                  </Label>
+                  <Label
+                    className="border-border has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-background flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm shadow-xs has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50"
+                    title={isolation?.unsupported}
+                  >
+                    <RadioGroupItem
+                      value="isolated"
+                      disabled={!remote && !canIsolate}
+                    />
+                    <span className="grid gap-1">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <BoxesIcon className="size-4" /> Own container
+                      </span>
+                      <span className="text-muted-foreground text-xs font-normal">
+                        Keep processes and ports separate
+                      </span>
+                    </span>
+                  </Label>
+                </RadioGroup>
+                {isolation?.unsupported && (
+                  <p className="text-muted-foreground text-xs">
+                    {isolation.unsupported}
+                  </p>
+                )}
+                {effectiveWhere === "existing" &&
+                  selectedWorktree &&
+                  !selectedWorktree.hostPath && (
+                    <p className="text-muted-foreground text-xs">
+                      This worktree has no local folder for an own container.
+                    </p>
+                  )}
+              </div>
+            )}
+          </fieldset>
 
           <VariantRows
             rows={shownRows}
@@ -473,7 +586,12 @@ const TaskForm = ({
               <Button
                 type="button"
                 variant={saved?.mode === "edit" ? "default" : "outline"}
-                disabled={!view || (!prompt.trim() && !title.trim()) || busy}
+                disabled={
+                  !view ||
+                  (!prompt.trim() && !title.trim()) ||
+                  !locationReady ||
+                  busy
+                }
                 title="Keep this task for later; nothing runs until you start it"
                 onClick={saveDraft}
               >
@@ -483,7 +601,9 @@ const TaskForm = ({
             {saved?.mode !== "edit" && (
               <Button
                 type="submit"
-                disabled={!view || !prompt.trim() || !canOpen || busy}
+                disabled={
+                  !view || !prompt.trim() || !canOpen || !locationReady || busy
+                }
               >
                 {startLabel(busy, variants.length)}
               </Button>

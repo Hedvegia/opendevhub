@@ -642,7 +642,7 @@ export interface SpecView {
   unavailable?: string;
 }
 
-export type TaskWhere = "worktree" | "workspace";
+export type TaskWhere = "worktree" | "workspace" | "existing";
 
 /** One variant of a task: no model or agent means the project's default. */
 export interface TaskVariantSpec {
@@ -655,6 +655,8 @@ export interface TaskRequest {
   prompt: string;
   title?: string;
   where: TaskWhere;
+  /** Path of a known worktree when `where` is `existing`. */
+  directory?: string;
   branch?: string;
   base?: string;
   /** Worktree tasks only; the project's default when absent. */
@@ -917,6 +919,7 @@ export type TaskState = "draft" | "starting" | "running" | "ended";
 /** What a draft will start with, as the New task dialog asked for it; Start prefills the dialog from it. */
 export interface TaskPlan {
   where: TaskWhere;
+  directory?: string;
   variants: TaskVariantSpec[];
   branch?: string;
   base?: string;

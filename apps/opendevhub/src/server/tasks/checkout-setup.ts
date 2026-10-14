@@ -68,6 +68,7 @@ export interface SetupJob {
   /** What branch names are made from. */
   title: string;
   where: TaskWhere;
+  directory?: string;
   branch?: string;
   base?: string;
   environment?: Isolation;
@@ -127,9 +128,9 @@ export class CheckoutSetup {
     const { id } = project;
     const { store } = this.deps;
     const localIsolation = () =>
-      job.where === "worktree"
-        ? this.envs.isolationFor(project, job.environment)
-        : { isolated: false, notice: undefined };
+      job.where === "workspace"
+        ? { isolated: false, notice: undefined }
+        : this.envs.isolationFor(project, job.environment);
     const { isolated, notice } = remoteKit
       ? { isolated: true, notice: undefined }
       : localIsolation();
@@ -181,9 +182,18 @@ export class CheckoutSetup {
       for (const [i, slot] of slots.entries()) {
         const { sink } = slot;
         const branch = branches[i];
+        const existing =
+          job.where === "existing"
+            ? rt.worktrees?.find(
+                (worktree) => worktree.path === job.directory && !worktree.node
+              )
+            : undefined;
         const result: TaskVariantResult = branch
           ? { branch }
-          : { directory: ws };
+          : {
+              directory: existing?.path ?? ws,
+              ...(existing?.branch ? { branch: existing.branch } : {}),
+            };
         if (notice) {
           result.notice = notice;
         }
@@ -193,6 +203,26 @@ export class CheckoutSetup {
         slotResults.push(result);
         const onLine = (l: string) => this.slotLog(id, sink, l);
         try {
+          if (job.where === "existing") {
+            if (!existing) {
+              throw new InvalidRequestError(
+                "the selected worktree is no longer available"
+              );
+            }
+            if (isolated) {
+              if (!existing.hostPath || !existing.branch) {
+                throw new InvalidRequestError(
+                  "this worktree cannot run in its own container"
+                );
+              }
+              own[i] = {
+                branch: existing.branch,
+                hostPath: existing.hostPath,
+                path: existing.path,
+              };
+              continue;
+            }
+          }
           if (branch && remote && remoteKit) {
             step(i, { branch, step: "worktree" });
             const wt = await remoteKit.repo.addWorktree(

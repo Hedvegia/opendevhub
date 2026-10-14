@@ -296,7 +296,8 @@ export const bodies = {
   task: z.object({
     prompt: z.string(),
     title: text,
-    where: z.enum(["worktree", "workspace"]).optional(),
+    where: z.enum(["worktree", "workspace", "existing"]).optional(),
+    directory: text,
     branch: text,
     base: text,
     environment: z.enum(["shared", "isolated"]).optional(),

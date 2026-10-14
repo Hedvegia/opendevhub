@@ -15,10 +15,12 @@ export const planLines = (plan: TaskPlan | undefined): string[] => {
   if (!plan) {
     return ["One variant on the project's default model, in a new worktree."];
   }
-  const where =
-    plan.where === "worktree"
-      ? `In a new worktree${plan.environment === "isolated" ? " with its own container" : ""}${plan.node ? ` on ${plan.node}` : ""}`
-      : "In the main checkout";
+  let where = "In the main checkout";
+  if (plan.where === "worktree") {
+    where = `In a new worktree${plan.environment === "isolated" ? " with its own container" : ""}${plan.node ? ` on ${plan.node}` : ""}`;
+  } else if (plan.where === "existing") {
+    where = `In ${plan.directory ?? "an existing worktree"}${plan.environment === "isolated" ? " with its own container" : ""}`;
+  }
   const variants = plan.variants.map((v, i) => {
     const model = v.model ? modelShortName(v.model) : "default model";
     return `Variant ${i + 1}: ${model}${v.agent ? `, agent ${v.agent}` : ""}`;

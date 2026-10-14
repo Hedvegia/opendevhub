@@ -24,6 +24,20 @@ const meta = preview.meta({
 
 export const Default = meta.story({ args: { projectId: "acme-web" } });
 
+export const ExistingWorktree = meta.story({
+  args: {
+    draft: {
+      plan: {
+        directory: "/workspaces/.worktrees/acme-web/rate-limit",
+        environment: "shared",
+        variants: [{}],
+        where: "existing",
+      },
+    },
+    projectId: "acme-web",
+  },
+});
+
 /** Started from a Jira ticket: the prompt and title come prefilled. */
 export const FromJira = meta.story({
   args: {
