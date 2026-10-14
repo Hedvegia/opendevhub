@@ -1,13 +1,19 @@
 import { fileURLToPath } from "node:url";
 
+import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import { devtools } from "@tanstack/devtools-vite";
-import react from "@vitejs/plugin-react";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
   build: { emptyOutDir: true, outDir: "../../dist/web" },
-  plugins: [devtools(), react(), tailwindcss()],
+  plugins: [
+    devtools(),
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
+    tailwindcss(),
+  ],
   resolve: {
     alias: { "@": fileURLToPath(new URL("src/web", import.meta.url)) },
   },

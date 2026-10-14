@@ -22,7 +22,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import type { ReactNode } from "react";
@@ -366,26 +365,25 @@ const PullView = ({
     ...inlineForgejo.map(({ note }) => JSON.stringify(note)),
     ...inlineAi.map((s) => JSON.stringify([s.id, s.file, s.line, s.side])),
   ].join(",");
+  const freshNotes = (): DiffNote[] => [
+    ...inlineForgejo.map(({ note }) => note),
+    ...inlineAi.map((s) => ({
+      file: s.file ?? "",
+      id: s.id,
+      line: s.line ?? 0,
+      side: s.side ?? "new",
+    })),
+  ];
   // Keep annotations stable until their identities or positions change.
-  const notesRef = useRef<{ key: string; notes: DiffNote[] }>({
-    key: "",
-    notes: [],
-  });
-  if (notesRef.current.key !== noteKey) {
-    notesRef.current = {
-      key: noteKey,
-      notes: [
-        ...inlineForgejo.map(({ note }) => note),
-        ...inlineAi.map((s) => ({
-          file: s.file ?? "",
-          id: s.id,
-          line: s.line ?? 0,
-          side: s.side ?? "new",
-        })),
-      ],
-    };
+  const [noteCache, setNoteCache] = useState(() => ({
+    key: noteKey,
+    notes: freshNotes(),
+  }));
+  let { notes } = noteCache;
+  if (noteCache.key !== noteKey) {
+    notes = freshNotes();
+    setNoteCache({ key: noteKey, notes });
   }
-  const { notes } = notesRef.current;
   // Your draft comments only show while reviewing.
   const shownComments = reviewing ? comments : [];
   const stepper = useCommentStepper(commentStops(files, shownComments, notes));
@@ -843,7 +841,7 @@ export const ForgejoPage = () => {
   const org = filters.get("org") ?? "";
   const team = org ? (filters.get("team") ?? "") : "";
   const authorParam = filters.get("authors");
-  const authors = useMemo(() => parseAuthors(authorParam), [authorParam]);
+  const authors = parseAuthors(authorParam);
   // "Authored by me" already narrows to one author, so the filter waits for another inbox.
   const showAuthors = inbox !== "authored";
   const shownAuthors = showAuthors ? authors : [];

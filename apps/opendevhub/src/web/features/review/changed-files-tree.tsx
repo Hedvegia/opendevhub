@@ -1,5 +1,5 @@
 import { FileTree, useFileTree } from "@pierre/trees/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import type { ReviewFile } from "../../../shared/types";
 import { commonDirectory, statsDecoration, treeGitStatus } from "./review";
@@ -33,11 +33,13 @@ export default function ChangedFilesTree(props: {
     fs.map((f) => f.file.slice(root.length));
   // The model is created once; its callbacks read the latest files, root and handler from refs.
   const files = useRef(props.files);
-  files.current = props.files;
   const rootRef = useRef(root);
-  rootRef.current = root;
   const onSelect = useRef(props.onSelect);
-  onSelect.current = props.onSelect;
+  useLayoutEffect(() => {
+    files.current = props.files;
+    rootRef.current = root;
+    onSelect.current = props.onSelect;
+  }, [props.files, root, props.onSelect]);
 
   const { model } = useFileTree({
     density: "compact",

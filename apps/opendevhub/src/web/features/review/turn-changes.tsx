@@ -2,7 +2,13 @@ import { Alert, AlertDescription } from "@opendevhub/ui/alert";
 import { Button } from "@opendevhub/ui/button";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SendIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import type { SessionTurn } from "../../../shared/types";
 import { fetchReview, reviewImageUrl, sendPrompt } from "../../api";
@@ -78,7 +84,9 @@ export const TurnChanges = (props: {
   );
   // Comment boxes live inside @pierre/diffs annotations, which can hold on to an older render's callbacks.
   const commentsRef = useRef(comments);
-  commentsRef.current = comments;
+  useLayoutEffect(() => {
+    commentsRef.current = comments;
+  }, [comments]);
   const save = useCallback(
     (next: ReviewComment[]) => {
       commentsRef.current = next;
