@@ -3,7 +3,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@opendevhub/ui/collapsible";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   BrainIcon,
   CheckIcon,
@@ -14,8 +13,7 @@ import {
   LoaderCircleIcon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
-import type { RefObject } from "react";
+import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -311,7 +309,6 @@ export const Transcript = (props: {
   openHref: string;
   /** The agent is at it and not waiting on the user. */
   working: boolean;
-  scrollRef: RefObject<HTMLDivElement | null>;
 }) => {
   const rows = useMemo(() => {
     const flattened: Row[] = [];
@@ -340,42 +337,18 @@ export const Transcript = (props: {
     }
     return flattened;
   }, [props.transcript, props.more, props.working]);
-  const getScrollElement = useCallback(
-    () => props.scrollRef.current,
-    [props.scrollRef]
-  );
-  const getItemKey = useCallback((index: number) => rows[index].key, [rows]);
-  // TanStack Virtual owns its measurement functions; React Compiler skips this component.
-  // oxlint-disable-next-line react/incompatible-library
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement,
-    getItemKey,
-    estimateSize: () => 180,
-    overscan: 4,
-    anchorTo: "end",
-    directDomUpdates: true,
-  });
-
   return (
-    <div ref={virtualizer.containerRef} className="relative w-full">
-      {virtualizer.getVirtualItems().map((item) => {
-        const row = rows[item.index];
-        return (
-          <div
-            key={item.key}
-            ref={virtualizer.measureElement}
-            data-index={item.index}
-            className={cn(
-              "absolute top-0 left-0 w-full",
-              row.kind === "agent-item" && !row.lastInRun ? "pb-2.5" : "pb-5"
-            )}
-            style={{ transform: `translateY(${item.start}px)` }}
-          >
-            <TranscriptRow row={row} openHref={props.openHref} />
-          </div>
-        );
-      })}
+    <div className="w-full">
+      {rows.map((row) => (
+        <div
+          key={row.key}
+          className={
+            row.kind === "agent-item" && !row.lastInRun ? "pb-2.5" : "pb-5"
+          }
+        >
+          <TranscriptRow row={row} openHref={props.openHref} />
+        </div>
+      ))}
     </div>
   );
 };

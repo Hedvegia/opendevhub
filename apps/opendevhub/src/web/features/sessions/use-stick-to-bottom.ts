@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 /** How close to the bottom, in pixels, still counts as being at it. */
 const NEAR_BOTTOM_PX = 48;
@@ -8,7 +8,7 @@ const NEAR_BOTTOM_PX = 48;
  * `contentRef` on the element inside it that grows. When the content grows while the user has scrolled up, the view
  * stays put and `behind` turns true until they are back at the bottom.
  */
-export const useStickToBottom = (ready: boolean) => {
+export const useStickToBottom = (sessionId: string, ready: boolean) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -23,12 +23,14 @@ export const useStickToBottom = (ready: boolean) => {
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     const content = contentRef.current;
     if (!el || !content) {
       return;
     }
+    // Reset when another conversation opens or its transcript finishes loading.
+    scrollToBottom();
     let lastScrollTop = el.scrollTop;
     const onScroll = () => {
       const nearBottom =
@@ -44,8 +46,6 @@ export const useStickToBottom = (ready: boolean) => {
       lastScrollTop = el.scrollTop;
     };
     let height = content.offsetHeight;
-    // Opens at the newest message.
-    el.scrollTop = el.scrollHeight;
     const observer = new ResizeObserver(() => {
       const grew = content.offsetHeight > height;
       height = content.offsetHeight;
@@ -64,15 +64,7 @@ export const useStickToBottom = (ready: boolean) => {
       observer.disconnect();
       el.removeEventListener("scroll", onScroll);
     };
-  }, []);
-
-  // The transcript can arrive after the container mounts. Its virtualized rows
-  // may still be measuring, so keep following their growth from the bottom.
-  useEffect(() => {
-    if (ready) {
-      scrollToBottom();
-    }
-  }, [ready, scrollToBottom]);
+  }, [ready, sessionId, scrollToBottom]);
 
   return { behind, contentRef, scrollRef, scrollToBottom };
 };

@@ -32,6 +32,11 @@ export const Conversation = meta.story({
     await canvas.findByText(
       "Registered the limiter on POST /login. Running the rate-limit tests next."
     );
+    await expect(
+      canvas.getByText(
+        "Read the rate limiter and explain how it counts requests"
+      )
+    ).toBeInTheDocument();
     await waitFor(() =>
       expect(transcript.scrollHeight).toBeGreaterThan(transcript.clientHeight)
     );
