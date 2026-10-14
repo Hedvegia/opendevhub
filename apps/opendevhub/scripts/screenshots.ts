@@ -32,8 +32,9 @@ interface Shot {
 
 const shots: Shot[] = [
   {
+    height: 1100,
     name: "overview",
-    ready: "text=Waiting on you",
+    ready: "text=Needs your input",
     story: "pages-overview--default",
   },
   {

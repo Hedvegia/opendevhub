@@ -1,393 +1,291 @@
+import { Badge } from "@opendevhub/ui/badge";
 import { Button } from "@opendevhub/ui/button";
-import { Input } from "@opendevhub/ui/input";
-import { FolderPlusIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowRightIcon,
+  FolderPlusIcon,
+  MessageSquarePlusIcon,
+  PlusIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-import type { ProjectView, SessionStatus } from "../../../shared/types";
-import { Empty, muted, Page, Section, Segmented } from "../../components/page";
-import { ResourceStat } from "../../components/resource-stat";
-import {
-  STATE_LABEL,
-  StatusDot,
-  TONE_LABEL,
-  TONE_TEXT,
-} from "../../components/status";
-import { Tip } from "../../components/tip";
+import { taskHref } from "../../../shared/urls";
+import { Empty, muted, Page } from "../../components/page";
+import { When } from "../../components/when";
 import { useDash } from "../../dashboard-context";
-import {
-  allSessions,
-  compareSessions,
-  matches,
-  needsAttention,
-  projectCounts,
-  projectTone,
-} from "../../derive";
-import type { ProjectCounts } from "../../derive";
-import { projectResources } from "../../lib/resources";
+import { allSessions, needsAttention } from "../../derive";
 import { Link } from "../../routing";
-import { checkoutPath } from "../checkouts/checkouts";
+import { chatPath, chatTone } from "../chat/chat";
+import { projectTasks } from "../checkouts/checkouts";
 import { SessionList } from "../sessions/session-list";
 import { SettingsLink } from "../settings/settings-link";
-import { formatCost } from "../tasks/tasks";
-import { formatUsage } from "../usage/usage";
-import { AllContainersMenu } from "./project-actions";
 
-type Filter = "all" | "running" | "stopped";
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "running", label: "Running" },
-  // Stopped, starting and broken containers alike.
-  { id: "stopped", label: "Not running" },
-];
-const ACTIVE_LIMIT = 6;
-const FILTER_THRESHOLD = 6;
-/** More sessions than this and a project's lights end in a "+n". */
-const LIGHT_LIMIT = 12;
+interface StartingItem {
+  id: string;
+  title: string;
+  kind: "Task" | "Chat";
+  project: string;
+  to: string;
+  updatedAt: number;
+}
 
-const plural = (n: number, one: string, many = `${one}s`) =>
-  `${n} ${n === 1 ? one : many}`;
+const StartingRow = ({ item }: { item: StartingItem }) => (
+  <li className="hover:bg-muted/50 grid items-center gap-x-3.5 gap-y-1 border-t px-4 py-2 first:border-t-0 max-md:grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[8.5rem_minmax(0,1fr)_minmax(0,10rem)_6rem_auto]">
+    <Badge
+      variant="secondary"
+      className="bg-running/15 text-running w-fit rounded-md max-md:hidden"
+    >
+      Starting
+    </Badge>
+    <Link className="min-w-0 truncate hover:underline" to={item.to}>
+      {item.title}
+      <span className="text-muted-foreground block text-xs">{item.kind}</span>
+    </Link>
+    <span className="text-muted-foreground truncate text-sm max-md:hidden">
+      {item.project}
+    </span>
+    <When
+      at={item.updatedAt}
+      className="text-muted-foreground text-right text-xs whitespace-nowrap max-md:hidden"
+    />
+    <span className="max-md:hidden" />
+    <span className="text-muted-foreground col-span-full flex items-center gap-2 text-xs md:hidden">
+      Starting · {item.project}
+    </span>
+  </li>
+);
 
+/** The home dashboard shows conversations in motion and those waiting for a response. */
 export const Overview = () => {
   const { snapshot, openAddProject, rescan, scanning } = useDash();
-  const [filter, setFilter] = useState<Filter>("all");
-  const [query, setQuery] = useState("");
   if (!snapshot) {
     return null;
   }
 
   const sessions = allSessions(snapshot);
-  const attention = sessions.filter((e) => needsAttention(e.session.status));
-  const active = sessions.filter((e) => e.session.status === "running");
-  const activeProjects = new Set(active.map((e) => e.view.project.id)).size;
-  const upProjects = snapshot.projects.filter(
-    (v) => v.runtime.containerState === "running"
-  ).length;
-
-  const isUp = (v: ProjectView) => v.runtime.containerState === "running";
-  const rows = [...snapshot.projects]
-    .toSorted((a, b) => a.project.name.localeCompare(b.project.name))
-    .filter((v) => {
-      if (filter === "all") {
-        return true;
-      }
-      if (filter === "running") {
-        return isUp(v);
-      }
-      return !isUp(v);
-    })
-    .filter((v) => matches(query, v.project.name, v.project.path));
-
-  const hasProjects = snapshot.projects.length > 0;
-  let headline = "Nothing is waiting on you";
-  if (!hasProjects) {
-    headline = "No projects yet";
-  } else if (attention.length > 0) {
-    headline = `${plural(attention.length, "agent is", "agents are")} waiting on you`;
-  }
+  const attention = sessions.filter((entry) =>
+    needsAttention(entry.session.status)
+  );
+  const working = sessions.filter(
+    (entry) => entry.session.status === "running"
+  );
+  const startingTasks: StartingItem[] = snapshot.projects.flatMap((view) =>
+    projectTasks(view)
+      .filter(
+        (task) =>
+          task.state === "starting" &&
+          !view.sessions.some((session) => session.task?.id === task.task)
+      )
+      .map((task) => ({
+        id: task.task,
+        kind: "Task" as const,
+        project: view.project.name,
+        title: task.title || "Task",
+        to: taskHref(view.project.id, task.task),
+        updatedAt: task.updatedAt,
+      }))
+  );
+  const startingChats: StartingItem[] = snapshot.projects.flatMap((view) =>
+    view.chats
+      .filter(
+        (chat) =>
+          !chat.archived &&
+          chat.step !== "session" &&
+          chatTone(chat) === "running"
+      )
+      .map((chat) => ({
+        id: chat.id,
+        kind: "Chat" as const,
+        project: view.project.name,
+        title: chat.title || "Untitled chat",
+        to: chatPath(view.project.id, chat.id),
+        updatedAt: chat.updatedAt ?? chat.createdAt,
+      }))
+  );
+  const workingCount =
+    working.length + startingTasks.length + startingChats.length;
+  const activeCount = attention.length + workingCount;
 
   return (
-    <Page>
-      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
-        <div className="flex min-w-0 flex-col gap-2">
-          <h1 className="sr-only">Overview</h1>
-          <p
-            className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight text-balance"
-            aria-live="polite"
-          >
-            {attention.length > 0 && (
-              <span
-                className="bg-attention inline-block size-2.5 shrink-0 rounded-full"
-                aria-hidden
-              />
-            )}
-            {headline}
+    <Page className="mx-auto w-full max-w-5xl gap-8">
+      <header className="flex flex-wrap items-end justify-between gap-5 border-b pb-6">
+        <div className="min-w-0 space-y-2">
+          <p className="text-muted-foreground text-xs font-semibold tracking-[0.16em] uppercase">
+            Live workspace
           </p>
-          {hasProjects && (
-            <p className="text-muted-foreground flex flex-wrap gap-x-5 gap-y-1 tabular-nums">
-              <span>
-                {plural(active.length, "agent")} working
-                {activeProjects > 0 &&
-                  ` in ${plural(activeProjects, "project")}`}
-              </span>
-              <span>
-                {upProjects} of {plural(snapshot.projects.length, "container")}{" "}
-                running
-              </span>
-              {snapshot.usage && (
-                <SettingsLink
-                  section="usage"
-                  className="hover:text-foreground underline-offset-4 hover:underline"
-                  title={formatUsage(snapshot.usage.today)}
-                >
-                  {formatCost(snapshot.usage.today.cost)} spent today
-                </SettingsLink>
-              )}
-            </p>
-          )}
+          <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground max-w-xl text-sm text-pretty sm:text-base">
+            The tasks and conversations that are working or waiting for you.
+          </p>
         </div>
+        {snapshot.projects.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/tasks">
+                All tasks <ArrowRightIcon />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/chats">
+                All chats <ArrowRightIcon />
+              </Link>
+            </Button>
+          </div>
+        )}
       </header>
 
-      {attention.length > 0 && (
-        <Section
-          title="Waiting on you"
-          hint="Answer here, or open the conversation in opencode"
-          attention
-        >
-          <SessionList entries={attention} showProject />
-        </Section>
-      )}
-
-      <section className="flex flex-col gap-3" aria-labelledby="projects">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 id="projects" className="font-semibold">
-            Projects
-          </h2>
-          {hasProjects && (
-            <Segmented
-              label="Show projects"
-              value={filter}
-              onChange={setFilter}
-              options={FILTERS}
-            />
+      {snapshot.projects.length === 0 ? (
+        <Empty title="Add your first project">
+          {snapshot.roots.length > 0 ? (
+            <p className={cn(muted, "max-w-md text-balance")}>
+              No folder with a devcontainer was found under{" "}
+              <code className="font-mono text-xs">
+                {snapshot.roots.join(", ")}
+              </code>
+              . Add a git repo, or{" "}
+              <SettingsLink
+                section="general"
+                hash="roots"
+                className="text-foreground underline underline-offset-4"
+              >
+                add more folders in Settings
+              </SettingsLink>
+              .
+            </p>
+          ) : (
+            <p className={cn(muted, "max-w-md text-balance")}>
+              Add the folders that hold your git repos in Settings to get
+              started.
+            </p>
           )}
-          {snapshot.projects.length > FILTER_THRESHOLD && (
-            <Input
-              className="ml-auto w-56 max-md:w-full"
-              placeholder="Filter projects"
-              aria-label="Filter projects"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          )}
-        </div>
-        {hasProjects ? (
-          <ProjectRack views={rows} />
-        ) : (
-          <Empty title="Add your first project">
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
             {snapshot.roots.length > 0 ? (
-              <p className={cn(muted, "max-w-md text-balance")}>
-                No folder with a devcontainer was found under{" "}
-                <code className="font-mono text-xs">
-                  {snapshot.roots.join(", ")}
-                </code>
-                . Add a git repo and opendevhub sets up its devcontainer, or{" "}
-                <SettingsLink
-                  section="general"
-                  hash="roots"
-                  className="text-foreground underline underline-offset-4"
-                >
-                  add more folders in Settings
-                </SettingsLink>
-                .
-              </p>
-            ) : (
-              <p className={cn(muted, "max-w-md text-balance")}>
-                opendevhub doesn&apos;t know where your code lives yet. Add the
-                folders that hold your git repos in Settings.
-              </p>
-            )}
-            <div className="mt-2 flex flex-wrap justify-center gap-2">
-              {snapshot.roots.length > 0 ? (
-                <>
-                  <Button onClick={openAddProject}>
-                    <PlusIcon /> Add project
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={scanning}
-                    onClick={rescan}
-                  >
-                    <RefreshCwIcon /> {scanning ? "Scanning…" : "Rescan"}
-                  </Button>
-                </>
-              ) : (
-                <Button asChild>
-                  <SettingsLink section="general" hash="roots">
-                    <FolderPlusIcon /> Add folders
-                  </SettingsLink>
+              <>
+                <Button onClick={openAddProject}>
+                  <PlusIcon /> Add project
                 </Button>
+                <Button variant="outline" disabled={scanning} onClick={rescan}>
+                  <RefreshCwIcon /> {scanning ? "Scanning…" : "Rescan"}
+                </Button>
+              </>
+            ) : (
+              <Button asChild>
+                <SettingsLink section="general" hash="roots">
+                  <FolderPlusIcon /> Add folders
+                </SettingsLink>
+              </Button>
+            )}
+          </div>
+        </Empty>
+      ) : (
+        <>
+          <div
+            className="grid gap-3 sm:grid-cols-3"
+            aria-label="Live activity summary"
+          >
+            <div className="bg-card rounded-xl border px-5 py-4">
+              <p className="text-muted-foreground text-xs font-medium">
+                Active now
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums">
+                {activeCount}
+              </p>
+            </div>
+            <div className="bg-card rounded-xl border px-5 py-4">
+              <p className="text-attention flex items-center gap-2 text-xs font-medium">
+                <span
+                  className="bg-attention size-2 rounded-full"
+                  aria-hidden
+                />
+                Needs you
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums">
+                {attention.length}
+              </p>
+            </div>
+            <div className="bg-card rounded-xl border px-5 py-4">
+              <p className="text-running flex items-center gap-2 text-xs font-medium">
+                <span className="bg-running size-2 rounded-full" aria-hidden />
+                Working
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums">
+                {workingCount}
+              </p>
+            </div>
+          </div>
+
+          {activeCount === 0 ? (
+            <Empty title="All clear for now">
+              <p className={muted}>
+                Active tasks and conversations will appear here as they start.
+              </p>
+              <Button asChild variant="outline" className="mt-2">
+                <Link to="/chat">
+                  <MessageSquarePlusIcon /> New chat
+                </Link>
+              </Button>
+            </Empty>
+          ) : (
+            <div className="flex flex-col gap-8">
+              {attention.length > 0 && (
+                <section
+                  aria-labelledby="attention-heading"
+                  className="space-y-3"
+                >
+                  <div className="flex items-baseline gap-3">
+                    <h2
+                      id="attention-heading"
+                      className="text-lg font-semibold tracking-tight"
+                    >
+                      Needs your input
+                    </h2>
+                    <span className="text-muted-foreground text-sm tabular-nums">
+                      {attention.length}
+                    </span>
+                  </div>
+                  <div className="bg-card border-attention/40 overflow-hidden rounded-xl border shadow-[inset_3px_0_var(--attention)]">
+                    <SessionList entries={attention} showProject />
+                  </div>
+                </section>
+              )}
+
+              {workingCount > 0 && (
+                <section
+                  aria-labelledby="working-heading"
+                  className="space-y-3"
+                >
+                  <div className="flex items-baseline gap-3">
+                    <h2
+                      id="working-heading"
+                      className="text-lg font-semibold tracking-tight"
+                    >
+                      Working now
+                    </h2>
+                    <span className="text-muted-foreground text-sm tabular-nums">
+                      {workingCount}
+                    </span>
+                  </div>
+                  <div className="bg-card overflow-hidden rounded-xl border">
+                    <SessionList entries={working} showProject />
+                    {(startingTasks.length > 0 || startingChats.length > 0) && (
+                      <ul
+                        className={working.length > 0 ? "border-t" : undefined}
+                      >
+                        {[...startingTasks, ...startingChats].map((item) => (
+                          <StartingRow key={item.id} item={item} />
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </section>
               )}
             </div>
-          </Empty>
-        )}
-      </section>
-
-      {active.length > 0 && (
-        <Section
-          title="Working now"
-          action={
-            active.length > ACTIVE_LIMIT && (
-              <Link
-                to="/tasks?status=running"
-                className="text-muted-foreground hover:text-foreground text-sm"
-              >
-                See all {active.length}
-              </Link>
-            )
-          }
-        >
-          <SessionList entries={active.slice(0, ACTIVE_LIMIT)} showProject />
-        </Section>
+          )}
+        </>
       )}
     </Page>
-  );
-};
-
-const ProjectRack = ({ views }: { views: ProjectView[] }) => {
-  if (views.length === 0) {
-    return <p className={muted}>No projects match.</p>;
-  }
-  return (
-    <ul className="bg-card overflow-hidden rounded-lg border">
-      <li
-        aria-hidden
-        className={cn(
-          "text-muted-foreground grid items-center gap-x-5 border-b px-4 py-2 text-xs max-md:hidden",
-          RACK_COLUMNS
-        )}
-      >
-        <span>Project</span>
-        <span>Conversations</span>
-        <span>Status</span>
-        <span>Ports</span>
-        <span className="justify-self-end">Usage</span>
-        <span />
-      </li>
-      {views.map((v) => (
-        <ProjectRow key={v.project.id} view={v} />
-      ))}
-    </ul>
-  );
-};
-
-const RACK_COLUMNS = "md:grid-cols-[minmax(0,1fr)_9rem_8rem_4.5rem_11rem_2rem]";
-
-const LIGHT: Record<SessionStatus, string> = {
-  idle: "bg-muted-foreground/30",
-  "needs-answer": "bg-attention",
-  "needs-permission": "bg-attention",
-  running: "bg-running",
-};
-
-/** One light per session, the ones waiting on you first, so a glance down the list shows every agent. */
-const AgentLights = ({
-  view,
-  counts,
-}: {
-  view: ProjectView;
-  counts: ProjectCounts;
-}) => {
-  const ordered = view.sessions.toSorted(compareSessions);
-  const shown = ordered.slice(0, LIGHT_LIMIT);
-  const parts = [
-    counts.attention > 0 && `${counts.attention} waiting on you`,
-    counts.running > 0 && `${counts.running} working`,
-    counts.idle > 0 && `${counts.idle} idle`,
-  ].filter(Boolean);
-  const label = `Conversations: ${parts.join(", ")}`;
-  if (shown.length === 0) {
-    return null;
-  }
-  return (
-    <Tip label={label}>
-      <span
-        className="inline-flex h-5 items-center gap-1"
-        role="img"
-        aria-label={label}
-      >
-        {shown.map((s) => (
-          <span
-            key={s.id}
-            className={cn("h-4 w-1.5 rounded-full", LIGHT[s.status])}
-          />
-        ))}
-        {ordered.length > LIGHT_LIMIT && (
-          <span className="text-muted-foreground ml-0.5 text-xs tabular-nums">
-            +{ordered.length - LIGHT_LIMIT}
-          </span>
-        )}
-      </span>
-    </Tip>
-  );
-};
-
-const ProjectRow = ({ view }: { view: ProjectView }) => {
-  const { snapshot } = useDash();
-  const resources = projectResources(snapshot, view);
-  const tone = projectTone(view);
-  const counts = projectCounts(view);
-  const to = `/p/${encodeURIComponent(view.project.id)}`;
-  const status =
-    view.runtime.containerState === "running"
-      ? TONE_LABEL[tone]
-      : STATE_LABEL[view.runtime.containerState];
-
-  return (
-    <li
-      className={cn(
-        "hover:bg-muted/50 relative grid items-center gap-x-5 gap-y-1.5 border-t px-4 py-3 first:border-t-0",
-        "grid-cols-[minmax(0,1fr)_auto_auto]",
-        RACK_COLUMNS,
-        tone === "attention" && "shadow-[inset_3px_0_var(--attention)]",
-        tone === "error" && "shadow-[inset_3px_0_var(--destructive)]"
-      )}
-    >
-      <div className="flex min-w-0 flex-col">
-        <div className="flex min-w-0 items-center gap-2">
-          <StatusDot tone={tone} />
-          {/* Stretched over the row, so the whole row opens the project. */}
-          <Link
-            to={to}
-            className="truncate font-semibold after:absolute after:inset-0 hover:underline"
-          >
-            {view.project.name}
-          </Link>
-        </div>
-        <p
-          className="text-muted-foreground truncate pl-4 text-xs"
-          title={view.project.path}
-        >
-          {view.runtime.error ? (
-            <span
-              className="text-destructive relative"
-              title={view.runtime.error}
-            >
-              {view.runtime.error}
-            </span>
-          ) : (
-            view.project.path
-          )}
-        </p>
-      </div>
-      <div className="relative max-md:order-last max-md:col-span-full max-md:pl-4">
-        <AgentLights view={view} counts={counts} />
-      </div>
-      <span
-        className={cn(
-          "text-sm whitespace-nowrap max-md:col-start-2 max-md:row-start-1 max-md:justify-self-end",
-          TONE_TEXT[tone]
-        )}
-      >
-        {status}
-      </span>
-      <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums max-md:hidden">
-        {counts.ports > 0 && (
-          <Link
-            to={checkoutPath(view.project.id, "", "runtime")}
-            className="hover:text-foreground relative hover:underline"
-          >
-            {plural(counts.ports, "port")}
-          </Link>
-        )}
-      </span>
-      <span className="relative justify-self-end max-md:hidden">
-        {resources && <ResourceStat {...resources} />}
-      </span>
-      <div className="relative justify-self-end max-md:col-start-3 max-md:row-start-1">
-        <AllContainersMenu view={view} />
-      </div>
-    </li>
   );
 };
