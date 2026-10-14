@@ -112,6 +112,7 @@ describe(subagentsOf, () => {
         parentID: "ses_root",
         time: { created: 1, updated: 99 },
         title: "",
+        outcome: "interrupted" as const,
       },
       rawSession("ses_other"),
     ];
@@ -120,6 +121,7 @@ describe(subagentsOf, () => {
       ["ses_b", "Subagent", undefined],
       ["ses_a", expect.any(String), 3],
     ]);
+    expect(subs[0].outcome).toBe("interrupted");
   });
 });
 

@@ -732,6 +732,18 @@ export interface SessionSummary {
   tokens?: number;
   /** Tokens in its context as of the latest reply, the number opencode shows for it; its subagents excluded. */
   context?: number;
+  /** Child agent sessions, including agents running after this session goes idle. */
+  subagents?: LiveSubagentSummary[];
+}
+
+export interface LiveSubagentSummary {
+  id: string;
+  parentId: string;
+  title: string;
+  agent?: string;
+  updatedAt: number;
+  status: SessionStatus;
+  outcome?: "succeeded" | "failed" | "interrupted";
 }
 
 /** Tokens by kind. */
@@ -819,6 +831,7 @@ export interface SubagentSummary {
   title: string;
   agent?: string;
   updatedAt: number;
+  outcome?: "succeeded" | "failed" | "interrupted";
   /** USD; its own subagents included. */
   cost?: number;
   tokens?: number;

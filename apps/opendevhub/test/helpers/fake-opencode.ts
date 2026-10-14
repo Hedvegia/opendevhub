@@ -210,7 +210,18 @@ export async function startFakeOpencode(
           return;
         }
         return json({
-          data: state.sessions.slice(0, state.listLimit),
+          data: state.sessions
+            .filter((session) => {
+              const parentId = url.searchParams.get("parentID");
+              if (parentId === null) {
+                return true;
+              }
+              if (parentId === "null") {
+                return !session.parentID;
+              }
+              return session.parentID === parentId;
+            })
+            .slice(0, state.listLimit),
           cursor: {},
         });
       }

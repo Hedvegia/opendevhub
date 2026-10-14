@@ -36,11 +36,14 @@ import { modelShortName } from "../../../shared/tasks";
 import type {
   ProjectView,
   SessionDetail,
+  SessionStatus,
   SessionSummary,
+  SubagentSummary,
   SessionTurn,
 } from "../../../shared/types";
 import { sessionUrl } from "../../../shared/urls";
 import { Chip, muted } from "../../components/page";
+import { SessionBadge } from "../../components/status";
 import { Tip } from "../../components/tip";
 import { When } from "../../components/when";
 import { needsAttention, openUrlOf } from "../../derive";
@@ -154,6 +157,24 @@ export const PANELS = {
   terminal: { icon: TerminalIcon, label: "Terminal" },
   turns: { icon: ListTreeIcon, label: "Turns" },
 } as const;
+
+export const AgentStatusBadge = ({
+  status,
+  outcome,
+}: {
+  status: SessionStatus;
+  outcome?: SubagentSummary["outcome"];
+}) => {
+  if (status !== "idle" || !outcome) {
+    return <SessionBadge status={status} />;
+  }
+  const label = {
+    succeeded: "Done",
+    failed: "Failed",
+    interrupted: "Cancelled",
+  }[outcome];
+  return <Chip>{label}</Chip>;
+};
 
 /** The open panel's content and the short note beside its title. */
 export interface OpenPanel {
@@ -424,6 +445,13 @@ export const SubagentsPanel = (props: {
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate">{sub.title}</span>
           {sub.agent && <Chip>{sub.agent}</Chip>}
+          <AgentStatusBadge
+            status={
+              props.session.subagents?.find((agent) => agent.id === sub.id)
+                ?.status ?? "idle"
+            }
+            outcome={sub.outcome}
+          />
         </span>
         <a
           className="row-span-2 inline-flex items-center gap-1 text-sm font-medium hover:underline"

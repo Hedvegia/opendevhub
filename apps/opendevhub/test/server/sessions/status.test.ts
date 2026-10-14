@@ -54,19 +54,69 @@ describe(deriveSessions, () => {
     });
   });
 
-  it("rolls child (subagent) sessions up into their root parent and hides them", () => {
+  it("rolls child sessions into their root and exposes their live status", () => {
     const out = deriveSessions("p", {
       ...base,
       sessions: [
         rawSession("root"),
-        rawSession("child", { parentID: "root" }),
+        rawSession("child", {
+          parentID: "root",
+          title: "Lane C",
+          agent: "fixer",
+        }),
         rawSession("grand", { parentID: "child" }),
       ],
+      active: new Set(["child"]),
       permissions: [{ id: "p1", sessionID: "grand", action: "edit" }],
     });
     expect(out.map((s) => [s.id, s.status])).toStrictEqual([
       ["root", "needs-permission"],
     ]);
+    expect(out[0].subagents).toStrictEqual([
+      {
+        id: "child",
+        parentId: "root",
+        title: "Lane C",
+        agent: "fixer",
+        updatedAt: 1,
+        status: "needs-permission",
+      },
+      {
+        id: "grand",
+        parentId: "child",
+        title: "Session grand",
+        updatedAt: 1,
+        status: "needs-permission",
+      },
+    ]);
+  });
+
+  it("shows a working child when its parent is idle in opencode", () => {
+    const out = deriveSessions("p", {
+      ...base,
+      sessions: [rawSession("root"), rawSession("child", { parentID: "root" })],
+      active: new Set(["child"]),
+    });
+    expect(out[0].status).toBe("running");
+    expect(out[0].subagents?.[0].status).toBe("running");
+  });
+
+  it("keeps a cancelled child visible in the current conversation", () => {
+    const out = deriveSessions("p", {
+      ...base,
+      sessions: [
+        rawSession("root"),
+        rawSession("child", {
+          parentID: "root",
+          outcome: "interrupted",
+        }),
+      ],
+    });
+    expect(out[0].subagents?.[0]).toMatchObject({
+      id: "child",
+      status: "idle",
+      outcome: "interrupted",
+    });
   });
 
   it("survives parent cycles", () => {

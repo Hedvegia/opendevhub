@@ -218,6 +218,7 @@ export const subagentsOf = (
         title: s.title || "Subagent",
         updatedAt: s.time.updated,
         ...(s.agent ? { agent: s.agent } : {}),
+        ...(s.outcome ? { outcome: s.outcome } : {}),
         ...(cost === undefined ? {} : { cost }),
         ...(tokens === undefined ? {} : { tokens }),
       };

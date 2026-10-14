@@ -172,10 +172,15 @@ export const deriveSessions = (
   const flags = new Map<string, SessionStatus>();
   const pending = new Map<string, PendingItems>();
   const raise = (sessionId: string, status: SessionStatus) => {
-    const root = rootOf(sessionId, parents);
-    const current = flags.get(root);
-    if (!current || RANK[status] < RANK[current]) {
-      flags.set(root, status);
+    const seen = new Set<string>();
+    let id: string | undefined = sessionId;
+    while (id && !seen.has(id)) {
+      seen.add(id);
+      const current = flags.get(id);
+      if (!current || RANK[status] < RANK[current]) {
+        flags.set(id, status);
+      }
+      id = parents.get(id);
     }
   };
   const itemsOf = (sessionId: string): PendingItems => {
@@ -198,6 +203,28 @@ export const deriveSessions = (
   for (const p of input.permissions) {
     raise(p.sessionID, "needs-permission");
     itemsOf(p.sessionID).permissions.push(toPermission(p, seen(p.id)));
+  }
+
+  const children = new Map<string, NonNullable<SessionSummary["subagents"]>>();
+  for (const s of input.sessions) {
+    if (!s.parentID || s.time.archived !== undefined) {
+      continue;
+    }
+    const root = rootOf(s.id, parents);
+    if (root === s.id) {
+      continue;
+    }
+    const entries = children.get(root) ?? [];
+    entries.push({
+      id: s.id,
+      parentId: s.parentID,
+      title: s.title?.trim() || "Subagent",
+      ...(s.agent ? { agent: s.agent } : {}),
+      updatedAt: s.time.updated,
+      status: flags.get(s.id) ?? "idle",
+      ...(s.outcome ? { outcome: s.outcome } : {}),
+    });
+    children.set(root, entries);
   }
 
   return input.sessions
@@ -227,6 +254,13 @@ export const deriveSessions = (
         ...(cost === undefined ? {} : { cost }),
         ...(tokens === undefined ? {} : { tokens }),
         ...(context === undefined ? {} : { context }),
+        ...(children.has(s.id)
+          ? {
+              subagents: children
+                .get(s.id)
+                ?.toSorted((a, b) => b.updatedAt - a.updatedAt),
+            }
+          : {}),
       };
     })
     .toSorted(compareSessions);

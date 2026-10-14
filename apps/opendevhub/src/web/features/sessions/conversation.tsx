@@ -15,10 +15,11 @@ import type {
   SessionDetail,
   SessionSummary,
 } from "../../../shared/types";
+import { sessionUrl } from "../../../shared/urls";
 import { Chip } from "../../components/page";
 import { SessionBadge } from "../../components/status";
 import { Tip } from "../../components/tip";
-import { needsAttention, sessionHref } from "../../derive";
+import { needsAttention, openUrlOf, sessionHref } from "../../derive";
 import { Link } from "../../routing";
 import { CheckoutProvider } from "../checkouts/checkout-context";
 import { CheckoutRuntime } from "../checkouts/checkout-page";
@@ -28,6 +29,7 @@ import { taskChip } from "../tasks/tasks";
 import { Composer } from "./composer";
 import { PendingStack } from "./pending-cards";
 import {
+  AgentStatusBadge,
   ConversationSidebar,
   SubagentsPanel,
   TurnsPanel,
@@ -96,7 +98,19 @@ export const Conversation = (props: {
   const task = props.showTask ? taskChip(view, session) : undefined;
   const running = session.status !== "idle";
   const openHref = sessionHref(view, session);
-  const subagents = detail?.subagents.length ?? 0;
+  const statusByAgent = new Map(
+    session.subagents?.map((agent) => [agent.id, agent.status])
+  );
+  const agents = (detail?.subagents ?? session.subagents ?? [])
+    .map((agent) => ({
+      ...agent,
+      status: statusByAgent.get(agent.id) ?? "idle",
+    }))
+    .toSorted((a, b) => {
+      const active = Number(b.status !== "idle") - Number(a.status !== "idle");
+      return active || b.updatedAt - a.updatedAt;
+    });
+  const subagents = agents.length;
   const panels: PanelId[] = [
     "turns",
     ...(props.changes ? (["changes"] as const) : []),
@@ -214,6 +228,45 @@ export const Conversation = (props: {
             {props.actions}
           </div>
         </header>
+
+        {agents.length > 0 && (
+          <section
+            aria-label="Agents in this conversation"
+            className="flex shrink-0 items-center gap-2 border-b py-2 text-xs"
+          >
+            <span className="text-muted-foreground shrink-0 font-medium">
+              Agents ({agents.length})
+            </span>
+            <ul className="flex min-w-0 flex-1 gap-2 overflow-x-auto">
+              {agents.slice(0, 4).map((agent) => (
+                <li key={agent.id} className="shrink-0">
+                  <a
+                    className="hover:bg-muted inline-flex max-w-52 items-center gap-1.5 rounded-md border px-2 py-1"
+                    href={sessionUrl(openUrlOf(view, session.envId), agent.id)}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                    title={agent.title}
+                  >
+                    <span className="truncate">{agent.title}</span>
+                    <AgentStatusBadge
+                      status={agent.status}
+                      outcome={agent.outcome}
+                    />
+                  </a>
+                </li>
+              ))}
+            </ul>
+            {agents.length > 4 && (
+              <button
+                type="button"
+                className="shrink-0 font-medium hover:underline"
+                onClick={() => toggle("subagents")}
+              >
+                View all
+              </button>
+            )}
+          </section>
+        )}
 
         <div className="relative min-h-48 flex-1">
           <div

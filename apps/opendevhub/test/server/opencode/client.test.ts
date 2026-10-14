@@ -37,6 +37,21 @@ describe(OpencodeClient, () => {
     await expect(client.active()).resolves.toStrictEqual(new Set(["ses_1"]));
   });
 
+  it("gets a chat's child agents even when the recent session page contains another session", async () => {
+    fake.state.sessions = [
+      rawSession("ses_other"),
+      rawSession("ses_agent", { parentID: "ses_chat" }),
+      rawSession("ses_chat"),
+    ];
+    fake.state.listLimit = 1;
+    expect(
+      (await client.sessions()).map((session) => session.id)
+    ).toStrictEqual(["ses_other"]);
+    expect(
+      (await client.childSessions("ses_chat")).map((session) => session.id)
+    ).toStrictEqual(["ses_agent"]);
+  });
+
   it("scopes permission requests and forms by directory header", async () => {
     fake.state.permissions["/w/other"] = [
       { id: "per_1", sessionID: "ses_1", action: "bash" },

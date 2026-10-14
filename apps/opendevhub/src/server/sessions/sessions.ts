@@ -348,10 +348,11 @@ export class Sessions {
       throw new NotFoundError(sessionId, "session");
     }
     const client = this.envs.opencodeClient(session.envId ?? id);
-    const [raw, messages, all, models] = await Promise.all([
+    const [raw, messages, all, children, models] = await Promise.all([
       client.session(sessionId),
       client.messages(sessionId, DETAIL_MESSAGES),
       client.sessions(),
+      client.childSessions(sessionId),
       client.models(session.directory).catch(() => []),
     ]);
     const model =
@@ -367,7 +368,11 @@ export class Sessions {
       createdAt: raw.time.created,
       more: messages.length >= DETAIL_MESSAGES,
       session,
-      subagents: subagentsOf(sessionId, all),
+      subagents: subagentsOf(sessionId, [
+        ...new Map(
+          [...all, ...children].map((entry) => [entry.id, entry])
+        ).values(),
+      ]),
       transcript: toTranscript(messages),
       turns: toSessionTurns(messages),
       ...(raw.agent ? { agent: raw.agent } : {}),

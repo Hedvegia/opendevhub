@@ -670,6 +670,14 @@ export class OpencodeClient {
     return result8.data;
   }
 
+  /** Direct child sessions, filtered before opencode applies the session page limit. */
+  async childSessions(parentId: string): Promise<RawSession[]> {
+    const result = await this.get<{ data: RawSession[] }>(
+      `/api/session?parentID=${encodeURIComponent(parentId)}`
+    );
+    return result.data;
+  }
+
   async session(id: string): Promise<RawSession> {
     const result9 = await this.get<{ data: RawSession }>(
       `/api/session/${encodeURIComponent(id)}`
