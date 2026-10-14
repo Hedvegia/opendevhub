@@ -1,6 +1,17 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
+import {
+  creationSettings,
+  mountArg as personalMountArg,
+  mountSource,
+  readPersonalization,
+  readProjectPersonalization,
+  resolvePersonalization,
+} from "../../shared/personalization";
+import type { ResolvedPersonalization } from "../../shared/personalization";
 import type {
   EnvId,
   EnvWorktree,
@@ -69,6 +80,21 @@ import type {
 const RELAY_RECOVERY_INTERVAL_MS = 30_000;
 const GIT_WAIT_MS = 200;
 const GIT_WAIT_LIMIT_MS = 120_000;
+const SETUP_TIMEOUT_MS = 15 * 60_000;
+
+/**
+ * Runs the script on stdin with a login shell, unless the marker named by the script's hash ($1) says it already
+ * ran in this container. The marker is only written when the script succeeds, so a failed one runs again.
+ */
+const SETUP_WRAPPER = `m="\${XDG_CACHE_HOME:-$HOME/.cache}/opendevhub/setup-$1"
+if [ -e "$m" ]; then echo "already applied"; exit 0; fi
+s=$(mktemp) || exit 1
+cat > "$s"
+if command -v bash >/dev/null 2>&1; then bash -l "$s"; else sh -l "$s"; fi
+rc=$?
+rm -f "$s"
+if [ "$rc" -eq 0 ]; then mkdir -p "\${m%/*}" && touch "$m"; fi
+exit "$rc"`;
 
 /**
  * One devcontainer with its opencode, relay, route, port forwards and monitor. A project's main
@@ -1089,12 +1115,14 @@ export class Environments {
         );
       }
       this.setupStep(env, "image");
+      const personal = this.personalizationOf(env.project);
       const image = await images.ensureBase(
         env.project,
         env.worktree,
         this.settingsOf(env.project).keyFiles,
         (l) => this.envLog(env, l),
-        noCache
+        noCache,
+        personal.features
       );
       const read = await containers.readConfig(env.worktree.hostPath);
       const blocker = isolationBlocker(
@@ -1120,8 +1148,14 @@ export class Environments {
         store.putEnvironment({ ...rec, image });
       }
       this.setupStep(env, "container");
-      const up = await this.upTask(env, rebuild, noCache);
-      store.updateRuntime(env.id, { containerId: up.containerId });
+      const previous = store.runtime(env.id).containerId;
+      const up = await this.upTask(env, rebuild, noCache, personal);
+      store.updateRuntime(env.id, {
+        containerId: up.containerId,
+        ...(rebuild || up.containerId !== previous
+          ? { personalization: creationSettings(personal) }
+          : {}),
+      });
       const info = await containers.inspect(up.containerId);
       if (!info?.running) {
         throw new CommandError(
@@ -1150,6 +1184,7 @@ export class Environments {
       const target = await this.startRelay(env, info.ip, route);
       await this.forwardPorts(env, target);
       await this.prepareCredentials(env, target);
+      await this.personalize(env, personal.setupCommands);
       await this.launchOpencode(
         env,
         rebuild ? undefined : store.runtime(env.id).password
@@ -1163,13 +1198,20 @@ export class Environments {
   private upTask(
     env: TaskEnv,
     rebuild: boolean,
-    noCache: boolean
+    noCache: boolean,
+    personal: ResolvedPersonalization
   ): ReturnType<ContainersPort["up"]> {
     const { containers } = this.kit(env);
     const next = (this.taskUps.get(env.node) ?? Promise.resolve()).then(
       async () =>
         containers.up(env.target, {
-          mounts: await this.opencodeMounts(env),
+          // The features are in the base image already.
+          ...(personal.dotfiles ? { dotfiles: personal.dotfiles } : {}),
+          mounts: await this.withPersonalMounts(
+            env,
+            personal,
+            await this.opencodeMounts(env)
+          ),
           noCache,
           onLine: (l) => this.envLog(env, l),
           rebuild,
@@ -1244,16 +1286,25 @@ export class Environments {
         ...(await this.worktreeMounts(project)),
         ...(await this.opencodeMounts(env)),
       ];
+      const personal = this.personalizationOf(project);
+      const previous = store.runtime(env.id).containerId;
       const up = await containers.up(project, {
-        mounts,
+        additionalFeatures: personal.features,
+        ...(personal.dotfiles ? { dotfiles: personal.dotfiles } : {}),
+        mounts: await this.withPersonalMounts(env, personal, mounts),
         noCache,
         onLine: (l) => this.log(project.id, l),
         rebuild,
       });
       // Record the container id as soon as `up` succeeds, before the running/IP checks below can
       // throw — otherwise a container that came up but failed those checks has no containerId on
-      // record, and Stop has nothing to stop.
-      store.updateRuntime(env.id, { containerId: up.containerId });
+      // record, and Stop has nothing to stop. A new container also records what it was created with.
+      store.updateRuntime(env.id, {
+        containerId: up.containerId,
+        ...(rebuild || up.containerId !== previous
+          ? { personalization: creationSettings(personal) }
+          : {}),
+      });
       const info = await containers.inspect(up.containerId);
       if (!info?.running) {
         throw new CommandError(
@@ -1287,6 +1338,7 @@ export class Environments {
       const target = await this.startRelay(env, info.ip, route);
       await this.forwardPorts(env, target);
       await this.prepareCredentials(env, target);
+      await this.personalize(env, personal.setupCommands);
       await this.refreshWorktreesQuietly(project);
       await this.launchOpencode(
         env,
@@ -1412,6 +1464,102 @@ export class Environments {
   /** Whether to forward the ssh-agent into this environment: its own configuration first, then the project's settings. */
   private sshAgentOf(env: Env): boolean {
     return this.sshAgents.get(env.id) ?? this.settingsOf(env.project).sshAgent;
+  }
+
+  /** The global personalization with the project's on top. */
+  private personalizationOf(project: Project): ResolvedPersonalization {
+    const entry = this.deps.projectSettings?.(project);
+    return resolvePersonalization(
+      readPersonalization(this.deps.personalization?.()),
+      readProjectPersonalization(
+        entry && typeof entry === "object"
+          ? (entry as Record<string, unknown>).personalization
+          : undefined
+      )
+    );
+  }
+
+  /**
+   * opendevhub's own mounts, then the user's. Skips a user mount whose target opendevhub already uses, one under
+   * `~` when the node's home isn't known, and a folder of this machine that doesn't exist (`--mount` won't create
+   * it, and the container would fail to start).
+   */
+  private async withPersonalMounts(
+    env: Env,
+    personal: ResolvedPersonalization,
+    own: string[]
+  ): Promise<string[]> {
+    const taken = new Set(
+      own.map((m) => /(?:^|,)target=(?<target>[^,]+)/u.exec(m)?.groups?.target)
+    );
+    const local = env.node === LOCAL_NODE;
+    const home = local ? os.homedir() : this.kit(env).host?.home;
+    const out = [...own];
+    for (const mount of personal.mounts ?? []) {
+      const skip = (why: string) =>
+        this.envLog(env, `personalize: skipped mount ${mount.target}: ${why}`);
+      if (taken.has(mount.target)) {
+        skip("opendevhub mounts something there itself");
+        continue;
+      }
+      if (!home && mount.source.startsWith("~")) {
+        skip("the node's home folder isn't known yet");
+        continue;
+      }
+      if (mount.type === "bind" && local) {
+        const source = mountSource(mount, home ?? "");
+        const exists = await fs
+          .stat(source)
+          .then(() => true)
+          .catch(() => false);
+        if (!exists) {
+          skip(`${source} doesn't exist`);
+          continue;
+        }
+      }
+      out.push(personalMountArg(mount, home ?? ""));
+    }
+    return out;
+  }
+
+  /**
+   * Runs the user's setup commands in the container, each once per container and again after it changes. Never
+   * throws: a broken personal script is logged and doesn't keep the environment from starting.
+   */
+  private async personalize(env: Env, commands: string[]): Promise<void> {
+    const { containers } = this.kit(env);
+    if (commands.length === 0 || !containers.exec) {
+      return;
+    }
+    const onLine = (l: string) => this.envLog(env, `personalize: ${l}`);
+    for (const command of commands) {
+      const hash = createHash("sha256")
+        .update(command)
+        .digest("hex")
+        .slice(0, 12);
+      onLine(`running setup command ${hash}`);
+      try {
+        const r = await containers.exec(
+          env.target,
+          ["sh", "-c", SETUP_WRAPPER, "sh", hash],
+          {
+            input: command,
+            onLine,
+            onStderrLine: onLine,
+            timeoutMs: SETUP_TIMEOUT_MS,
+          }
+        );
+        if (r.exitCode !== 0) {
+          onLine(
+            `setup command ${hash} failed (exit ${r.exitCode}); it runs again on the next start`
+          );
+        }
+      } catch (error) {
+        onLine(
+          `setup command ${hash} failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
   }
 
   private settingsOf(project: Project): EnvSettings {
