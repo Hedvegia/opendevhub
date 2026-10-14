@@ -67,7 +67,7 @@ const shots: Shot[] = [
     story: "pages-forgejo--pull-request",
   },
   {
-    height: 520,
+    height: 760,
     name: "jira-tickets",
     ready: "text=Login endpoint needs burst protection",
     story: "pages-jira--tickets",

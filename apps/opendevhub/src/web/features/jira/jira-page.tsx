@@ -64,14 +64,7 @@ import type { ChoiceOption } from "../../components/choice";
 import { FilterPresets } from "../../components/filter-presets";
 import type { PresetSource } from "../../components/filter-presets";
 import { MarkdownBody } from "../../components/markdown-body";
-import {
-  Chip,
-  Empty,
-  Note,
-  Page,
-  PageHeader,
-  Section,
-} from "../../components/page";
+import { Empty, Note, Page, PageHeader, Section } from "../../components/page";
 import { When } from "../../components/when";
 import { useDash } from "../../dashboard-context";
 import { Link, useSearchParams } from "../../routing";
@@ -285,6 +278,16 @@ const ticketPath = (ticket: JiraTicketSummary, params: URLSearchParams) =>
 const ticketMeta = (ticket: JiraTicketSummary) =>
   `${ticket.key} · ${ticket.type}${ticket.priority ? ` · ${ticket.priority}` : ""}${ticket.assignee ? ` · ${ticket.assignee}` : ""}`;
 
+const ticketStatusTone = (ticket: JiraTicketSummary) => {
+  if (ticket.statusCategory === "done") {
+    return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  }
+  if (ticket.statusCategory === "indeterminate") {
+    return "bg-sky-500/10 text-sky-700 dark:text-sky-300";
+  }
+  return "bg-muted text-muted-foreground";
+};
+
 const LayoutToggle = (props: {
   value: JiraLayout;
   onChange: (layout: JiraLayout) => void;
@@ -346,23 +349,60 @@ const TicketList = (props: {
       {!!data?.tickets.length && (
         <Section
           title={props.title}
-          hint={`${startAt + 1}–${startAt + data.tickets.length} of ${data.total}`}
+          hint={`${startAt + 1}–${startAt + data.tickets.length} of ${data.total} tickets`}
         >
+          <div className="text-muted-foreground bg-muted/30 hidden grid-cols-[minmax(0,1fr)_9rem_9rem_6.5rem] gap-4 border-b px-5 py-2 text-[11px] font-semibold tracking-wider uppercase lg:grid">
+            <span>Issue</span>
+            <span>Status</span>
+            <span>Assignee</span>
+            <span>Updated</span>
+          </div>
           <ul className="divide-y">
             {data.tickets.map((ticket) => (
               <li key={ticket.key}>
                 <Link
-                  className="hover:bg-muted/50 focus-visible:outline-ring flex items-start gap-3 px-4 py-3 transition-colors focus-visible:outline-2"
+                  className="hover:bg-muted/40 focus-visible:outline-ring group grid gap-3 px-4 py-4 transition-colors focus-visible:outline-2 sm:px-5 lg:grid-cols-[minmax(0,1fr)_9rem_9rem_6.5rem] lg:items-center lg:gap-4"
                   to={ticketPath(ticket, params)}
                 >
-                  <TicketIcon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium break-words">{ticket.title}</p>
-                    <p className="text-muted-foreground text-sm">
-                      {ticketMeta(ticket)}
-                    </p>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="bg-muted text-muted-foreground mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md">
+                      <TicketIcon className="size-4" aria-hidden />
+                    </span>
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                        <span className="font-mono font-medium">
+                          {ticket.key}
+                        </span>
+                        <span aria-hidden>·</span>
+                        <span>{ticket.type}</span>
+                        {ticket.priority && (
+                          <>
+                            <span aria-hidden>·</span>
+                            <span>{ticket.priority} priority</span>
+                          </>
+                        )}
+                      </p>
+                      <p className="group-hover:text-foreground leading-snug font-medium break-words">
+                        {ticket.title}
+                      </p>
+                    </div>
                   </div>
-                  <Chip>{ticket.status}</Chip>
+                  <div className="flex items-center gap-3 pl-11 lg:pl-0">
+                    <span
+                      className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-medium ${ticketStatusTone(ticket)}`}
+                    >
+                      {ticket.status}
+                    </span>
+                    <span className="text-muted-foreground text-xs lg:hidden">
+                      {ticket.assignee ?? "Unassigned"}
+                    </span>
+                  </div>
+                  <span className="text-muted-foreground hidden truncate text-sm lg:block">
+                    {ticket.assignee ?? "Unassigned"}
+                  </span>
+                  <span className="text-muted-foreground hidden text-xs lg:block">
+                    <When at={ticket.updatedAt} />
+                  </span>
                 </Link>
               </li>
             ))}
@@ -370,7 +410,7 @@ const TicketList = (props: {
         </Section>
       )}
       {data && (
-        <div className="flex gap-2">
+        <div className="flex justify-end gap-2">
           {startAt > 0 && (
             <Button variant="outline" onClick={() => change({})}>
               First page
@@ -544,10 +584,11 @@ export const JiraPage = () => {
   ];
   const where = `${viewPhrase(query, catalog.data)}${jql ? " narrowed by JQL" : ""}`;
   return (
-    <Page>
+    <Page className="mx-auto w-full max-w-7xl gap-6">
       <PageHeader
-        title="Tickets"
+        title="Jira tickets"
         description={search ? `${where} matching “${search}”.` : `${where}.`}
+        className="border-b pb-5"
         actions={
           <>
             <LayoutToggle
@@ -570,118 +611,134 @@ export const JiraPage = () => {
         }
       />
       <JiraGate>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="jira-view">View</Label>
-            <Choice
-              id="jira-view"
-              size="default"
-              className="w-56"
-              value={viewValue(query)}
-              options={viewOptions(query, catalog.data)}
-              onChange={(value) => change(viewQuery(value))}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="jira-project">Project</Label>
-            <Choice
-              id="jira-project"
-              size="default"
-              className="w-48"
-              value={query.project ?? ""}
-              options={projectOptions}
-              onChange={(project) => change({ project: project || undefined })}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="jira-status">Status</Label>
-            <Choice
-              id="jira-status"
-              size="default"
-              className="w-36"
-              value={query.status}
-              options={STATUS_OPTIONS}
-              onChange={(status) =>
-                change({ status: status as JiraStatusFilter })
-              }
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="jira-sort">Sort</Label>
-            <Choice
-              id="jira-sort"
-              size="default"
-              className="w-44"
-              value={query.sort}
-              options={SORT_OPTIONS}
-              onChange={(sort) => change({ sort: sort as JiraSort })}
-            />
-          </div>
-          {query.scope === "board" && (!board || board.type === "scrum") && (
-            <Label className="h-9 font-normal">
-              <Checkbox
-                checked={!!query.sprint}
-                onCheckedChange={(checked) =>
-                  change({ sprint: checked === true })
+        <div className="bg-card overflow-hidden rounded-xl border shadow-xs">
+          <form
+            className="grid gap-3 border-b p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto]"
+            onSubmit={(e) => {
+              e.preventDefault();
+              change({
+                jql: jqlInput.trim() || undefined,
+                search: input.trim(),
+              });
+            }}
+          >
+            <div className="flex min-w-0 flex-col gap-1.5 lg:col-start-1 lg:row-start-1">
+              <Label htmlFor="jira-search">Search tickets</Label>
+              <Input
+                id="jira-search"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                maxLength={500}
+                placeholder="Search by title or ticket key"
+              />
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2 lg:col-span-1 lg:col-start-2 lg:row-start-1">
+              <Label htmlFor="jira-jql">
+                JQL{" "}
+                <span className="text-muted-foreground font-normal">
+                  · optional
+                </span>
+              </Label>
+              <Input
+                id="jira-jql"
+                className="font-mono text-xs"
+                value={jqlInput}
+                onChange={(e) => setJqlInput(e.target.value)}
+                maxLength={JIRA_JQL_MAX}
+                placeholder='labels = backend AND fixVersion = "2.0"'
+                autoComplete="off"
+                spellCheck={false}
+                title="Added to the view's own filters as written. An ORDER BY replaces the sort."
+              />
+            </div>
+            <Button
+              type="submit"
+              className="sm:col-start-2 sm:row-start-1 lg:col-start-3"
+            >
+              <SearchIcon /> Search
+            </Button>
+          </form>
+          <div className="flex flex-wrap items-end gap-3 p-4">
+            <div className="flex min-w-44 flex-1 flex-col gap-1.5 sm:flex-none">
+              <Label htmlFor="jira-view">View</Label>
+              <Choice
+                id="jira-view"
+                size="default"
+                className="w-full sm:w-52"
+                value={viewValue(query)}
+                options={viewOptions(query, catalog.data)}
+                onChange={(value) => change(viewQuery(value))}
+              />
+            </div>
+            <div className="flex min-w-36 flex-1 flex-col gap-1.5 sm:flex-none">
+              <Label htmlFor="jira-project">Project</Label>
+              <Choice
+                id="jira-project"
+                size="default"
+                className="w-full sm:w-44"
+                value={query.project ?? ""}
+                options={projectOptions}
+                onChange={(project) =>
+                  change({ project: project || undefined })
                 }
               />
-              Active sprint only
-            </Label>
-          )}
-          <div className="ml-auto">
-            <FilterPresets
-              source={PRESETS}
-              current={current}
-              onApply={(filters) =>
-                setParams(pageParams({ ...filters, startAt: 0 }, layout))
-              }
-            />
+            </div>
+            <div className="flex min-w-36 flex-1 flex-col gap-1.5 sm:flex-none">
+              <Label htmlFor="jira-status">Status</Label>
+              <Choice
+                id="jira-status"
+                size="default"
+                className="w-full sm:w-36"
+                value={query.status}
+                options={STATUS_OPTIONS}
+                onChange={(status) =>
+                  change({ status: status as JiraStatusFilter })
+                }
+              />
+            </div>
+            <div className="flex min-w-40 flex-1 flex-col gap-1.5 sm:flex-none">
+              <Label htmlFor="jira-sort">Sort</Label>
+              <Choice
+                id="jira-sort"
+                size="default"
+                className="w-full sm:w-44"
+                value={query.sort}
+                options={SORT_OPTIONS}
+                onChange={(sort) => change({ sort: sort as JiraSort })}
+              />
+            </div>
+            {query.scope === "board" && (!board || board.type === "scrum") && (
+              <Label className="h-9 font-normal">
+                <Checkbox
+                  checked={!!query.sprint}
+                  onCheckedChange={(checked) =>
+                    change({ sprint: checked === true })
+                  }
+                />
+                Active sprint only
+              </Label>
+            )}
+            <div className="flex w-full items-center justify-between gap-2 border-t pt-3 sm:ml-auto sm:w-auto sm:border-0 sm:pt-0">
+              <FilterPresets
+                source={PRESETS}
+                current={current}
+                onApply={(filters) =>
+                  setParams(pageParams({ ...filters, startAt: 0 }, layout))
+                }
+              />
+              {(search || customized) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setParams(pageParams({}, layout))}
+                >
+                  Reset
+                </Button>
+              )}
+            </div>
           </div>
         </div>
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            change({ jql: jqlInput.trim() || undefined, search: input.trim() });
-          }}
-        >
-          <div className="flex min-w-56 flex-1 flex-col gap-1.5">
-            <Label htmlFor="jira-search">Search tickets</Label>
-            <Input
-              id="jira-search"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              maxLength={500}
-              placeholder="Text in this view, or a ticket key such as APP-123"
-            />
-          </div>
-          <div className="flex min-w-56 flex-1 flex-col gap-1.5">
-            <Label htmlFor="jira-jql">JQL</Label>
-            <Input
-              id="jira-jql"
-              className="font-mono"
-              value={jqlInput}
-              onChange={(e) => setJqlInput(e.target.value)}
-              maxLength={JIRA_JQL_MAX}
-              placeholder='labels = backend AND fixVersion = "2.0"'
-              autoComplete="off"
-              spellCheck={false}
-              title="Added to the view's own filters as written. An ORDER BY replaces the sort."
-            />
-          </div>
-          <Button type="submit">
-            <SearchIcon /> Search
-          </Button>
-          {(search || customized) && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setParams(pageParams({}, layout))}
-            >
-              Reset
-            </Button>
-          )}
-        </form>
         {catalog.error && (
           <Note warn>
             Boards, filters and projects could not be loaded: {catalog.error}
@@ -776,72 +833,89 @@ const TicketDetails = ({ ticketKey }: { ticketKey: string }) => {
   const tooLarge =
     source &&
     (jiraTaskPrompt(source).length > 100_000 || source.title.length > 1000);
+  let statusTone = "bg-muted text-muted-foreground";
+  if (data?.statusCategory === "done") {
+    statusTone = "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  } else if (data?.statusCategory === "indeterminate") {
+    statusTone = "bg-sky-500/10 text-sky-700 dark:text-sky-300";
+  }
   return (
-    <Page>
+    <Page className="mx-auto w-full max-w-6xl gap-7">
       <Link
         to={`/jira${params.size ? `?${params}` : ""}`}
-        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-sm"
+        className="text-muted-foreground hover:text-foreground focus-visible:outline-ring inline-flex w-fit items-center gap-1.5 rounded-sm text-sm transition-colors focus-visible:outline-2"
       >
         <ArrowLeftIcon className="size-4" /> Tickets
       </Link>
-      <PageHeader
-        title={data ? `${data.key}: ${data.title}` : ticketKey}
-        description={
-          data
-            ? `${data.project} · ${data.type} · ${data.status}`
-            : "Ticket details"
-        }
-        actions={
-          <>
-            {data && (
-              <Button asChild variant="outline" size="sm">
-                <a href={data.url} target="_blank" rel="noreferrer">
-                  <ExternalLinkIcon /> Open in Jira
-                </a>
-              </Button>
-            )}
-            {firstTask && (
-              <Button asChild size="sm">
-                <Link to={firstTask}>
-                  <ArrowRightIcon /> Open task
-                </Link>
-              </Button>
-            )}
-            {source && (
-              <StartTask
-                label={firstTask ? "Another task" : "Create task"}
-                primary={!firstTask}
-                disabled={!!tooLarge}
-                onStart={(projectId) => newTask(projectId, { jira: source })}
-              />
-            )}
-            {source && (
-              <StartTask
-                label="Create draft"
-                primary={false}
-                disabled={!!tooLarge}
-                onStart={(projectId) =>
-                  void draftFromTicket(projectId, source)
-                    .then(() =>
-                      queryClient.invalidateQueries({
-                        queryKey: ["links", "ticket"],
-                      })
-                    )
-                    .catch(report)
-                }
-              />
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={refresh}
-            >
-              <RefreshCwIcon className={busy ? "animate-spin" : ""} /> Refresh
+      <header className="space-y-4 border-b pb-6">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground inline-flex items-center gap-1.5 font-mono font-medium">
+            <TicketIcon className="size-4" aria-hidden />
+            {data?.key ?? ticketKey}
+          </span>
+          {data && (
+            <>
+              <span className="text-muted-foreground" aria-hidden>
+                ·
+              </span>
+              <span className="text-muted-foreground">
+                {data.project} / {data.type}
+              </span>
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusTone}`}
+              >
+                {data.status}
+              </span>
+            </>
+          )}
+        </div>
+        <h1 className="max-w-4xl text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
+          {data?.title ?? ticketKey}
+        </h1>
+        <div className="flex flex-wrap items-center gap-2">
+          {firstTask && (
+            <Button asChild size="sm">
+              <Link to={firstTask}>
+                Open task <ArrowRightIcon />
+              </Link>
             </Button>
-          </>
-        }
-      />
+          )}
+          {source && (
+            <StartTask
+              label={firstTask ? "Another task" : "Create task"}
+              primary={!firstTask}
+              disabled={!!tooLarge}
+              onStart={(projectId) => newTask(projectId, { jira: source })}
+            />
+          )}
+          {source && (
+            <StartTask
+              label="Create draft"
+              primary={false}
+              disabled={!!tooLarge}
+              onStart={(projectId) =>
+                void draftFromTicket(projectId, source)
+                  .then(() =>
+                    queryClient.invalidateQueries({
+                      queryKey: ["links", "ticket"],
+                    })
+                  )
+                  .catch(report)
+              }
+            />
+          )}
+          {data && (
+            <Button asChild variant="ghost" size="sm">
+              <a href={data.url} target="_blank" rel="noopener noreferrer">
+                Open in Jira <ExternalLinkIcon />
+              </a>
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" disabled={busy} onClick={refresh}>
+            <RefreshCwIcon className={busy ? "animate-spin" : ""} /> Refresh
+          </Button>
+        </div>
+      </header>
       <JiraGate>
         {loading && (
           <p role="status" className="text-muted-foreground text-sm">
@@ -860,67 +934,114 @@ const TicketDetails = ({ ticketKey }: { ticketKey: string }) => {
           </Note>
         )}
         {data && (
-          <>
-            {links?.id !== undefined && (
-              <ProvenanceBreadcrumb type="ticket" id={String(links.id)} />
-            )}
-            {linked.length > 0 && (
-              <Section title="Tasks from this ticket" hint={linked.length}>
-                <ul className="divide-y">
-                  {linked.map((task) => (
-                    <li
-                      key={task.id}
-                      className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm"
-                    >
-                      <Link
-                        className="min-w-0 flex-1 truncate hover:underline"
-                        to={taskPath(task.projectId, task.id)}
-                      >
-                        {projectName(task.projectId)} · {task.title}
-                      </Link>
-                      <span className="text-muted-foreground text-xs">
-                        {task.archived ? "archived" : task.state}
-                      </span>
-                      {task.pullRequests.map((pull) => (
-                        <PullRequestBadge
-                          key={`${pull.variant}-${pull.url}`}
-                          pull={pull}
-                          {...(task.pullRequests.length > 1
-                            ? { prefix: `variant ${pull.variant}` }
-                            : {})}
-                        />
-                      ))}
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-            )}
-            <Section title="Details">
-              <dl className="[&_dt]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 px-4 py-4 text-sm">
-                <dt>Assignee</dt>
-                <dd>{data.assignee ?? "Unassigned"}</dd>
-                <dt>Reporter</dt>
-                <dd>{data.reporter ?? "—"}</dd>
-                <dt>Priority</dt>
-                <dd>{data.priority ?? "—"}</dd>
-                <dt>Labels</dt>
-                <dd className="break-words">{data.labels.join(", ") || "—"}</dd>
-                <dt>Updated</dt>
-                <dd>
-                  <When at={data.updatedAt} />
-                </dd>
-              </dl>
-            </Section>
-            <Section title="Description">
-              {data.description ? (
-                <MarkdownBody className="px-4 py-4">
-                  {data.description}
-                </MarkdownBody>
-              ) : (
-                <p className="px-4 py-4 text-sm">No description provided.</p>
+          <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-10">
+            <div className="flex min-w-0 flex-col gap-8">
+              {links?.id !== undefined && (
+                <ProvenanceBreadcrumb type="ticket" id={String(links.id)} />
               )}
-            </Section>
-          </>
+              <section aria-labelledby="jira-description-title">
+                <h2
+                  id="jira-description-title"
+                  className="mb-4 text-base font-semibold"
+                >
+                  Description
+                </h2>
+                {data.description ? (
+                  <MarkdownBody className="text-foreground/90">
+                    {data.description}
+                  </MarkdownBody>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    No description provided.
+                  </p>
+                )}
+              </section>
+              {linked.length > 0 && (
+                <Section
+                  title="Linked work"
+                  hint={`${linked.length} ${linked.length === 1 ? "task" : "tasks"}`}
+                >
+                  <ul className="divide-y">
+                    {linked.map((task) => (
+                      <li
+                        key={task.id}
+                        className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-sm"
+                      >
+                        <Link
+                          className="min-w-0 flex-1 font-medium break-words hover:underline"
+                          to={taskPath(task.projectId, task.id)}
+                        >
+                          {projectName(task.projectId)} · {task.title}
+                        </Link>
+                        <span className="bg-muted text-muted-foreground rounded-md px-2 py-0.5 text-xs">
+                          {task.archived ? "archived" : task.state}
+                        </span>
+                        {task.pullRequests.map((pull) => (
+                          <PullRequestBadge
+                            key={`${pull.variant}-${pull.url}`}
+                            pull={pull}
+                            {...(task.pullRequests.length > 1
+                              ? { prefix: `variant ${pull.variant}` }
+                              : {})}
+                          />
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+            </div>
+            <aside
+              className="bg-muted/30 rounded-xl border p-5"
+              aria-labelledby="jira-details-title"
+            >
+              <h2
+                id="jira-details-title"
+                className="mb-5 text-sm font-semibold"
+              >
+                Issue details
+              </h2>
+              <dl className="space-y-4 text-sm">
+                <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3">
+                  <dt className="text-muted-foreground">Assignee</dt>
+                  <dd className="min-w-0 break-words">
+                    {data.assignee ?? "Unassigned"}
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3">
+                  <dt className="text-muted-foreground">Reporter</dt>
+                  <dd className="min-w-0 break-words">
+                    {data.reporter ?? "—"}
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3">
+                  <dt className="text-muted-foreground">Priority</dt>
+                  <dd>{data.priority ?? "—"}</dd>
+                </div>
+                <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3">
+                  <dt className="text-muted-foreground">Labels</dt>
+                  <dd className="flex min-w-0 flex-wrap gap-1">
+                    {data.labels.length > 0
+                      ? data.labels.map((label) => (
+                          <span
+                            key={label}
+                            className="bg-background rounded-md border px-1.5 py-0.5 text-xs break-all"
+                          >
+                            {label}
+                          </span>
+                        ))
+                      : "—"}
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3 border-t pt-4">
+                  <dt className="text-muted-foreground">Updated</dt>
+                  <dd>
+                    <When at={data.updatedAt} />
+                  </dd>
+                </div>
+              </dl>
+            </aside>
+          </div>
         )}
       </JiraGate>
     </Page>
