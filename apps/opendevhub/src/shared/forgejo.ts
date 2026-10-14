@@ -188,6 +188,7 @@ export interface ForgejoDiff {
   pull: ForgejoPullRequest;
   base: string;
   head: string;
+  headRepository?: string;
   patch: string;
   commitId?: string;
 }

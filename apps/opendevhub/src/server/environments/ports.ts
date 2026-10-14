@@ -60,6 +60,7 @@ export type GitPort = Pick<
   | "mergeInto"
   | "deleteBranch"
   | "fetchPull"
+  | "fetchPullBranch"
   | "localBranches"
   | "remotes"
   | "fetchPrune"

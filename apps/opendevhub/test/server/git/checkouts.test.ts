@@ -112,16 +112,18 @@ describe("worktrees", () => {
     await hub.environments.rescan();
     await hub.environments.start(project.id);
     const url = "https://forge.example/o/r/pulls/5";
-    const path = "/workspaces/demo.worktrees/review-pr-5";
-    worktrees.list.mockResolvedValue([{ branch: "review/pr-5", path }]);
+    const path = "/workspaces/demo.worktrees/feature-pr";
+    worktrees.list.mockResolvedValue([{ branch: "feature/pr", path }]);
     await hub.checkouts.createWorktree(project.id, {
-      branch: "review/pr-5",
+      branch: "feature/pr",
       pull: { commitId: "a".repeat(40), number: 5, url },
     });
     expect(worktrees.add.mock.calls[0][1]).toMatchObject({
       base: "a".repeat(40),
+      branch: "feature/pr",
+      upstream: "origin/feature/pr",
     });
-    expect(checkouts.branch(project.id, "review/pr-5")).toMatchObject({
+    expect(checkouts.branch(project.id, "feature/pr")).toMatchObject({
       createdBy: { by: "pull" },
       originUrl: url,
     });

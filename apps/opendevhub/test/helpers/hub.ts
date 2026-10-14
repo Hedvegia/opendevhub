@@ -486,6 +486,10 @@ export function setup(
       "origin",
     ]),
     fetchPull: vi.fn(async () => "a".repeat(40)),
+    fetchPullBranch: vi.fn(async () => ({
+      base: "a".repeat(40),
+      upstream: "origin/feature/pr",
+    })),
     fetchPrune: vi.fn(async (_p: Project, _dir: string, _remote: string) => {}),
     branchRefs: vi.fn(
       async (

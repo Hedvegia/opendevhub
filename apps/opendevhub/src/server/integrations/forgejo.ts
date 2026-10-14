@@ -1315,6 +1315,7 @@ export class Forgejo {
       base: details.base,
       commitId: details.headSha || undefined,
       head: details.head,
+      headRepository: details.headRepository,
       pull: details.pull,
       ...(await this.patch(owner, repo, number)),
     };

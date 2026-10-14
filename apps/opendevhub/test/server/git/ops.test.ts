@@ -597,6 +597,81 @@ describe("git", () => {
   });
 
   describe("PR worktree source", () => {
+    it("tracks a fork's remote when the PR comes from a fork", async () => {
+      const sha = "a".repeat(40);
+      const exec = vi.fn(async (_p: unknown, cmd: string[]) => {
+        const args = cmd.slice(3);
+        const stdout =
+          args[0] === "remote"
+            ? args[1] === "get-url"
+              ? args[2] === "fork"
+                ? "git@forge.example:alice/demo.git\n"
+                : "git@forge.example:team/demo.git\n"
+              : "origin\nfork\n"
+            : args[0] === "rev-parse"
+              ? sha
+              : "";
+        return { exitCode: 0, stdout, stderr: "", timedOut: false };
+      });
+      const gitOps = new GitOps({ containers: { exec } });
+      await expect(
+        gitOps.fetchPullBranch(
+          project,
+          "/repo",
+          "https://forge.example/team/demo/pulls/7",
+          7,
+          sha,
+          "feature/fix",
+          "alice/demo"
+        )
+      ).resolves.toStrictEqual({
+        base: undefined,
+        upstream: "fork/feature/fix",
+      });
+      expect(
+        exec.mock.calls.some(([, cmd]) =>
+          cmd.includes("+refs/heads/feature/fix:refs/remotes/fork/feature/fix")
+        )
+      ).toBe(true);
+    });
+
+    it("fetches the source branch, verifies it, and returns its upstream", async () => {
+      const sha = "a".repeat(40);
+      const exec = vi.fn(async (_p: unknown, cmd: string[]) => {
+        const args = cmd.slice(3);
+        const stdout =
+          args[0] === "remote"
+            ? args[1] === "get-url"
+              ? "git@forge.example:team/demo.git\n"
+              : "origin\n"
+            : args[0] === "rev-parse"
+              ? sha
+              : "";
+        return { exitCode: 0, stdout, stderr: "", timedOut: false };
+      });
+      const gitOps = new GitOps({ containers: { exec } });
+      await expect(
+        gitOps.fetchPullBranch(
+          project,
+          "/repo",
+          "https://forge.example/team/demo/pulls/7",
+          7,
+          sha,
+          "feature/fix"
+        )
+      ).resolves.toStrictEqual({
+        base: undefined,
+        upstream: "origin/feature/fix",
+      });
+      expect(
+        exec.mock.calls.some(([, cmd]) =>
+          cmd.includes(
+            "+refs/heads/feature/fix:refs/remotes/origin/feature/fix"
+          )
+        )
+      ).toBe(true);
+    });
+
     it("fetches the PR ref from a matching remote and verifies the exact commit", async () => {
       const sha = "a".repeat(40);
       const exec = vi.fn(async (_p: unknown, cmd: string[]) => {

@@ -8,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@opendevhub/ui/dialog";
-import { Input } from "@opendevhub/ui/input";
 import { Label } from "@opendevhub/ui/label";
 import { Textarea } from "@opendevhub/ui/textarea";
 import { XIcon } from "lucide-react";
@@ -156,7 +155,6 @@ export const ForgejoWorktreeDialog = (props: {
   const { snapshot } = useDash();
   const navigate = useNavigate();
   const [project, setProject] = useState("");
-  const [branch, setBranch] = useState(`review/pr-${pull.number}`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const submit = async (e: FormEvent) => {
@@ -169,7 +167,6 @@ export const ForgejoWorktreeDialog = (props: {
         pull.repo,
         String(pull.number),
         project,
-        branch.trim(),
         props.commitId
       );
       const folder = result.worktree.path.split("/").findLast(Boolean) ?? "";
@@ -186,9 +183,9 @@ export const ForgejoWorktreeDialog = (props: {
           <DialogHeader>
             <DialogTitle>Inspect in a container</DialogTitle>
             <DialogDescription>
-              Creates a worktree of a local project at this pull request&apos;s
-              head commit and opens it. The project&apos;s container must be
-              running with worktrees mounted, or the worktree starts its own.
+              Checks out this pull request&apos;s branch in a local project and
+              opens it. The project&apos;s container must be running with
+              worktrees mounted, or the worktree starts its own.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
@@ -209,15 +206,6 @@ export const ForgejoWorktreeDialog = (props: {
               ]}
             />
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="forgejo-worktree-branch">Worktree branch</Label>
-            <Input
-              id="forgejo-worktree-branch"
-              value={branch}
-              disabled={busy}
-              onChange={(e) => setBranch(e.target.value)}
-            />
-          </div>
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -232,7 +220,7 @@ export const ForgejoWorktreeDialog = (props: {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={busy || !project || !branch.trim()}>
+            <Button type="submit" disabled={busy || !project}>
               {busy ? "Creating…" : "Create worktree"}
             </Button>
           </DialogFooter>

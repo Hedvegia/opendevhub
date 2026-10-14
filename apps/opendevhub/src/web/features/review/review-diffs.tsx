@@ -17,7 +17,14 @@ import {
   Rows2Icon,
   XIcon,
 } from "lucide-react";
-import { Component, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Component,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -36,6 +43,7 @@ import {
   annotationsFor,
   anchorFromRange,
   diffKey,
+  ensurePatchHeader,
   linesLabel,
   selectionFor,
 } from "./review";
@@ -282,16 +290,38 @@ export const ReviewDiffs = (props: {
   // Side-by-side diffs don't fit a phone.
   const view = phone ? { ...props.view, split: false } : props.view;
   useSeek(props.focus, props.files);
+  const [selectedFile, setSelectedFile] = useState<string>();
+  const selectedIndex = props.files.findIndex(
+    (file) => file.file === selectedFile
+  );
+  useLayoutEffect(() => {
+    if (selectedIndex === -1) {
+      return;
+    }
+    const target = document.getElementById(`review-file-${selectedIndex}`);
+    if (!target) {
+      return;
+    }
+    const scroll = () => target.scrollIntoView({ block: "start" });
+    scroll();
+    // Lazy diffs can replace short placeholders after the jump. Watch the list so changes
+    // in this file or earlier files cannot leave the selected header out of view.
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(scroll);
+    observer.observe(target.parentElement ?? target);
+    const timeout = window.setTimeout(
+      () => observer.disconnect(),
+      SEEK_TIMEOUT_MS
+    );
+    return () => {
+      window.clearTimeout(timeout);
+      observer.disconnect();
+    };
+  }, [selectedIndex]);
   const tree = (
-    <ChangedFilesTree
-      files={props.files}
-      onSelect={(file) => {
-        const index = props.files.findIndex((f) => f.file === file);
-        document
-          .getElementById(`review-file-${index}`)
-          ?.scrollIntoView({ block: "start" });
-      }}
-    />
+    <ChangedFilesTree files={props.files} onSelect={setSelectedFile} />
   );
   return (
     <div
@@ -330,6 +360,7 @@ export const ReviewDiffs = (props: {
               key={`${diffKey(f)}:${props.version ?? ""}`}
               id={`review-file-${i}`}
               file={f}
+              selected={selectedFile === f.file}
               load={
                 props.load &&
                 (() => props.load?.(f.file) ?? Promise.resolve(undefined))
@@ -391,6 +422,7 @@ const Stats = ({ file }: { file: ReviewFile }) => (
 interface FileDiffProps {
   id: string;
   file: ReviewFile;
+  selected: boolean;
   load?: () => Promise<string | undefined>;
   view: DiffView;
   wholeFilePatch: boolean;
@@ -414,6 +446,7 @@ const DeferredFileDiff = (props: FileDiffProps) => {
   const [visible, setVisible] = useState(false);
   const ready =
     visible ||
+    props.selected ||
     props.file.patch === undefined ||
     props.file.binary ||
     props.open !== undefined ||
@@ -571,7 +604,7 @@ const FileDiff = (props: FileDiffProps) => {
       <Card className={cn("overflow-hidden py-0", diffFont)}>
         <DiffBoundary patch={patch}>
           <PatchView<ReviewAnnotation>
-            patch={patch}
+            patch={ensurePatchHeader(patch, file.file)}
             name={props.wholeFilePatch ? file.file : undefined}
             split={props.view.split}
             fullFile={props.view.fullFile}

@@ -131,6 +131,7 @@ export interface AddWorktreeArgs {
   root: WorktreeRoot;
   branch: string;
   base?: string;
+  upstream?: string;
   onLine: (line: string) => void;
 }
 
@@ -173,7 +174,7 @@ export class Worktrees {
   }
 
   async add(project: Project, args: AddWorktreeArgs): Promise<AddedWorktree> {
-    const { workspaceFolder: ws, root, branch, base, onLine } = args;
+    const { workspaceFolder: ws, root, branch, base, upstream, onLine } = args;
     if (
       base !== undefined &&
       (base.startsWith("-") || /\s/u.test(base) || base === "")
@@ -220,6 +221,14 @@ export class Worktrees {
       }
     }
     await this.git(project, ws, cmd);
+    if (upstream) {
+      await this.git(project, ws, [
+        "branch",
+        "--set-upstream-to",
+        upstream,
+        branch,
+      ]);
+    }
     const recorded = await this.recordBase(
       project,
       ws,

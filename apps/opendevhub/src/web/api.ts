@@ -1322,13 +1322,12 @@ export const createForgejoWorktree = (
   repo: string,
   number: string,
   projectId: string,
-  branch: string,
   commitId: string
 ) =>
   read(
     pull.worktree.$post({
       param: pullParam(owner, repo, number),
-      json: { branch, commitId, projectId },
+      json: { commitId, projectId },
     }),
     "create PR worktree"
   );

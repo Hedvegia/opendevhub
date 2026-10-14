@@ -14,7 +14,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@opendevhub/ui/dropdown-menu";
-import { Input } from "@opendevhub/ui/input";
 import { Label } from "@opendevhub/ui/label";
 import { Textarea } from "@opendevhub/ui/textarea";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -498,7 +497,6 @@ export const ForgejoAiReviewDialog = (props: {
   const choice = picked || (exact[0] ? matchKey(exact[0]) : NEW_WORKTREE);
   const [project, setProject] = useState("");
   const newProject = project || matches[0]?.projectId || "";
-  const [branch, setBranch] = useState(`review/pr-${details.pull.number}`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const quick = ocr ? undefined : (exact[0] ?? matches[0]);
@@ -528,7 +526,6 @@ export const ForgejoAiReviewDialog = (props: {
         details.pull.repo,
         String(details.pull.number),
         newProject,
-        branch.trim(),
         details.headSha
       );
       props.onStart(engine, newProject, worktree.path);
@@ -599,14 +596,6 @@ export const ForgejoAiReviewDialog = (props: {
                     ]}
                   />
                 </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="ai-review-branch">Branch</Label>
-                  <Input
-                    id="ai-review-branch"
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value)}
-                  />
-                </div>
               </div>
             )}
           </fieldset>
@@ -646,9 +635,7 @@ export const ForgejoAiReviewDialog = (props: {
             <Button
               type="submit"
               disabled={
-                busy ||
-                ocrBlocked ||
-                (choice === NEW_WORKTREE && (!newProject || !branch.trim()))
+                busy || ocrBlocked || (choice === NEW_WORKTREE && !newProject)
               }
             >
               {busy && "Creating worktree…"}

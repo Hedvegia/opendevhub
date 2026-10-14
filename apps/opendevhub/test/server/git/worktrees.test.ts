@@ -310,6 +310,23 @@ describe("Worktrees.add", () => {
     ).rejects.toThrow(/already exists/u);
   });
 
+  it("sets the source branch as upstream for a PR checkout", async () => {
+    const c = containerGit();
+    await add(new Worktrees({ containers: c, run: hostGit().run }), {
+      base: "abc123",
+      upstream: "origin/feature/x",
+    });
+    expect(c.calls).toContainEqual([
+      "git",
+      "-C",
+      "/workspaces/demo",
+      "branch",
+      "--set-upstream-to",
+      "origin/feature/x",
+      "feature/x",
+    ]);
+  });
+
   it.each([
     [
       "host git is old",

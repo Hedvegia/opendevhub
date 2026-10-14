@@ -2,6 +2,7 @@ import type { UpdateResult, UpdateStrategy } from "../../shared/types";
 import { CommandError, tailLines } from "../environments/containers";
 import type { Containers, ExecTarget } from "../environments/containers";
 import type { RunResult, Runner } from "../nodes/exec";
+import { parseRemote } from "./forge";
 import { baseKey } from "./worktrees";
 
 export type { UpdateResult, UpdateStrategy };
@@ -217,7 +218,6 @@ export class GitOps {
     number: number,
     commitId: string
   ): Promise<string> {
-    const { parseRemote } = await import("./forge");
     const expected = new URL(url);
     const repoPath = decodeURIComponent(expected.pathname)
       .replace(/\/pulls\/\d+$/u, "")
@@ -260,6 +260,76 @@ export class GitOps {
     }
     throw new CommandError(
       "This project has no remote matching the Forgejo repository."
+    );
+  }
+
+  /** Fetches the PR's source branch and checks that it still points at the reviewed commit. */
+  async fetchPullBranch(
+    p: ExecTarget,
+    dir: string,
+    url: string,
+    number: number,
+    commitId: string,
+    branch: string,
+    headRepository?: string
+  ): Promise<{ base?: string; upstream: string }> {
+    await this.fetchPull(p, dir, url, number, commitId);
+    const expected = new URL(url);
+    const repoPath =
+      headRepository ??
+      decodeURIComponent(expected.pathname)
+        .replace(/\/pulls\/\d+$/u, "")
+        .replace(/^\//u, "");
+    for (const remote of await this.remotes(p, dir)) {
+      const info = parseRemote(
+        await this.git(p, dir, ["remote", "get-url", remote])
+      );
+      if (info?.host !== expected.hostname || info.path !== repoPath) {
+        continue;
+      }
+      const upstream = `${remote}/${branch}`;
+      const fetched = await this.deps.containers.exec(
+        p,
+        [
+          "git",
+          "-C",
+          dir,
+          "fetch",
+          "--no-tags",
+          "--",
+          remote,
+          `+refs/heads/${branch}:refs/remotes/${upstream}`,
+        ],
+        { env: { GIT_TERMINAL_PROMPT: "0" }, timeoutMs: FETCH_TIMEOUT_MS }
+      );
+      if (fetched.exitCode !== 0) {
+        throw failure(["fetch"], fetched);
+      }
+      const resolved = await this.git(p, dir, [
+        "rev-parse",
+        `refs/remotes/${upstream}`,
+      ]);
+      const head = resolved.trim();
+      if (head !== commitId) {
+        throw new CommandError(
+          "The PR branch changed. Refresh its diff before creating a worktree."
+        );
+      }
+      const local = await this.exec(p, dir, [
+        "rev-parse",
+        "--verify",
+        "-q",
+        `refs/heads/${branch}`,
+      ]);
+      if (local.exitCode === 0 && local.stdout.trim() !== commitId) {
+        throw new CommandError(
+          `Local branch ${branch} differs from the PR head. Update it before creating a worktree.`
+        );
+      }
+      return { base: local.exitCode === 0 ? undefined : commitId, upstream };
+    }
+    throw new CommandError(
+      `This project has no remote matching the PR source repository ${repoPath}. Add that repository as a remote before creating the worktree.`
     );
   }
 

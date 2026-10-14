@@ -548,7 +548,7 @@ export const commentStops = (
 export const ensurePatchHeader = (patch: string, name: string): string => {
   const firstHunk = patch.search(/^@@ /mu);
   const head = firstHunk < 0 ? patch : patch.slice(0, firstHunk);
-  return /^--- /mu.test(head)
+  return /^(?:--- |diff --git )/mu.test(head)
     ? patch
     : `--- a/${name}\n+++ b/${name}\n${patch}`;
 };

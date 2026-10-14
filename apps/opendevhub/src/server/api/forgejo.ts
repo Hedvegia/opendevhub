@@ -327,9 +327,10 @@ export const createForgejoRoutes = (deps: DashboardDeps) => {
             );
           }
           return hub.checkouts.createWorktree(str(b.projectId) ?? "", {
-            branch: str(b.branch) ?? "",
+            branch: diff.head,
             pull: {
               commitId: diff.commitId ?? "",
+              headRepository: diff.headRepository,
               number: diff.pull.number,
               repo: { owner: diff.pull.owner, repo: diff.pull.repo },
               url: diff.pull.url,

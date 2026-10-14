@@ -91,11 +91,12 @@ export class Checkouts {
       base?: string;
       startSession?: boolean;
       prompt?: string;
-      /** A Forgejo pull request to check out; the new branch is linked to it with role `checkout`. */
+      /** A Forgejo pull request whose source branch is checked out and linked with role `checkout`. */
       pull?: {
         url: string;
         number: number;
         commitId: string;
+        headRepository?: string;
         repo?: { owner: string; repo: string };
       };
     }
@@ -118,17 +119,21 @@ export class Checkouts {
         );
       }
       const ws = this.envs.workspaceFolder(p);
+      const source = req.pull
+        ? await this.deps.git.fetchPullBranch(
+            p,
+            ws,
+            req.pull.url,
+            req.pull.number,
+            req.pull.commitId,
+            branch,
+            req.pull.headRepository
+          )
+        : undefined;
       const worktree = await this.deps.worktrees.add(p, {
-        base: req.pull
-          ? await this.deps.git.fetchPull(
-              p,
-              ws,
-              req.pull.url,
-              req.pull.number,
-              req.pull.commitId
-            )
-          : base,
+        base: source ? source.base : base,
         branch,
+        ...(source ? { upstream: source.upstream } : {}),
         onLine: (l) => this.envs.log(id, l),
         root,
         workspaceFolder: ws,

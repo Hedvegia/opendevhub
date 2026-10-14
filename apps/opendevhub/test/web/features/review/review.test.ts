@@ -1,3 +1,4 @@
+import { getFiletypeFromFileName, parsePatchFiles } from "@pierre/diffs";
 import { describe, expect, it } from "vitest";
 
 import type { ProjectView } from "../../../../src/shared/types";
@@ -514,10 +515,15 @@ describe("@pierre/diffs adapters", () => {
   });
 
   it("gives a bare hunk the file headers the patch parser needs", () => {
-    expect(ensurePatchHeader("@@ -1 +1 @@\n-a\n+b\n", "src/x.ts")).toBe(
+    const normalized = ensurePatchHeader("@@ -1 +1 @@\n-a\n+b\n", "src/x.ts");
+    expect(normalized).toBe(
       "--- a/src/x.ts\n+++ b/src/x.ts\n@@ -1 +1 @@\n-a\n+b\n"
     );
+    const name = parsePatchFiles(normalized)[0]?.files[0]?.name;
+    expect(getFiletypeFromFileName(name ?? "")).toBe("typescript");
     expect(ensurePatchHeader(patch, "ignored")).toBe(patch);
+    const gitPatch = "diff --git a/src/x.ts b/src/x.ts\n@@ -1 +1 @@\n-a\n+b\n";
+    expect(ensurePatchHeader(gitPatch, "src/x.ts")).toBe(gitPatch);
   });
 });
 

@@ -223,7 +223,6 @@ export const bodies = {
   ocrInstall: z.object({ projectId: z.string(), directory: z.string() }),
   forgejoWorktree: z.object({
     projectId: z.string(),
-    branch: z.string(),
     commitId: z.string(),
   }),
   roots: z.object({ roots: z.array(z.string()) }),
