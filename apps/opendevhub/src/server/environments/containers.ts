@@ -2,6 +2,7 @@ import path from "node:path";
 
 import type { Dotfiles, FeatureOptions } from "../../shared/personalization";
 import type { RunResult, Runner } from "../nodes/exec";
+import { ensureSpawnHelperExecutable } from "./pty-helper";
 
 export const LABEL = "opendevhub.project";
 
@@ -279,6 +280,8 @@ export class Containers {
         args.push("--dotfiles-target-path", opts.dotfiles.targetPath);
       }
     }
+    // The CLI loads our node-pty; a reinstall since startup can strip the helper's execute bit again.
+    ensureSpawnHelperExecutable();
     const result = await this.run("devcontainer", args, {
       onLine: opts.onLine,
       timeoutMs: UP_TIMEOUT_MS,

@@ -7,6 +7,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { clientArgs, remoteCommand } from "../nodes/ssh";
 import type { SshTarget } from "../nodes/ssh";
+import { ensureSpawnHelperExecutable } from "./pty-helper";
 
 export interface TerminalTarget {
   containerId: string;
@@ -114,6 +115,8 @@ export class Terminals {
               "Too many terminal sessions; exit an unused shell first"
             );
           }
+          // Startup restores it too, but a reinstall since then strips it again.
+          ensureSpawnHelperExecutable();
           const pty = spawn(command.file, command.args, {
             cols: 80,
             env: Object.fromEntries(
