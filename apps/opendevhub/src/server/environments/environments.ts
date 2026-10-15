@@ -27,7 +27,12 @@ import { stateDir } from "../config";
 import { USER } from "../db/events";
 import type { Actor } from "../db/events";
 import { BusyError, NotFoundError, UnavailableError } from "../errors";
-import { InvalidRequestError, mountArg, worktreeRoot } from "../git/worktrees";
+import {
+  InvalidRequestError,
+  daemonSourceToHostPath,
+  mountArg,
+  worktreeRoot,
+} from "../git/worktrees";
 import type { ForwardTarget } from "../network/port-forwarder";
 import { parseForwardPorts } from "../network/ports";
 import { AGENT_SOCKET, AgentTunnel } from "../network/relay/agent";
@@ -815,7 +820,11 @@ export class Environments {
       );
       return root;
     }
-    return { ...root, host: source, mounted: true };
+    return {
+      ...root,
+      host: daemonSourceToHostPath(source),
+      mounted: true,
+    };
   }
 
   private async refreshWorktreesQuietly(project: Project): Promise<void> {

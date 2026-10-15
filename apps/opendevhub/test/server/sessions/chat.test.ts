@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CommandError } from "../../../src/server/environments/containers";
 import { NotFoundError } from "../../../src/server/errors";
 import { InvalidRequestError } from "../../../src/server/git/worktrees";
+import { FIRST_TURN_TIMEOUT_MS } from "../../../src/server/tasks/checkout-setup";
 import { project, setup } from "../../helpers/hub";
 
 describe("chat", () => {
@@ -310,7 +311,8 @@ describe("make task", () => {
       "Add a dark mode toggle",
       undefined,
       variants[2].directory,
-      {}
+      {},
+      FIRST_TURN_TIMEOUT_MS
     );
   });
 

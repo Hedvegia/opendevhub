@@ -15,6 +15,7 @@ import {
   OpencodeHttpError,
 } from "../../../src/server/opencode/client";
 import { StateStore } from "../../../src/server/projects/state";
+import { FIRST_TURN_TIMEOUT_MS } from "../../../src/server/tasks/checkout-setup";
 import type {
   EnvWorktree,
   Project,
@@ -92,9 +93,13 @@ describe("tasks", () => {
       base: undefined,
       workspaceFolder: "/workspaces/demo",
     });
-    expect(client.createSession).toHaveBeenCalledWith(dir, {
-      title: "Fix the login bug",
-    });
+    expect(client.createSession).toHaveBeenCalledWith(
+      dir,
+      {
+        title: "Fix the login bug",
+      },
+      FIRST_TURN_TIMEOUT_MS
+    );
     expect(tasks.get(res.task)).toMatchObject({
       kind: "task",
       state: "running",
@@ -115,7 +120,8 @@ describe("tasks", () => {
       "Fix the login bug\nIt fails on Safari",
       undefined,
       dir,
-      {}
+      {},
+      FIRST_TURN_TIMEOUT_MS
     );
     expect(monitors.at(-1)!.reconciled).toBeGreaterThan(0);
   });
@@ -161,9 +167,13 @@ describe("tasks", () => {
     expect(result.variants).toStrictEqual([
       { branch: "fix", directory: path, sessionId: "ses_1" },
     ]);
-    expect(client.createSession).toHaveBeenCalledWith(path, {
-      title: "Continue the fix",
-    });
+    expect(client.createSession).toHaveBeenCalledWith(
+      path,
+      {
+        title: "Continue the fix",
+      },
+      FIRST_TURN_TIMEOUT_MS
+    );
     expect(worktrees.add).not.toHaveBeenCalled();
   });
 
@@ -479,7 +489,7 @@ describe("tasks", () => {
         "opsx-propose",
         "Add dark mode",
         v.directory,
-        {},
+        { timeoutMs: FIRST_TURN_TIMEOUT_MS },
       ])
     );
     expect(client.prompt).not.toHaveBeenCalled();
@@ -519,6 +529,7 @@ describe("tasks", () => {
               mention: { start: 6, end: 15, text: "@src/a.ts" },
             },
           ],
+          timeoutMs: FIRST_TURN_TIMEOUT_MS,
         },
       ],
     ]);
@@ -539,7 +550,8 @@ describe("tasks", () => {
       "/nope do it",
       undefined,
       variant.directory,
-      {}
+      {},
+      FIRST_TURN_TIMEOUT_MS
     );
     expect(client.command).not.toHaveBeenCalled();
     for (const text of ["/new", "/interrupt now"]) {
