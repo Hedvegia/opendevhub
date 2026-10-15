@@ -372,6 +372,54 @@ describe(OpencodeClient, () => {
     ]);
   });
 
+  it("reports a clear message when a request is aborted by its deadline", async () => {
+    const hung = new OpencodeClient(
+      { baseUrl: fake.baseUrl, password: "pw" },
+      async () => {
+        throw new DOMException(
+          "The operation was aborted due to timeout",
+          "TimeoutError"
+        );
+      }
+    );
+    await expect(hung.prompt("ses_1", "hi")).rejects.toThrow(
+      "opencode did not respond to POST /api/session/ses_1/prompt within 5 s"
+    );
+  });
+
+  it("gives session creation and the first turn a caller-supplied deadline", async () => {
+    const hung = new OpencodeClient(
+      { baseUrl: fake.baseUrl, password: "pw" },
+      async () => {
+        throw new DOMException(
+          "The operation was aborted due to timeout",
+          "TimeoutError"
+        );
+      }
+    );
+    await expect(hung.createSession("/w/x", {}, 60_000)).rejects.toThrow(
+      "opencode did not respond to POST /api/session within 60 s"
+    );
+    await expect(
+      hung.prompt("ses_1", "hi", undefined, undefined, {}, 60_000)
+    ).rejects.toThrow("within 60 s");
+    await expect(
+      hung.command("ses_1", "review", "", undefined, { timeoutMs: 60_000 })
+    ).rejects.toThrow("within 60 s");
+    await expect(hung.commands("/w/x", 60_000)).rejects.toThrow("within 60 s");
+  });
+
+  it("passes network errors that are not a deadline abort through unchanged", async () => {
+    const boom = new Error("something is wrong");
+    const broken = new OpencodeClient(
+      { baseUrl: fake.baseUrl, password: "pw" },
+      async () => {
+        throw boom;
+      }
+    );
+    await expect(broken.info()).rejects.toBe(boom);
+  });
+
   it("sends prompts, queued when asked, and generates text from a session", async () => {
     await client.prompt("ses_1", "fix it", "queue", "/w/x");
     await client.prompt("ses_2", "hello");

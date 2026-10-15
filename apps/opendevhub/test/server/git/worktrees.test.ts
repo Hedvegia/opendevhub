@@ -10,6 +10,7 @@ import {
   InvalidRequestError,
   Worktrees,
   baseKey,
+  daemonSourceToHostPath,
   mountArg,
   parseGitVersion,
   parseWorktreeList,
@@ -41,6 +42,20 @@ describe(worktreeRoot, () => {
     });
     expect(mountArg(root)).toBe(
       "type=bind,source=/src/demo.worktrees,target=/workspaces/demo.worktrees"
+    );
+  });
+});
+
+describe(daemonSourceToHostPath, () => {
+  it("maps Docker Desktop's /host_mnt view of a shared folder back to the machine path", () => {
+    expect(
+      daemonSourceToHostPath("/host_mnt/Users/me/code/demo.worktrees")
+    ).toBe("/Users/me/code/demo.worktrees");
+  });
+
+  it("leaves a plain bind source alone", () => {
+    expect(daemonSourceToHostPath("/src/demo.worktrees")).toBe(
+      "/src/demo.worktrees"
     );
   });
 });

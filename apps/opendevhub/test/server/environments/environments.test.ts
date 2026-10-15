@@ -21,6 +21,7 @@ import type {
   Route,
   RouteContainer,
 } from "../../../src/server/network/routes";
+import { FIRST_TURN_TIMEOUT_MS } from "../../../src/server/tasks/checkout-setup";
 import { creationSettings } from "../../../src/shared/personalization";
 import type { Project } from "../../../src/shared/types";
 import { rawSession } from "../../helpers/fake-opencode";
@@ -272,6 +273,27 @@ describe("environments", () => {
     });
     expect(store.runtime(project.id).error).toMatch(/Restart opencode/u);
     expect(monitors).toHaveLength(0);
+  });
+
+  it("maps a worktrees mount source Docker Desktop reports under /host_mnt to the machine path", async () => {
+    const mac = {
+      ...running,
+      binds: {
+        "/workspaces/demo": "/host_mnt/Users/me/code/demo",
+        "/workspaces/demo.worktrees": "/host_mnt/Users/me/code/demo.worktrees",
+      },
+    };
+    const { store, containers, hub } = setup({
+      projects: { [project.id]: { password: "pw" } },
+    });
+    containers.listManaged.mockResolvedValueOnce([mac]);
+    await hub.environments.rescan();
+    await hub.environments.adopt();
+    expect(store.runtime(project.id).worktreeRoot).toStrictEqual({
+      container: "/workspaces/demo.worktrees",
+      host: "/Users/me/code/demo.worktrees",
+      mounted: true,
+    });
   });
 
   it("adopts stopped containers as stopped and ignores unknown labels", async () => {
@@ -1911,7 +1933,8 @@ describe("environments on another node", () => {
     );
     expect(client.createSession).toHaveBeenCalledWith(
       "/workspaces/demo.worktrees/fix-login",
-      expect.anything()
+      expect.anything(),
+      FIRST_TURN_TIMEOUT_MS
     );
     expect(box.kit.containers.up).toHaveBeenCalled();
   });

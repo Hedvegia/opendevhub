@@ -33,6 +33,12 @@ export const NO_WORKTREE_MOUNT =
   "this container was created before opendevhub mounted a worktrees folder — rebuild the container to enable worktrees";
 
 /**
+ * How long the first turn may take to be accepted. opencode has just started in a fresh container and does its
+ * heavier first-turn work (indexing the checkout, warming up the provider) only when the first message arrives.
+ */
+export const FIRST_TURN_TIMEOUT_MS = 60_000;
+
+/**
  * Where one checkout's setup reports: a task variant's row, or a chat's. Each step, the setup's log lines and the
  * session once it exists go here.
  */
@@ -430,14 +436,14 @@ export class CheckoutSetup {
     const resolved: ResolvedMessage =
       "message" in turn
         ? await resolveMessage(
-            () => client.commands(directory),
+            () => client.commands(directory, FIRST_TURN_TIMEOUT_MS),
             directory,
             turn.message
           )
         : { attachments: {}, ...turn };
     const { command } = resolved;
     if (command && !("message" in turn)) {
-      const commands = await client.commands(directory);
+      const commands = await client.commands(directory, FIRST_TURN_TIMEOUT_MS);
       if (!commands.some((c) => c.name === command)) {
         throw new UnavailableError(
           `opencode has no ${command} command here; run \`openspec init --tools opencode\` in the repository`
@@ -447,11 +453,15 @@ export class CheckoutSetup {
     const { spec, sink } = slot;
     const release = this.deps.tasks.claim(envId, directory);
     try {
-      const session = await client.createSession(directory, {
-        title: slot.sessionTitle,
-        ...(spec.model ? { model: spec.model } : {}),
-        ...(spec.agent ? { agent: spec.agent } : {}),
-      });
+      const session = await client.createSession(
+        directory,
+        {
+          title: slot.sessionTitle,
+          ...(spec.model ? { model: spec.model } : {}),
+          ...(spec.agent ? { agent: spec.agent } : {}),
+        },
+        FIRST_TURN_TIMEOUT_MS
+      );
       result.sessionId = session.id;
       sink.attach({ directory, envId, sessionId: session.id });
     } finally {
@@ -460,8 +470,18 @@ export class CheckoutSetup {
     const { sessionId } = result;
     const { attachments, text } = resolved;
     await (command
-      ? client.command(sessionId, command, text, directory, attachments)
-      : client.prompt(sessionId, text, undefined, directory, attachments));
+      ? client.command(sessionId, command, text, directory, {
+          ...attachments,
+          timeoutMs: FIRST_TURN_TIMEOUT_MS,
+        })
+      : client.prompt(
+          sessionId,
+          text,
+          undefined,
+          directory,
+          attachments,
+          FIRST_TURN_TIMEOUT_MS
+        ));
   }
 
   private failed(

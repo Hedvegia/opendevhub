@@ -36,6 +36,16 @@ export const worktreeRoot = (
 export const mountArg = (root: WorktreeRoot): string =>
   `type=bind,source=${root.host},target=${root.container}`;
 
+/**
+ * The machine path of a bind source Docker Desktop reports. Its daemon sees folders shared from the
+ * machine as `/host_mnt/<path>` (e.g. `/host_mnt/Users/me/code`), a prefix that does not exist on
+ * the machine; the same folder is `/<path>` there.
+ */
+export const daemonSourceToHostPath = (source: string): string =>
+  source.startsWith("/host_mnt/")
+    ? `/${source.slice("/host_mnt/".length)}`
+    : source;
+
 export const parseGitVersion = (
   output: string
 ): [number, number] | undefined => {

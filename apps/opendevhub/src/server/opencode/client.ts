@@ -291,6 +291,23 @@ const timeoutOf = (attachments: PromptAttachments): number =>
     ? UPLOAD_TIMEOUT_MS
     : REQUEST_TIMEOUT_MS;
 
+/** AbortSignal.timeout() rejects with this abort reason; say what actually ran out instead. */
+const isRequestTimeout = (error: unknown): boolean => {
+  const e = error as { name?: unknown; message?: unknown } | undefined;
+  return (
+    e?.name === "TimeoutError" ||
+    (typeof e?.message === "string" &&
+      /aborted due to timeout/iu.test(e.message))
+  );
+};
+
+const requestTimeoutMessage = (
+  method: string,
+  path: string,
+  timeoutMs: number
+): string =>
+  `opencode did not respond to ${method} ${path} within ${Math.round(timeoutMs / 1000)} s`;
+
 export class OpencodeClient {
   private readonly ep: OpencodeEndpoint;
   private readonly fetchImpl: typeof fetch;
@@ -311,10 +328,17 @@ export class OpencodeClient {
     if (directory) {
       headers["x-opencode-directory"] = directory;
     }
-    const res = await this.fetchImpl(this.ep.baseUrl + path, {
-      headers,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    let res: Response;
+    try {
+      res = await this.fetchImpl(this.ep.baseUrl + path, {
+        headers,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      throw isRequestTimeout(error)
+        ? new Error(requestTimeoutMessage("GET", path, timeoutMs))
+        : error;
+    }
     if (!res.ok) {
       throw new OpencodeHttpError(res.status, path);
     }
@@ -324,7 +348,8 @@ export class OpencodeClient {
   /** Starts a session whose working directory is `directory` (the workspace or one of its worktrees). */
   async createSession(
     directory: string,
-    opts: NewSession = {}
+    opts: NewSession = {},
+    timeoutMs = REQUEST_TIMEOUT_MS
   ): Promise<RawSession> {
     const body = {
       ...(opts.title ? { title: opts.title } : {}),
@@ -333,7 +358,13 @@ export class OpencodeClient {
       ...(opts.metadata ? { metadata: opts.metadata } : {}),
       location: { directory },
     };
-    const res = await this.request("POST", "/api/session", body, directory);
+    const res = await this.request(
+      "POST",
+      "/api/session",
+      body,
+      directory,
+      timeoutMs
+    );
     const created = (await res.json()) as {
       data?: RawSession;
     } & Partial<RawSession>;
@@ -358,12 +389,19 @@ export class OpencodeClient {
     if (directory) {
       headers["x-opencode-directory"] = directory;
     }
-    const res = await this.fetchImpl(this.ep.baseUrl + path, {
-      body: body === undefined ? undefined : JSON.stringify(body),
-      headers,
-      method,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    let res: Response;
+    try {
+      res = await this.fetchImpl(this.ep.baseUrl + path, {
+        body: body === undefined ? undefined : JSON.stringify(body),
+        headers,
+        method,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      throw isRequestTimeout(error)
+        ? new Error(requestTimeoutMessage(method, path, timeoutMs))
+        : error;
+    }
     if (res.ok) {
       return res;
     }
@@ -497,14 +535,15 @@ export class OpencodeClient {
     text: string,
     delivery?: "queue" | "steer",
     directory?: string,
-    attachments: PromptAttachments = {}
+    attachments: PromptAttachments = {},
+    timeoutMs = timeoutOf(attachments)
   ): Promise<void> {
     return this.send(
       "POST",
       `/api/session/${encodeURIComponent(sessionId)}/prompt`,
       { text, ...attachments, ...(delivery ? { delivery } : {}) },
       directory,
-      timeoutOf(attachments)
+      timeoutMs
     );
   }
 
@@ -517,14 +556,18 @@ export class OpencodeClient {
     name: string,
     text: string,
     directory?: string,
-    opts: PromptAttachments & { delivery?: "queue" | "steer" } = {}
+    opts: PromptAttachments & {
+      delivery?: "queue" | "steer";
+      timeoutMs?: number;
+    } = {}
   ): Promise<void> {
+    const { timeoutMs, ...rest } = opts;
     return this.send(
       "POST",
       `/api/session/${encodeURIComponent(sessionId)}/command`,
-      { name, text, ...opts },
+      { name, text, ...rest },
       directory,
-      timeoutOf(opts)
+      timeoutMs ?? timeoutOf(opts)
     );
   }
 
@@ -629,10 +672,14 @@ export class OpencodeClient {
     return result7.data;
   }
 
-  async commands(directory: string): Promise<RawCommand[]> {
+  async commands(
+    directory: string,
+    timeoutMs = REQUEST_TIMEOUT_MS
+  ): Promise<RawCommand[]> {
     const result = await this.get<{ data: RawCommand[] }>(
       "/api/command",
-      directory
+      directory,
+      timeoutMs
     );
     return result.data;
   }
