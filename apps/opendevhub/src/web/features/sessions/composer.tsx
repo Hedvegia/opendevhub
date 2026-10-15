@@ -500,9 +500,13 @@ export const Composer = (props: {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    // Shift+Enter inserts a newline natively; Cmd/Ctrl+Enter does not, so do it by hand.
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      send();
+      const start = el.selectionStart;
+      const text = `${value.text.slice(0, start)}\n${value.text.slice(el.selectionEnd)}`;
+      apply({ caret: start + 1, value: rebase(value, text) });
       return;
     }
     if (open && selectable.length > 0) {
@@ -517,6 +521,11 @@ export const Composer = (props: {
         return;
       }
     }
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      send();
+      return;
+    }
     if (open && e.key === "Escape") {
       e.preventDefault();
       setDismissed(trigger.start);
@@ -527,7 +536,6 @@ export const Composer = (props: {
       void interrupt();
       return;
     }
-    const el = e.currentTarget;
     if (e.key === "Backspace" && el.selectionStart === el.selectionEnd) {
       const out = deleteMentionBefore(value, el.selectionStart);
       if (out) {
@@ -806,8 +814,8 @@ export const Composer = (props: {
             <Tip
               label={
                 running
-                  ? "Queue behind the current turn (Ctrl+Enter)"
-                  : "Send (Ctrl+Enter)"
+                  ? "Queue behind the current turn (Enter)"
+                  : "Send (Enter)"
               }
             >
               <Button
