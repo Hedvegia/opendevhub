@@ -7,6 +7,7 @@ import type {
   DiffLineAnnotation,
   SelectedLineRange,
 } from "@pierre/diffs/react";
+import type { HotkeyCallback } from "@tanstack/react-hotkeys";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -28,6 +29,7 @@ import {
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { useShortcut, useShortcutLabel } from "@/shell/use-shortcut";
 
 import { imageType } from "../../../shared/images";
 import type { ReviewFile } from "../../../shared/types";
@@ -155,41 +157,37 @@ export const useCommentStepper = (stops: CommentStop[]) => {
   return { current, focus, step, total: stops.length };
 };
 
-const typing = (target: EventTarget | null) => {
-  const el = target as HTMLElement | null;
-  return (
-    !!el?.closest?.("input, textarea, select, [role=dialog]") ||
-    !!el?.isContentEditable
-  );
-};
+/** In a dialog laid over the diff, such as the command palette, j and k belong to it. */
+const inDialog = (target: EventTarget | null) =>
+  !!(target as HTMLElement | null)?.closest?.("[role=dialog]");
 
-/** "2 of 7 comments" with previous and next buttons; `k` and `j` step too. */
+/** "2 of 7 comments" with previous and next buttons; the Next and Previous comment shortcuts step too. */
 export const CommentStepper = ({
   stepper,
 }: {
   stepper: ReturnType<typeof useCommentStepper>;
 }) => {
   const { current, step, total } = stepper;
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) {
-        return;
-      }
-      if (e.key === "j" || e.key === "k") {
+  const stepBy =
+    (by: 1 | -1): HotkeyCallback =>
+    (e) => {
+      if (!inDialog(e.target)) {
         e.preventDefault();
-        step(e.key === "j" ? 1 : -1);
+        step(by);
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [step]);
+  const options = { preventDefault: false, stopPropagation: false };
+  useShortcut("reviewNext", stepBy(1), options);
+  useShortcut("reviewPrev", stepBy(-1), options);
+  const nextKeys = useShortcutLabel("reviewNext");
+  const prevKeys = useShortcutLabel("reviewPrev");
   if (!total) {
     return null;
   }
   return (
     // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
     <div className="flex items-center gap-1" role="group" aria-label="Comments">
-      <Tip label="Previous comment (k)">
+      <Tip label={`Previous comment${prevKeys ? ` (${prevKeys})` : ""}`}>
         <Button
           variant="outline"
           size="icon-sm"
@@ -199,7 +197,7 @@ export const CommentStepper = ({
           <ChevronUpIcon />
         </Button>
       </Tip>
-      <Tip label="Next comment (j)">
+      <Tip label={`Next comment${nextKeys ? ` (${nextKeys})` : ""}`}>
         <Button
           variant="outline"
           size="icon-sm"
@@ -673,6 +671,10 @@ const CommentForm = (props: {
     const timer = setTimeout(() => input.current?.focus(), 0);
     return () => clearTimeout(timer);
   }, []);
+  useShortcut("reviewCancel", () => props.onCancel(), {
+    ignoreInputs: false,
+    target: input,
+  });
   return (
     <form
       className="bg-card text-card-foreground mx-2 my-1 flex flex-col gap-2 rounded-md border p-2 font-sans text-sm"
@@ -694,11 +696,6 @@ const CommentForm = (props: {
         rows={2}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            props.onCancel();
-          }
-        }}
         placeholder={props.placeholder}
       />
       <div className="flex items-center gap-2">

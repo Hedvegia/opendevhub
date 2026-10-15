@@ -78,13 +78,14 @@ import {
   useSettingsHref,
 } from "../features/settings/settings-link";
 import { NewTaskDialog } from "../features/tasks/new-task-dialog";
-import { newTaskShortcut } from "../features/tasks/tasks";
+import { projectIdFromPath } from "../features/tasks/tasks";
 import { Link, useIsActive, useNavigate, useSearchParams } from "../routing";
 import { CommandPalette } from "./command-palette";
 import { CurrentProjectProvider, useCurrentProject } from "./current-project";
 import { DesktopSidebar } from "./desktop-sidebar";
 import { Logo } from "./logo";
 import { RightSidebarHost } from "./right-sidebar";
+import { useShortcut } from "./use-shortcut";
 
 const NavItem = (props: {
   to: string;
@@ -478,35 +479,25 @@ export const Shell = () => {
   const [params] = useSearchParams();
   const settingsOpen = params.has(SETTINGS_PARAM);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPalette((p) => !p);
-        return;
+  useShortcut("palette", () => setPalette((p) => !p));
+  // `n` opens New task for the project whose page is open; none elsewhere, since tasks start in a project.
+  const projectId = projectIdFromPath(location.pathname);
+  useShortcut(
+    "newTask",
+    () => {
+      if (projectId) {
+        newTask(projectId);
       }
-      const projectId = newTaskShortcut(e, location.pathname);
-      if (
-        projectId &&
+    },
+    {
+      enabled:
+        !!projectId &&
         !palette &&
         !settingsOpen &&
         !newTaskFor &&
-        !addProjectOpen
-      ) {
-        e.preventDefault();
-        newTask(projectId);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [
-    palette,
-    settingsOpen,
-    newTaskFor,
-    addProjectOpen,
-    newTask,
-    location.pathname,
-  ]);
+        !addProjectOpen,
+    }
+  );
 
   if (!snapshot) {
     return (

@@ -237,41 +237,10 @@ export const taskChip = (
   };
 };
 
-/** `n` opens New task, but not while typing somewhere or with a modifier held. */
-export const opensNewTask = (e: {
-  key: string;
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-  target: unknown;
-}): boolean => {
-  if (e.key !== "n" || e.metaKey || e.ctrlKey || e.altKey) {
-    return false;
-  }
-  const t = e.target as {
-    tagName?: string;
-    isContentEditable?: boolean;
-  } | null;
-  if (!t) {
-    return true;
-  }
-  return (
-    !t.isContentEditable &&
-    !["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName ?? "")
-  );
-};
-
 export const projectIdFromPath = (pathname: string): string | undefined => {
   const m = pathname.match(/^\/p\/(?<g1>[^/]+)/u);
   return m ? decodeURIComponent(m[1]) : undefined;
 };
-
-/** The project `n` opens New task for: the one whose page is open; none elsewhere, since tasks start in a project. */
-export const newTaskShortcut = (
-  e: Parameters<typeof opensNewTask>[0],
-  pathname: string
-): string | undefined =>
-  opensNewTask(e) ? projectIdFromPath(pathname) : undefined;
 
 /** `<select>` values for models; "" is the project's default. Model ids can contain "/", so encode as JSON. */
 export const modelKey = (

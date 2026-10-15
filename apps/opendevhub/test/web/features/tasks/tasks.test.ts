@@ -15,8 +15,6 @@ import {
   formatTokens,
   modelFromKey,
   modelKey,
-  opensNewTask,
-  newTaskShortcut,
   pickPrompts,
   projectIdFromPath,
   specUnavailable,
@@ -363,30 +361,6 @@ describe("picking a variant", () => {
 });
 
 describe("keyboard and routing", () => {
-  const key = (over: Partial<Parameters<typeof opensNewTask>[0]> = {}) => ({
-    key: "n",
-    metaKey: false,
-    ctrlKey: false,
-    altKey: false,
-    target: null,
-    ...over,
-  });
-
-  it("opens New task on a bare n, never while typing or with a modifier", () => {
-    expect(opensNewTask(key())).toBeTruthy();
-    expect(opensNewTask(key({ target: { tagName: "DIV" } }))).toBeTruthy();
-    expect(opensNewTask(key({ key: "m" }))).toBeFalsy();
-    expect(opensNewTask(key({ metaKey: true }))).toBeFalsy();
-    expect(opensNewTask(key({ ctrlKey: true }))).toBeFalsy();
-    expect(opensNewTask(key({ altKey: true }))).toBeFalsy();
-    for (const tagName of ["INPUT", "TEXTAREA", "SELECT"]) {
-      expect(opensNewTask(key({ target: { tagName } }))).toBeFalsy();
-    }
-    expect(
-      opensNewTask(key({ target: { tagName: "DIV", isContentEditable: true } }))
-    ).toBeFalsy();
-  });
-
   it("reads the project from the current path", () => {
     expect(projectIdFromPath("/p/demo%201/review/x")).toBe("demo 1");
     expect(projectIdFromPath("/p/demo")).toBe("demo");
@@ -538,33 +512,5 @@ describe("task page", () => {
         step: "session",
       }).map((s) => s.id)
     ).toStrictEqual(["new"]);
-  });
-});
-
-describe(newTaskShortcut, () => {
-  const n = {
-    altKey: false,
-    ctrlKey: false,
-    key: "n",
-    metaKey: false,
-    target: null,
-  };
-
-  it("opens nothing outside a project", () => {
-    expect(newTaskShortcut(n, "/")).toBeUndefined();
-    expect(newTaskShortcut(n, "/tasks")).toBeUndefined();
-    expect(newTaskShortcut(n, "/jira/APP-42")).toBeUndefined();
-  });
-
-  it("opens New task for the project whose page is open", () => {
-    expect(newTaskShortcut(n, "/p/app")).toBe("app");
-    expect(newTaskShortcut(n, "/p/app/t/abc/changes")).toBe("app");
-    expect(newTaskShortcut(n, "/p/my%20app/w/feat")).toBe("my app");
-  });
-
-  it("ignores n while typing", () => {
-    expect(
-      newTaskShortcut({ ...n, target: { tagName: "INPUT" } }, "/p/app")
-    ).toBeUndefined();
   });
 });

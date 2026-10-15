@@ -48,6 +48,7 @@ import { Choice } from "../../components/choice";
 import { useDash } from "../../dashboard-context";
 import type { NewTaskDraft } from "../../dashboard-context";
 import { useNavigate } from "../../routing";
+import { useShortcut, useShortcutLabel } from "../../shell/use-shortcut";
 import { nodeChoices } from "../nodes/nodes";
 import { projectFlags } from "../projects/project-actions";
 import { modelKey, specUnavailable, taskPath } from "./tasks";
@@ -157,8 +158,7 @@ const TaskForm = ({
   const shownRows = effectiveWhere === "worktree" ? rows : rows.slice(0, 1);
   const locationReady =
     effectiveWhere !== "existing" || selectedWorktree !== undefined;
-  const isMac =
-    typeof navigator !== "undefined" && /mac/iu.test(navigator.platform);
+  const startKeys = useShortcutLabel("newTaskStart");
 
   // Cached per project, so the dialog opens with its lists ready; without them, it offers the defaults. Refreshed on
   // every opening, so a model, agent or OpenSpec setup added since shows up.
@@ -254,6 +254,10 @@ const TaskForm = ({
       return drafted.task;
     });
   };
+  useShortcut("newTaskStart", () => submit(), {
+    ignoreInputs: false,
+    target: promptRef,
+  });
 
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
@@ -316,12 +320,6 @@ const TaskForm = ({
                   : "What should the agent do?"
               }
               onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
             />
           </div>
 
@@ -572,7 +570,7 @@ const TaskForm = ({
 
           <DialogFooter className="items-center">
             <span className="text-muted-foreground mr-auto text-xs">
-              {isMac ? "⌘" : "Ctrl"}+Enter to start
+              {startKeys && `${startKeys} to start`}
             </span>
             <Button
               type="button"

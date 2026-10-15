@@ -1,14 +1,16 @@
 import { Button } from "@opendevhub/ui/button";
 import { Checkbox } from "@opendevhub/ui/checkbox";
 import { Input } from "@opendevhub/ui/input";
-import { Kbd } from "@opendevhub/ui/kbd";
 import { Label } from "@opendevhub/ui/label";
 import { RadioGroup, RadioGroupItem } from "@opendevhub/ui/radio-group";
+import type { HotkeyCallback } from "@tanstack/react-hotkeys";
 import { ExternalLinkIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent, ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 
+import { ShortcutKeys } from "@/components/shortcut-keys";
 import { cn } from "@/lib/utils";
+import { useShortcut } from "@/shell/use-shortcut";
 
 import type {
   FormField,
@@ -25,7 +27,7 @@ import { diffFont } from "../../components/page";
 import { sessionHref } from "../../derive";
 import { PatchView } from "../review/lazy-patch-view";
 import { ensurePatchHeader } from "../review/review";
-import { canTakeFocus, cardAction } from "./card-keys";
+import { CARD_SHORTCUTS, canTakeFocus, cardKeyCounts } from "./card-keys";
 import type { CardAction } from "./card-keys";
 import {
   buildAnswer,
@@ -47,49 +49,61 @@ type Item =
   | { kind: "form"; item: PendingForm };
 
 /**
- * The card's shortcut keys. Keys only count while the card itself has focus (never while typing in one of
- * its fields), and not while the card has just appeared. j/k move between cards and are handled here.
+ * Registers the card's rebindable shortcuts on the card element, and returns its ref, which also focuses the card
+ * when it mounts if the stack hands it focus, so answering by keyboard lands on the next card. Keys only count
+ * while the card itself has focus (never while typing in one of its fields or on one of its buttons), and not while
+ * the card has just appeared. Next and previous move between cards and are handled here.
  */
-const useCardKeys = (onAction: (action: CardAction) => void) => {
+const useCard = (
+  takeFocus: () => boolean,
+  onAction: (action: Exclude<CardAction, "next" | "prev">) => void
+) => {
   const mountedAt = useRef(Date.now());
-  return (e: KeyboardEvent<HTMLElement>) => {
-    const action = cardAction(
-      {
-        key: e.key,
-        modified: e.metaKey || e.ctrlKey || e.altKey,
-        onCard: e.target === e.currentTarget,
-        repeat: e.repeat,
-      },
-      mountedAt.current,
-      Date.now()
-    );
-    if (!action) {
-      return;
-    }
-    e.preventDefault();
-    if (action === "next" || action === "prev") {
-      const cards = [
-        ...document.querySelectorAll<HTMLElement>("[data-pending-card]"),
-      ];
-      cards[
-        cards.indexOf(e.currentTarget) + (action === "next" ? 1 : -1)
-      ]?.focus();
-    } else {
-      onAction(action);
-    }
+  const card = useRef<HTMLElement | null>(null);
+  const handler =
+    (action: CardAction): HotkeyCallback =>
+    (e) => {
+      const counts = cardKeyCounts(
+        { onCard: e.target === card.current, repeat: e.repeat },
+        mountedAt.current,
+        Date.now()
+      );
+      if (!counts) {
+        return;
+      }
+      e.preventDefault();
+      if (action === "next" || action === "prev") {
+        const cards = [
+          ...document.querySelectorAll<HTMLElement>("[data-pending-card]"),
+        ];
+        const at = card.current ? cards.indexOf(card.current) : -1;
+        cards[at + (action === "next" ? 1 : -1)]?.focus();
+      } else {
+        onAction(action);
+      }
+    };
+  // The card's own buttons and fields keep their native Enter and typing.
+  const options = {
+    ignoreInputs: false,
+    preventDefault: false,
+    stopPropagation: false,
+    target: card,
   };
-};
-
-/** Focuses the card when it mounts if the stack hands it focus, so answering by keyboard lands on the next card. */
-const useAutoFocus = (takeFocus: () => boolean) =>
-  useCallback(
+  useShortcut(CARD_SHORTCUTS.once, handler("once"), options);
+  useShortcut(CARD_SHORTCUTS.always, handler("always"), options);
+  useShortcut(CARD_SHORTCUTS.reject, handler("reject"), options);
+  useShortcut(CARD_SHORTCUTS.next, handler("next"), options);
+  useShortcut(CARD_SHORTCUTS.prev, handler("prev"), options);
+  return useCallback(
     (el: HTMLElement | null) => {
+      card.current = el;
       if (el && takeFocus()) {
         el.focus();
       }
     },
     [takeFocus]
   );
+};
 
 const useReply = (onDone: () => void) => {
   const [busy, setBusy] = useState(false);
@@ -195,11 +209,10 @@ const PermissionCard = (props: {
   const { busy, error, run } = useReply(props.onDone);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
-  const ref = useAutoFocus(props.takeFocus);
   const reply = (decision: PermissionDecision, message?: string) =>
     run(() => replyPermission(props.projectId, p.id, decision, message));
 
-  const onKeyDown = useCardKeys((action) => {
+  const ref = useCard(props.takeFocus, (action) => {
     if (action === "reject") {
       setRejecting(true);
     } else {
@@ -214,7 +227,6 @@ const PermissionCard = (props: {
       className={CARD}
       data-pending-card
       tabIndex={0}
-      onKeyDown={onKeyDown}
       aria-label={`${props.sessionTitle} wants ${p.action}`}
     >
       <p>
@@ -290,9 +302,10 @@ const PermissionCard = (props: {
             onClick={() => reply("once")}
           >
             Allow once{" "}
-            <Kbd className="bg-attention-foreground/15 text-attention-foreground">
-              ↵
-            </Kbd>
+            <ShortcutKeys
+              id="cardOnce"
+              className="bg-attention-foreground/15 text-attention-foreground"
+            />
           </Button>
           <Button
             variant="outline"
@@ -305,7 +318,7 @@ const PermissionCard = (props: {
             }
             onClick={() => reply("always")}
           >
-            Always allow <Kbd>a</Kbd>
+            Always allow <ShortcutKeys id="cardAlways" />
           </Button>
           <Button
             variant="outline"
@@ -313,7 +326,7 @@ const PermissionCard = (props: {
             disabled={busy}
             onClick={() => setRejecting(true)}
           >
-            Reject… <Kbd>r</Kbd>
+            Reject… <ShortcutKeys id="cardReject" />
           </Button>
         </div>
       )}
@@ -340,12 +353,11 @@ const FormCard = (props: {
   );
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const ref = useAutoFocus(props.takeFocus);
   // Forms with several questions start folded to their title, so a page of them stays scannable.
   const [open, setOpen] = useState(form.fields.length <= 1);
   const formRef = useRef<HTMLFormElement | null>(null);
   // Enter on a folded card unfolds it; once open, Enter in a field submits the form natively.
-  const onKeyDown = useCardKeys((action) => {
+  const ref = useCard(props.takeFocus, (action) => {
     if (action === "once" && !open) {
       setOpen(true);
     }
@@ -365,7 +377,6 @@ const FormCard = (props: {
         className={CARD}
         data-pending-card
         tabIndex={0}
-        onKeyDown={onKeyDown}
         aria-label={form.title}
       >
         <p>{form.title}</p>
@@ -408,7 +419,6 @@ const FormCard = (props: {
         className={CARD}
         data-pending-card
         tabIndex={0}
-        onKeyDown={onKeyDown}
         aria-label={form.title}
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -421,9 +431,10 @@ const FormCard = (props: {
           <div className={ACTIONS}>
             <Button size="sm" disabled={busy} onClick={() => setOpen(true)}>
               Answer{" "}
-              <Kbd className="bg-primary-foreground/15 text-primary-foreground">
-                ↵
-              </Kbd>
+              <ShortcutKeys
+                id="cardOnce"
+                className="bg-primary-foreground/15 text-primary-foreground"
+              />
             </Button>
             <Button
               variant="outline"
@@ -453,7 +464,6 @@ const FormCard = (props: {
       className={CARD}
       data-pending-card
       tabIndex={0}
-      onKeyDown={onKeyDown}
       onSubmit={submit}
       aria-label={form.title}
     >

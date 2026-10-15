@@ -23,6 +23,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DragEvent, KeyboardEvent, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { useShortcut, useShortcutLabel } from "@/shell/use-shortcut";
 
 import type {
   ComposerSendRequest,
@@ -499,14 +500,57 @@ export const Composer = (props: {
     }
   };
 
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    const el = e.currentTarget;
-    // Shift+Enter inserts a newline natively; Cmd/Ctrl+Enter does not, so do it by hand.
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+  // Send, New line and Stop are rebindable shortcuts scoped to the prompt. They run on the textarea itself, ahead of
+  // React's onKeyDown below, so each steps aside while the suggestion list is open and owns Enter, Tab and Escape.
+  const listOwnsKeys = open && selectable.length > 0;
+  const prompt = {
+    ignoreInputs: false,
+    preventDefault: false,
+    stopPropagation: false,
+    target: textarea,
+  };
+  useShortcut(
+    "chatSend",
+    (e) => {
+      if (e.isComposing || (listOwnsKeys && active)) {
+        return;
+      }
+      e.preventDefault();
+      send();
+    },
+    prompt
+  );
+  // Shift+Enter inserts a newline natively; another binding has to do it by hand.
+  useShortcut(
+    "chatNewline",
+    (e) => {
+      const el = textarea.current;
+      if (e.isComposing || !el) {
+        return;
+      }
       e.preventDefault();
       const start = el.selectionStart;
       const text = `${value.text.slice(0, start)}\n${value.text.slice(el.selectionEnd)}`;
       apply({ caret: start + 1, value: rebase(value, text) });
+    },
+    prompt
+  );
+  useShortcut(
+    "chatInterrupt",
+    (e) => {
+      if (open || !running) {
+        return;
+      }
+      e.preventDefault();
+      void interrupt();
+    },
+    prompt
+  );
+  const sendKeys = useShortcutLabel("chatSend");
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    if (e.defaultPrevented) {
       return;
     }
     if (open && selectable.length > 0) {
@@ -521,19 +565,9 @@ export const Composer = (props: {
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      send();
-      return;
-    }
     if (open && e.key === "Escape") {
       e.preventDefault();
       setDismissed(trigger.start);
-      return;
-    }
-    if (e.key === "Escape" && running) {
-      e.preventDefault();
-      void interrupt();
       return;
     }
     if (e.key === "Backspace" && el.selectionStart === el.selectionEnd) {
@@ -812,11 +846,7 @@ export const Composer = (props: {
               disabled={!target.ready}
             />
             <Tip
-              label={
-                running
-                  ? "Queue behind the current turn (Enter)"
-                  : "Send (Enter)"
-              }
+              label={`${running ? "Queue behind the current turn" : "Send"}${sendKeys ? ` (${sendKeys})` : ""}`}
             >
               <Button
                 type="submit"
